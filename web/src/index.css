@@ -75,6 +75,14 @@ html, body, #root {
   height: 100%;
 }
 
+/* On phones 100vh includes the area behind the browser's toolbars, which cut off the bottom of
+   the page; the dynamic viewport height is what's actually visible. */
+@supports (height: 100dvh) {
+  .ui-app {
+    height: 100dvh;
+  }
+}
+
 body {
   @apply bg-surface-950 text-ink-200 antialiased font-sans;
 }

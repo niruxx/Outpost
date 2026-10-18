@@ -165,7 +165,37 @@ export function AuditPage() {
           ) : entries.length === 0 ? (
             <p className="p-8 text-center text-sm text-ink-500">{filtered ? 'Nothing matches these filters.' : 'Nothing has been recorded yet.'}</p>
           ) : (
-            <div className="overflow-x-auto">
+            <>
+            {/* Phones: one compact entry per event instead of a five-column table. */}
+            <ul className="divide-y divide-surface-800 md:hidden">
+              {entries.map((e) => (
+                <li key={e.id} className="space-y-1 px-4 py-3">
+                  <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                    <Badge tone={actionTone(e.action)}>{e.action}</Badge>
+                    <span className="text-xs tabular-nums text-ink-500" title={e.at}>
+                      {formatTime(e.at)}
+                    </span>
+                  </div>
+                  <p className="text-sm text-ink-200">
+                    <span className="font-medium text-ink-100">{e.username ?? 'system'}</span>
+                    {(e.targetLabel || e.target) && (
+                      <>
+                        <span className="text-ink-500"> → </span>
+                        {e.targetKind === 'server' ? (
+                          <Link to={`/instances/${e.target}`} className="text-accent-400 hover:underline">
+                            {e.targetLabel}
+                          </Link>
+                        ) : (
+                          (e.targetLabel ?? <span className="font-mono text-xs text-ink-500">{e.target!.slice(0, 8)}…</span>)
+                        )}
+                      </>
+                    )}
+                  </p>
+                  {e.detail && <p className="break-words text-xs text-ink-400">{e.detail}</p>}
+                </li>
+              ))}
+            </ul>
+            <div className="hidden overflow-x-auto md:block">
               <table className="w-full text-left text-sm">
                 <thead>
                   <tr className="border-b border-surface-700 text-xs text-ink-400">
@@ -207,6 +237,7 @@ export function AuditPage() {
                 </tbody>
               </table>
             </div>
+            </>
           )}
         </Card>
 

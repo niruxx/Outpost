@@ -288,7 +288,7 @@ export function TasksTab() {
                 )}
               </div>
               {canManage(task) && (
-                <>
+                <div className="flex w-full flex-wrap justify-end gap-2 sm:w-auto">
                   <Button variant="ghost" disabled={runningId === task.id} onClick={() => run(task)}>
                     <Icon name="play" className="h-4 w-4" /> {runningId === task.id ? 'Running…' : 'Run now'}
                   </Button>
@@ -303,7 +303,7 @@ export function TasksTab() {
                   <Button variant="danger" onClick={() => remove(task)}>
                     Delete
                   </Button>
-                </>
+                </div>
               )}
             </div>
           ))}

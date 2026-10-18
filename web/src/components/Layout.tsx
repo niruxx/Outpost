@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { AnimatePresence, motion } from 'framer-motion';
+import { LayoutGroup, motion } from 'framer-motion';
 import { useAuth } from '../state/AuthContext.js';
 import { Badge } from './ui.js';
 import { Logo } from './Logo.js';
@@ -176,6 +176,11 @@ export function Layout({
   }, []);
 
   useEffect(() => setMobileOpen(false), [location.pathname]);
+  // The phone drawer's contents are only built once it's first opened (it then stays, to slide shut).
+  const [drawerMounted, setDrawerMounted] = useState(false);
+  useEffect(() => {
+    if (mobileOpen) setDrawerMounted(true);
+  }, [mobileOpen]);
 
   const close = () => setMobileOpen(false);
   // /instances/<id>/status → /instances/<id>: subpage changes are animated by the instance view itself.
@@ -210,22 +215,23 @@ export function Layout({
     <div className="ui-app flex h-screen bg-surface-950">
       <aside className="ui-sidebar hidden w-72 shrink-0 bg-surface-900 md:block">{drawer}</aside>
 
-      <AnimatePresence>
-        {mobileOpen && (
-          <motion.div className="fixed inset-0 z-40 md:hidden" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <div className="absolute inset-0 bg-black/60" onClick={close} />
-            <motion.aside
-              className="ui-sidebar absolute inset-y-0 left-0 w-72 rounded-r-3xl bg-surface-900"
-              initial={{ x: -300 }}
-              animate={{ x: 0 }}
-              exit={{ x: -300 }}
-              transition={{ type: 'spring', stiffness: 400, damping: 40 }}
-            >
-              {drawer}
-            </motion.aside>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Phone drawer. It stays mounted and slides with CSS: when closed it ignores every touch, so
+          its backdrop can never be left covering the page (an interrupted exit animation used to
+          leave an invisible layer that swallowed taps and scrolling until a reload). */}
+      <div className={`fixed inset-0 z-40 md:hidden ${mobileOpen ? '' : 'pointer-events-none'}`} aria-hidden={!mobileOpen}>
+        <div
+          className={`absolute inset-0 bg-black/60 transition-opacity duration-200 ${mobileOpen ? 'opacity-100' : 'opacity-0'}`}
+          onClick={close}
+        />
+        <aside
+          className={`ui-sidebar absolute inset-y-0 left-0 w-72 max-w-[85vw] rounded-r-3xl bg-surface-900 transition-transform duration-300 ease-out ${
+            mobileOpen ? 'translate-x-0' : '-translate-x-full'
+          }`}
+        >
+          {/* Own namespace for the sliding "active item" highlight, separate from the desktop sidebar's. */}
+          {drawerMounted && <LayoutGroup id="mobile-drawer">{drawer}</LayoutGroup>}
+        </aside>
+      </div>
 
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="flex items-center gap-3 bg-surface-900 px-4 py-3 md:hidden">

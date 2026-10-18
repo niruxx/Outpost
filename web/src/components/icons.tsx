@@ -66,6 +66,7 @@ const PATHS: Record<string, ReactNode> = {
   stop: <rect x="6" y="6" width="12" height="12" rx="1.5" />,
   restart: <path d="M23 4v6h-6M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />,
   bolt: <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />,
+  edit: <path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z" />,
   trash: <path d="M3 6h18M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6M10 11v6M14 11v6M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />,
   lock: (
     <>

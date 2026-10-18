@@ -61,14 +61,14 @@ function MetricCard({
   accent: string;
 }) {
   return (
-    <Card className="flex flex-col p-5">
+    <Card className="flex min-w-0 flex-col p-4 sm:p-5">
       <div className="mb-3 flex items-center gap-2">
-        <span className="flex h-8 w-8 items-center justify-center rounded-full" style={{ backgroundColor: `${accent}22`, color: accent }}>
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: `${accent}22`, color: accent }}>
           <Icon name={icon} className="h-4 w-4" />
         </span>
-        <p className="text-sm font-medium text-ink-300">{label}</p>
+        <p className="min-w-0 text-sm font-medium leading-tight text-ink-300">{label}</p>
       </div>
-      <p className="text-[28px] font-normal leading-9 text-ink-50">{value}</p>
+      <p className="truncate text-2xl font-normal leading-8 text-ink-50 sm:text-[28px] sm:leading-9">{value}</p>
       {sub && <p className="mt-0.5 text-xs text-ink-400">{sub}</p>}
       {chart && <div className="mt-auto pt-3">{chart}</div>}
     </Card>
@@ -174,7 +174,7 @@ export function StatusTab() {
 
       <ConnectionCard />
 
-      <div className="stagger grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="stagger grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-3">
         <MetricCard
           icon="cpu"
           label="CPU load"

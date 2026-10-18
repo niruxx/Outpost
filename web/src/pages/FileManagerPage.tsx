@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Layout, PageHeader } from '../components/Layout.js';
-import { Card, Spinner } from '../components/ui.js';
+import { Card, Select, Spinner } from '../components/ui.js';
 import { GameTile, gameKindOf } from '../components/GameArt.js';
 import { SuspendedBadge } from '../components/StatusBadge.js';
 import { api } from '../api/client.js';
@@ -48,8 +48,18 @@ export function FileManagerPage() {
         ) : servers.length === 0 ? (
           <Card className="p-10 text-center text-sm text-ink-400">No instances yet.</Card>
         ) : (
-          <div className="grid gap-5 lg:grid-cols-[260px_minmax(0,1fr)]">
-            <Card className="h-fit p-2">
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-[260px_minmax(0,1fr)]">
+            {/* Phones and tablets: a dropdown, so the file list starts near the top of the screen. */}
+            <Select value={serverId ?? ''} onChange={(e) => navigate(`/files/${e.target.value}`)} aria-label="Instance" className="lg:hidden">
+              {!serverId && <option value="">Select an instance</option>}
+              {servers.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                  {s.suspended === 1 ? ' (suspended)' : ''}
+                </option>
+              ))}
+            </Select>
+            <Card className="hidden h-fit p-2 lg:block">
               {servers.map((s) => {
                 const active = s.id === serverId;
                 return (

@@ -226,12 +226,14 @@ function NodeRow({ node, onRemoved }: { node: PanelNode; onRemoved: () => void }
           {status && !status.online && status.error && ` · ${status.error}`}
         </p>
       </div>
-      <Button variant="ghost" onClick={check}>
-        <Icon name="refresh" className="h-4 w-4" /> Check
-      </Button>
-      <Button variant="danger" onClick={remove}>
-        Remove
-      </Button>
+      <div className="flex w-full flex-wrap justify-end gap-2 sm:w-auto">
+        <Button variant="ghost" onClick={check}>
+          <Icon name="refresh" className="h-4 w-4" /> Check
+        </Button>
+        <Button variant="danger" onClick={remove}>
+          Remove
+        </Button>
+      </div>
     </div>
   );
 }

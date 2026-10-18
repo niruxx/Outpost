@@ -4,6 +4,7 @@ import { api, ApiError, downloadUrl } from '../../api/client.js';
 import type { FileEntry } from '../../api/types.js';
 import { Button, Card, ErrorText, Input } from '../../components/ui.js';
 import { useConfirm } from '../../components/ConfirmDialog.js';
+import { Icon } from '../../components/icons.js';
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -133,8 +134,8 @@ export function FilesTab() {
 
   if (editingPath) {
     return (
-      <div className="flex h-[calc(100vh-8.5rem)] flex-col gap-3">
-        <div className="flex items-center gap-3">
+      <div className="flex h-[calc(100dvh-8.5rem)] min-h-[20rem] flex-col gap-3">
+        <div className="flex min-w-0 items-center gap-2 sm:gap-3">
           <Button
             variant="ghost"
             onClick={async () => {
@@ -152,7 +153,9 @@ export function FilesTab() {
           >
             ← Back
           </Button>
-          <span className="font-mono text-sm text-ink-300">{editingPath}</span>
+          <span className="min-w-0 truncate font-mono text-sm text-ink-300" title={editingPath}>
+            {editingPath}
+          </span>
           {canWrite && (
             <Button variant="primary" className="ml-auto" onClick={saveFile} disabled={!editorDirty || editorSaving}>
               {editorSaving ? 'Saving…' : 'Save'}
@@ -178,19 +181,21 @@ export function FilesTab() {
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <button className="text-sm text-accent-500 hover:underline" onClick={() => setPath('')}>
-          server
-        </button>
-        {segments.map((seg, i) => (
-          <span key={i} className="flex items-center gap-2 text-sm text-ink-400">
-            /
-            <button className="hover:underline hover:text-accent-500" onClick={() => setPath(segments.slice(0, i + 1).join('/'))}>
-              {seg}
-            </button>
-          </span>
-        ))}
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
+          <button className="text-sm text-accent-500 hover:underline" onClick={() => setPath('')}>
+            server
+          </button>
+          {segments.map((seg, i) => (
+            <span key={i} className="flex min-w-0 items-center gap-2 text-sm text-ink-400">
+              /
+              <button className="truncate hover:text-accent-500 hover:underline" onClick={() => setPath(segments.slice(0, i + 1).join('/'))}>
+                {seg}
+              </button>
+            </span>
+          ))}
+        </div>
         {canWrite && (
-          <div className="ml-auto flex gap-2">
+          <div className="flex gap-2">
             <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(e) => onUpload(e.target.files)} />
             <Button onClick={() => fileInputRef.current?.click()}>Upload</Button>
             <Button onClick={createFolder}>New folder</Button>
@@ -210,43 +215,59 @@ export function FilesTab() {
             <div
               key={entry.path}
               style={{ animationDelay: `${Math.min(i, 20) * 18}ms` }}
-              className="animate-fade-in-up flex items-center gap-3 px-4 py-2 transition-colors hover:bg-surface-800/50"
+              className="animate-fade-in-up flex items-center gap-2 px-3 py-2 transition-colors hover:bg-surface-800/50 sm:gap-3 sm:px-4"
             >
               <button
-                className="flex flex-1 items-center gap-2 truncate text-left text-sm"
+                className="flex min-w-0 flex-1 items-center gap-2 py-1 text-left text-sm"
                 onClick={() => (entry.isDirectory ? setPath(entry.path) : openFile(entry))}
               >
-                <span>{entry.isDirectory ? '📁' : '📄'}</span>
-                <span className="truncate text-ink-200">{entry.name}</span>
+                <span className="shrink-0">{entry.isDirectory ? '📁' : '📄'}</span>
+                <span className="min-w-0">
+                  <span className="block truncate text-ink-200">{entry.name}</span>
+                  {/* Phones: size and date go under the name instead of in their own columns. */}
+                  <span className="block truncate text-xs text-ink-500 sm:hidden">
+                    {entry.isDirectory ? '' : `${formatSize(entry.size)} · `}
+                    {new Date(entry.modifiedAt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
+                  </span>
+                </span>
               </button>
-              <span className="w-20 shrink-0 text-right text-xs text-ink-500">
+              <span className="hidden w-20 shrink-0 text-right text-xs text-ink-500 sm:block">
                 {entry.isDirectory ? '' : formatSize(entry.size)}
               </span>
-              <span className="w-36 shrink-0 text-right text-xs text-ink-500">
+              <span className="hidden w-36 shrink-0 text-right text-xs text-ink-500 md:block">
                 {new Date(entry.modifiedAt).toLocaleString()}
               </span>
-              <div className="flex shrink-0 gap-1">
+              <div className="flex shrink-0 gap-0.5 sm:gap-1">
                 {!entry.isDirectory && (
                   <a
-                    className="rounded px-2 py-1 text-xs text-ink-400 hover:bg-surface-700 hover:text-ink-200"
+                    className="flex items-center rounded p-2 text-xs text-ink-400 hover:bg-surface-700 hover:text-ink-200 sm:px-2 sm:py-1"
                     href={downloadUrl(`/servers/${serverId}/files/download?path=${encodeURIComponent(entry.path)}`)}
+                    title="Download"
+                    aria-label={`Download ${entry.name}`}
                   >
-                    Download
+                    <Icon name="update" className="h-4 w-4 sm:hidden" />
+                    <span className="hidden sm:inline">Download</span>
                   </a>
                 )}
                 {canWrite && (
                   <>
                     <button
-                      className="rounded px-2 py-1 text-xs text-ink-400 hover:bg-surface-700 hover:text-ink-200"
+                      className="flex items-center rounded p-2 text-xs text-ink-400 hover:bg-surface-700 hover:text-ink-200 sm:px-2 sm:py-1"
                       onClick={() => renameEntry(entry)}
+                      title="Rename"
+                      aria-label={`Rename ${entry.name}`}
                     >
-                      Rename
+                      <Icon name="edit" className="h-4 w-4 sm:hidden" />
+                      <span className="hidden sm:inline">Rename</span>
                     </button>
                     <button
-                      className="rounded px-2 py-1 text-xs text-red-400 hover:bg-red-500/10"
+                      className="flex items-center rounded p-2 text-xs text-red-400 hover:bg-red-500/10 sm:px-2 sm:py-1"
                       onClick={() => deleteEntry(entry)}
+                      title="Delete"
+                      aria-label={`Delete ${entry.name}`}
                     >
-                      Delete
+                      <Icon name="trash" className="h-4 w-4 sm:hidden" />
+                      <span className="hidden sm:inline">Delete</span>
                     </button>
                   </>
                 )}

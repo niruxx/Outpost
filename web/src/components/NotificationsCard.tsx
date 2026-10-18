@@ -224,10 +224,11 @@ export function NotificationsCard() {
                   {isDiscord(hook.url) ? <Badge tone="blue">Discord</Badge> : <Badge tone="neutral">Webhook</Badge>}
                   {!hook.enabled && <Badge tone="yellow">Paused</Badge>}
                 </div>
-                <p className="truncate text-xs text-ink-400">
+                <p className="text-xs text-ink-400">
                   {hook.events.map((e) => EVENT_LABEL[e]).join(', ')} · {scope(hook)}
                 </p>
               </div>
+              <div className="flex w-full flex-wrap justify-end gap-2 sm:w-auto">
               <Button variant="ghost" disabled={testing === hook.id} onClick={() => test(hook)}>
                 {testing === hook.id ? 'Sending…' : 'Test'}
               </Button>
@@ -242,6 +243,7 @@ export function NotificationsCard() {
               <Button variant="danger" onClick={() => remove(hook)}>
                 Remove
               </Button>
+              </div>
             </div>
           ))}
         </div>

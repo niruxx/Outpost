@@ -290,8 +290,8 @@ function BoxCard(props: RowProps) {
 
 const CONTAINER: Record<ViewMode, string> = {
   list: 'flex flex-col gap-1 rounded-3xl bg-surface-850 p-2',
-  grid: 'grid gap-3 md:grid-cols-2 2xl:grid-cols-3',
-  box: 'grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4',
+  grid: 'grid grid-cols-1 gap-3 md:grid-cols-2 2xl:grid-cols-3',
+  box: 'grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4',
 };
 
 export function InstancesPage() {
