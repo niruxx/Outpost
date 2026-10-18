@@ -37,6 +37,26 @@ const PULSE: Record<ServerStatus, boolean> = {
   transferring: true,
 };
 
+const DOT: Record<'neutral' | 'green' | 'red' | 'yellow' | 'blue', string> = {
+  neutral: 'bg-ink-500',
+  green: 'bg-success-400',
+  red: 'bg-red-400',
+  yellow: 'bg-yellow-400',
+  blue: 'bg-sky-400',
+};
+
+/** Compact status indicator for tight spots like the navigation drawer. */
+export function StatusDot({ status, suspended = false }: { status: ServerStatus; suspended?: boolean }) {
+  const label = suspended ? 'Suspended' : LABEL[status];
+  return (
+    <span
+      className={`inline-block h-2 w-2 shrink-0 rounded-full ${suspended ? DOT.red : DOT[TONE[status]]} ${!suspended && PULSE[status] ? 'animate-pulse-soft' : ''}`}
+      title={label}
+      aria-label={label}
+    />
+  );
+}
+
 export function StatusBadge({ status }: { status: ServerStatus }) {
   return (
     <Badge tone={TONE[status]} pulse={PULSE[status]}>

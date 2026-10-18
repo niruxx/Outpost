@@ -6,7 +6,9 @@ import { Badge } from './ui.js';
 import { Logo } from './Logo.js';
 import { Icon, type IconName } from './icons.js';
 import { api } from '../api/client.js';
-import type { SystemInfo } from '../api/types.js';
+import type { ServerRecord, SystemInfo } from '../api/types.js';
+import { GameTile, gameKindOf } from './GameArt.js';
+import { StatusDot } from './StatusBadge.js';
 
 /** One MD3 navigation-drawer item: full-width pill, secondary-container indicator when active. */
 export function NavItem({
@@ -52,8 +54,41 @@ export function NavSectionLabel({ children }: { children: ReactNode }) {
   return <p className="px-4 pb-1 pt-4 text-xs font-medium text-ink-400">{children}</p>;
 }
 
+/** The instances this user can open (all of them for admins), polled so status dots stay current. */
+function useSidebarInstances(): ServerRecord[] | null {
+  const [servers, setServers] = useState<ServerRecord[] | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    const load = () =>
+      api
+        .get<{ servers: ServerRecord[] }>('/servers')
+        .then((res) => !cancelled && setServers(res.servers))
+        .catch(() => {});
+    load();
+    const t = setInterval(load, 10000);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
+  }, []);
+  return servers;
+}
+
+function InstanceNavItem({ server, onClick }: { server: ServerRecord; onClick?: () => void }) {
+  return (
+    <NavLink to={`/instances/${server.id}`} onClick={onClick} className="group block" title={server.name}>
+      <span className="state-layer relative flex h-10 items-center gap-3 rounded-full px-4 text-sm text-ink-300">
+        <GameTile kind={gameKindOf(server)} className="h-6 w-6 !rounded-lg" />
+        <span className="min-w-0 flex-1 truncate transition-transform duration-200 group-hover:translate-x-0.5">{server.name}</span>
+        <StatusDot status={server.status} suspended={!!server.suspended} />
+      </span>
+    </NavLink>
+  );
+}
+
 function MainNav({ onNavigate }: { onNavigate?: () => void }) {
   const { user } = useAuth();
+  const servers = useSidebarInstances();
   return (
     <nav className="space-y-1">
       <NavItem to="/" end icon="instances" label="Instances" onClick={onNavigate} />
@@ -61,6 +96,14 @@ function MainNav({ onNavigate }: { onNavigate?: () => void }) {
       <NavItem to="/files" icon="folder" label="File Management" onClick={onNavigate} />
       <NavItem to="/docker" icon="container" label="Docker" onClick={onNavigate} />
       {user?.role === 'admin' && <NavItem to="/users" icon="users" label="Users" onClick={onNavigate} />}
+      {servers && servers.length > 0 && (
+        <>
+          <NavSectionLabel>Instances</NavSectionLabel>
+          {servers.map((s) => (
+            <InstanceNavItem key={s.id} server={s} onClick={onNavigate} />
+          ))}
+        </>
+      )}
     </nav>
   );
 }

@@ -34,13 +34,13 @@ export function formatDuration(sec: number): string {
 
 function GaugeCard({ icon, label, percent, color, primary, secondary }: { icon: IconName; label: string; percent: number | null; color: string; primary: ReactNode; secondary: ReactNode }) {
   return (
-    <Card hover className="flex items-center gap-4 p-4">
+    <Card hover className="flex h-full items-center gap-4 p-4">
       <Gauge percent={percent} color={color}>
         <span className="text-lg font-medium text-ink-50">
           <AnimatedNumber value={percent} format={(v) => `${Math.round(v)}%`} />
         </span>
       </Gauge>
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <p className="mb-1 flex items-center gap-1.5 text-sm font-medium text-ink-300">
           <Icon name={icon} className="h-4 w-4" style={{ color }} />
           {label}
@@ -54,7 +54,7 @@ function GaugeCard({ icon, label, percent, color, primary, secondary }: { icon: 
 
 function RateCard({ icon, label, a, b, series }: { icon: IconName; label: string; a: { label: string; value: number | null; color: string }; b: { label: string; value: number | null; color: string }; series: [ChartPoint[], ChartPoint[]] }) {
   return (
-    <Card hover className="p-4">
+    <Card hover className="flex h-full flex-col p-4">
       <p className="mb-3 flex items-center gap-1.5 text-sm font-medium text-ink-300">
         <Icon name={icon} className="h-4 w-4" />
         {label}
@@ -71,7 +71,7 @@ function RateCard({ icon, label, a, b, series }: { icon: IconName; label: string
           </div>
         ))}
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="mt-auto grid grid-cols-2 gap-3">
         <Sparkline data={series[0]} color={a.color} formatValue={formatRate} emptyLabel="Sampling…" height={32} />
         <Sparkline data={series[1]} color={b.color} formatValue={formatRate} emptyLabel="Sampling…" height={32} />
       </div>
@@ -231,12 +231,12 @@ export function HostOverview() {
             b={{ label: 'Write', value: host.disk.writeRate, color: COLORS.write }}
             series={[series('read'), series('write')]}
           />,
-          <Card key="inst" hover className="p-4">
+          <Card key="inst" hover className="flex h-full flex-col p-4">
             <p className="mb-3 flex items-center gap-1.5 text-sm font-medium text-ink-300">
               <Icon name="instances" className="h-4 w-4" />
               Instances
             </p>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="mt-auto grid grid-cols-3 gap-2">
               <StatusPill label="Running" value={instances.running} tone="text-success-400" />
               <StatusPill label="Stopped" value={instances.stopped} tone="text-ink-400" />
               <StatusPill label="Crashed" value={instances.crashed} tone="text-red-400" />
@@ -246,7 +246,7 @@ export function HostOverview() {
             </div>
           </Card>,
         ].map((card) => (
-          <motion.div key={card.key} variants={{ hidden: { opacity: 0, y: 14, scale: 0.98 }, show: { opacity: 1, y: 0, scale: 1, transition: { duration: 0.45, ease: EMPHASIZED } } }}>
+          <motion.div key={card.key} className="h-full" variants={{ hidden: { opacity: 0, y: 14, scale: 0.98 }, show: { opacity: 1, y: 0, scale: 1, transition: { duration: 0.45, ease: EMPHASIZED } } }}>
             {card}
           </motion.div>
         ))}
