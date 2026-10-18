@@ -186,6 +186,11 @@ export function wrapInSandbox(
   args.push('--bind', dir, dir);
   args.push('--remount-ro', '/');
   args.push('--setenv', 'HOME', home, '--chdir', plan.cwd);
+  // Java ignores $HOME and takes user.home from /etc/passwd — the real home path, which in here is an
+  // empty read-only placeholder. JAVA_TOOL_OPTIONS reaches every JVM, including ones a game's own
+  // launcher embeds (Project Zomboid), so ~ means the instance's .home for Java too.
+  const userHome = /\s/.test(home) ? `"-Duser.home=${home}"` : `-Duser.home=${home}`;
+  args.push('--setenv', 'JAVA_TOOL_OPTIONS', [plan.env.JAVA_TOOL_OPTIONS, userHome].filter(Boolean).join(' '));
   // Running the panel as root is discouraged; if it happens, at least drop every capability.
   if (process.getuid?.() === 0) args.push('--cap-drop', 'ALL');
   args.push('--', plan.cmd, ...plan.args);
