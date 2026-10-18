@@ -394,6 +394,10 @@ export async function startServer(serverId: string, options: { auto?: boolean } 
 
   const dir = instanceDir(serverId);
   const config = launchConfigOf(server);
+  if (server.platform === 'steam') {
+    const note = findPreset(server.steam_app_id)?.prepareInstance?.(server);
+    if (note) appendLog(serverId, `[Outpost] ${note}`, 'system');
+  }
   const plan = await buildLaunch(server);
 
   appendLog(serverId, `[Outpost] Host environment: ${process.platform} (${process.arch})`, 'system');

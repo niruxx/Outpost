@@ -196,7 +196,7 @@ Every template is just a starting point — change the image, ports, environment
 | 🪨 | **Minecraft: Bedrock** | 🎒 `.mcpack` / `.mcaddon`, auto-activated per world | `19132/udp` |
 | 🪖 | **Valheim** | 🔌 BepInEx plugins (`.dll` / `.zip`) | `2456/udp` |
 | 🐾 | **Palworld** | 📦 `.pak` mods | `8211/udp` |
-| 🧟 | **Project Zomboid** | — *(Workshop IDs live in its own `.ini`)* | `16261/udp` |
+| 🧟 | **Project Zomboid** | — *(Workshop IDs live in its own `.ini`, under `<instance>/Zomboid/Server`)* | `16261/udp` |
 | 🌳 | **Terraria** | — *(the vanilla server has no mod loader)* | `7777/tcp` |
 | 🎯 | **Any Steam App ID** — CS2, TF2, Rust, ARK, Quake Live… | — | your choice |
 
@@ -424,7 +424,7 @@ Choose **Steam** when creating an instance, then a game:
 | Game | App ID | Port | Notes |
 |---|---|---|---|
 | 🐾 Palworld | 2394010 | `8211/udp` | Doesn't reliably stop on a signal; force-stopped after a grace period (its autosave is kept). |
-| 🧟 Project Zomboid | 380870 | `16261/udp` | Stops cleanly with `save` → `quit`. |
+| 🧟 Project Zomboid | 380870 | `16261/udp` | Stops cleanly with `save` → `quit`. Saves, `.ini` files and logs go in `<instance>/Zomboid` (`-cachedir=`), not `~/Zomboid`. |
 | 🪖 Valheim | 896660 | `2456/udp` | Stops with SIGINT — it only saves its world on SIGINT. |
 | 🌳 Terraria | 105600 | `7777/tcp` | Fetched from terraria.org; started with `-autocreate`/`-world`. |
 | 🎯 Other | any | any | Give its executable path; tune stop/restart under **Configuration → Launch**. |

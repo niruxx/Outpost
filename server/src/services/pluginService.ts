@@ -170,7 +170,7 @@ export function getAddonSupport(server: ServerRecord): AddonSupport {
       return {
         supported: false,
         reason:
-          'Project Zomboid loads mods from Steam Workshop IDs listed in the server’s .ini (WorkshopItems= and Mods=), which it keeps under the Zomboid folder in the panel user’s home directory — not in this instance’s folder.',
+          'Project Zomboid loads mods from Steam Workshop IDs listed in the server’s .ini (WorkshopItems= and Mods=), which Outpost keeps in this instance’s Zomboid/Server folder. Edit that file in File Management, then restart the server.',
       };
     }
     if (preset?.id === 'terraria') {

@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { instanceDir } from '../utils/paths.js';
 import type { ServerRecord } from '../types/index.js';
 
 export type StopStrategy =
@@ -16,11 +19,38 @@ export interface SteamGamePreset {
   readyRegex?: RegExp;
   stopStrategy: StopStrategy;
   needsExecuteBit: boolean;
+  /** Runs before each start (never for a preview) — e.g. to move data into a new location. Returns a log line, if any. */
+  prepareInstance?(server: ServerRecord): string | null;
   notes?: string;
 }
 
 function extraArgs(server: ServerRecord): string[] {
   return server.extra_args ? server.extra_args.split(' ').filter(Boolean) : [];
+}
+
+/** Project Zomboid keeps its saves, server .ini files and logs in ~/Zomboid by default — shared by
+ *  every instance and outside the instance folder. `-cachedir=` moves it into the instance. */
+function zomboidCacheDir(server: ServerRecord): string {
+  return path.join(instanceDir(server.id), 'Zomboid');
+}
+
+function zomboidLaunchArgs(server: ServerRecord): string[] {
+  const extra = extraArgs(server);
+  if (extra.some((a) => a.toLowerCase().startsWith('-cachedir='))) return extra;
+  const dir = zomboidCacheDir(server);
+  // StartServer64.bat runs through cmd.exe, which would split an unquoted path with spaces.
+  const flag = process.platform === 'win32' && /\s/.test(dir) ? `"-cachedir=${dir}"` : `-cachedir=${dir}`;
+  return [flag, ...extra];
+}
+
+/** Sandboxed instances used to write to <instance>/.home/Zomboid (HOME inside the sandbox) —
+ *  move that into the new location so the existing world isn't left behind. */
+function migrateZomboidCacheDir(server: ServerRecord): string | null {
+  const target = zomboidCacheDir(server);
+  const legacy = path.join(instanceDir(server.id), '.home', 'Zomboid');
+  if (fs.existsSync(target) || !fs.existsSync(legacy)) return null;
+  fs.renameSync(legacy, target);
+  return `Moved Project Zomboid data from .home/Zomboid to Zomboid/ in this instance`;
 }
 
 export const STEAM_GAME_PRESETS: SteamGamePreset[] = [
@@ -53,7 +83,8 @@ export const STEAM_GAME_PRESETS: SteamGamePreset[] = [
     defaultPort: 16261,
     portProtocol: 'udp',
     executable: { win32: 'StartServer64.bat', linux: 'start-server.sh' },
-    buildLaunchArgs: (server) => extraArgs(server),
+    buildLaunchArgs: zomboidLaunchArgs,
+    prepareInstance: migrateZomboidCacheDir,
     readyRegex: /SERVER STARTED/i,
     stopStrategy: { kind: 'stdin', commands: ['save', 'quit'], delayMs: 5000 },
     needsExecuteBit: true,
