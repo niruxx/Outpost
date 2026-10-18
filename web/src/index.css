@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 /*
- * Theme tokens — a dark-only Material Design 3 scheme generated from Outpost's green seed.
+ * Theme tokens — the default "outpost" theme, a dark Material Design 3 scheme generated from Outpost's green seed.
  * Every color Tailwind class in the app (surface-*, ink-*, accent-*, …) resolves through these
  * CSS variables. Values are "R G B" triplets (no commas) so Tailwind's rgb(var(--x) / alpha)
  * trick works.
@@ -55,6 +55,19 @@
   --success-400: 108 222 176;
   --success-500: 76 196 150;
 
+  --red-300: 255 218 214;
+  --red-400: 255 180 171;
+  --red-500: 242 132 122;
+  --yellow-400: 236 198 92;
+  --yellow-500: 214 172 58;
+  --sky-400: 158 202 255;
+  --sky-500: 111 168 232;
+
+  --inverse: 225 228 218;
+  --inverse-on: 46 49 43;
+  --inverse-muted: 90 97 85;
+
+  --font-sans: 'Inter';
   --grid-line: rgba(255, 255, 255, 0.03);
 }
 
@@ -162,4 +175,436 @@ body {
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
   }
+}
+
+/* ==========================================================================
+ * Themes (lib/theme.ts). Each sets <html data-theme="…">: its token block
+ * overrides :root, and its component rules restyle the shared `ui-*` hooks
+ * (ui-card, ui-btn, ui-input, ui-modal, ui-sidebar…). Every rule is prefixed
+ * with [data-theme], so it outranks the Tailwind utility it replaces.
+ * ========================================================================== */
+
+/* The console stays a dark terminal in every theme. */
+.ui-terminal {
+  color-scheme: dark;
+  --surface-1000: 12 15 10;
+  --red-400: 255 180 171;
+  --yellow-400: 236 198 92;
+  --sky-400: 158 202 255;
+}
+
+/* ---------- Windows XP (Luna blue) ---------- */
+[data-theme='xp'] {
+  color-scheme: light;
+
+  --surface-1000: 255 255 255;
+  --surface-950: 236 233 216;
+  --surface-900: 245 244 234;
+  --surface-850: 255 255 255;
+  --surface-800: 241 239 226;
+  --surface-700: 226 223 205;
+  --surface-600: 197 194 178;
+  --surface-500: 127 157 185;
+
+  --ink-50: 0 0 0;
+  --ink-100: 20 20 20;
+  --ink-200: 40 40 40;
+  --ink-300: 60 60 60;
+  --ink-400: 95 95 95;
+  --ink-500: 118 118 118;
+  --ink-600: 150 150 150;
+
+  --accent-400: 0 84 227;
+  --accent-500: 49 106 197;
+  --accent-600: 0 60 116;
+  --accent-on: 255 255 255;
+  --accent-container: 214 228 252;
+  --accent-on-container: 0 51 153;
+
+  --secondary-container: 214 228 252;
+  --secondary-on-container: 0 51 153;
+
+  --tertiary-400: 0 102 153;
+  --tertiary-container: 255 255 225;
+  --tertiary-on-container: 0 0 0;
+
+  --error-400: 192 0 0;
+  --error-container: 255 225 225;
+  --error-on-container: 128 0 0;
+
+  --success-400: 24 128 24;
+  --success-500: 34 150 34;
+  --red-300: 128 0 0;
+  --red-400: 192 0 0;
+  --red-500: 220 40 40;
+  --yellow-400: 150 100 0;
+  --yellow-500: 220 160 0;
+  --sky-400: 0 84 227;
+  --sky-500: 49 106 197;
+
+  /* XP's yellow balloon tooltip */
+  --inverse: 255 255 225;
+  --inverse-on: 0 0 0;
+  --inverse-muted: 90 90 90;
+
+  --font-sans: Tahoma, 'Segoe UI', Verdana;
+  --grid-line: rgba(0, 0, 0, 0.05);
+
+  --radius-sm: 2px;
+  --radius: 3px;
+  --radius-md: 3px;
+  --radius-lg: 3px;
+  --radius-xl: 3px;
+  --radius-2xl: 4px;
+  --radius-3xl: 5px;
+  --radius-4xl: 8px;
+  --radius-full: 3px;
+}
+
+[data-theme='xp'] ::selection {
+  background: #316ac5;
+  color: #fff;
+}
+
+[data-theme='xp'] .ui-page-title,
+[data-theme='xp'] .ui-card-title,
+[data-theme='xp'] .ui-modal-title {
+  font-family: 'Trebuchet MS', Tahoma, sans-serif;
+  font-weight: 700;
+}
+[data-theme='xp'] .ui-page-title {
+  color: #003399;
+}
+[data-theme='xp'] .ui-card-title {
+  color: #215dc6;
+}
+
+/* Task pane: blue gradient, white text; the account box at the bottom is a white panel. */
+[data-theme='xp'] .ui-sidebar {
+  background: linear-gradient(180deg, #7ba2e7 0%, #6375d6 100%);
+  --ink-50: 255 255 255;
+  --ink-100: 255 255 255;
+  --ink-200: 240 244 255;
+  --ink-300: 230 236 255;
+  --ink-400: 214 223 247;
+  --ink-500: 198 211 245;
+  --surface-850: 255 255 255;
+  --surface-800: 240 244 255;
+  --surface-700: 214 223 247;
+  --secondary-container: 255 255 255;
+  --secondary-on-container: 33 93 198;
+  --accent-400: 255 255 255;
+}
+/* White panels inside the task pane (the instance card, the account box) use dark text again. */
+[data-theme='xp'] .ui-sidebar-panel {
+  --ink-50: 33 93 198;
+  --ink-100: 33 93 198;
+  --ink-300: 60 60 60;
+  --ink-400: 95 95 95;
+  --accent-container: 33 93 198;
+  --accent-on-container: 255 255 255;
+}
+
+/* Windows: a thin blue frame with a title-bar stripe along the top. */
+[data-theme='xp'] .ui-card:not(.ui-terminal) {
+  background-color: #fff;
+  background-image: linear-gradient(180deg, #3c8cf5 0%, #0a5fe8 100%);
+  background-size: 100% 5px;
+  background-repeat: no-repeat;
+  border: 1px solid #7f9db9;
+  border-radius: 6px 6px 3px 3px;
+}
+[data-theme='xp'] .ui-terminal {
+  border: 2px solid #7f9db9;
+  border-radius: 0;
+}
+
+[data-theme='xp'] .ui-btn {
+  background: linear-gradient(180deg, #ffffff 0%, #ecebe6 86%, #d6d0c5 100%);
+  border: 1px solid #003c74;
+  color: #000;
+  box-shadow: none;
+}
+[data-theme='xp'] .ui-btn:not(:disabled):hover {
+  box-shadow: inset 0 0 0 2px #f8b330;
+}
+/* The Start button */
+[data-theme='xp'] .ui-btn-primary {
+  background: linear-gradient(180deg, #5eac56 0%, #3c9a3c 50%, #2f8a2f 100%);
+  border-color: #1d5e1d;
+  color: #fff;
+  font-style: italic;
+  font-weight: 700;
+  text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.35);
+}
+[data-theme='xp'] .ui-btn-danger {
+  background: linear-gradient(180deg, #e88a73 0%, #d65a3c 50%, #c8381e 100%);
+  border-color: #8a1f0e;
+  color: #fff;
+}
+[data-theme='xp'] .ui-btn-ghost {
+  background: transparent;
+  border-color: transparent;
+  color: #0033cc;
+}
+[data-theme='xp'] .ui-btn-ghost:not(:disabled):hover {
+  box-shadow: none;
+  text-decoration: underline;
+}
+
+[data-theme='xp'] .ui-input {
+  background: #fff;
+  border: 1px solid #7f9db9;
+  border-radius: 0;
+}
+[data-theme='xp'] .ui-input:focus {
+  border-color: #316ac5;
+  box-shadow: none;
+}
+
+[data-theme='xp'] .ui-modal {
+  background: #ece9d8;
+  border: 3px solid #0055ea;
+  border-top: 0;
+  border-radius: 8px 8px 0 0;
+  overflow: hidden;
+}
+[data-theme='xp'] .ui-modal-header {
+  background: linear-gradient(180deg, #0997ff 0%, #0053ee 8%, #0050ee 40%, #0066ff 88%, #005bff 95%, #003dd7 100%);
+  padding: 6px 6px 6px 12px;
+}
+[data-theme='xp'] .ui-modal-title {
+  color: #fff;
+  font-size: 15px;
+  text-shadow: 1px 1px 0 #0a1e6e;
+}
+[data-theme='xp'] .ui-modal-close {
+  background: linear-gradient(180deg, #e88a73 0%, #c8381e 100%);
+  border: 1px solid #fff;
+  border-radius: 3px;
+  color: #fff;
+  padding: 2px;
+}
+[data-theme='xp'] .ui-modal-body {
+  padding-top: 16px;
+}
+
+[data-theme='xp'] .ui-toast {
+  border: 1px solid #000;
+}
+
+[data-theme='xp'] * {
+  scrollbar-color: #c1d3fb #f4f3ee;
+}
+[data-theme='xp'] ::-webkit-scrollbar-track {
+  background: #f4f3ee;
+}
+[data-theme='xp'] ::-webkit-scrollbar-thumb {
+  background: #c1d3fb;
+  border: 1px solid #7f9db9;
+  border-radius: 3px;
+}
+
+/* ---------- Minecraft (square inventory panels) ---------- */
+[data-theme='minecraft'] {
+  color-scheme: light;
+
+  --surface-1000: 139 139 139;
+  --surface-950: 170 170 170;
+  --surface-900: 139 139 139;
+  --surface-850: 198 198 198;
+  --surface-800: 212 212 212;
+  --surface-700: 160 160 160;
+  --surface-600: 85 85 85;
+  --surface-500: 55 55 55;
+
+  --ink-50: 0 0 0;
+  --ink-100: 25 25 25;
+  --ink-200: 40 40 40;
+  --ink-300: 55 55 55;
+  --ink-400: 63 63 63;
+  --ink-500: 75 75 75;
+  --ink-600: 95 95 95;
+
+  --accent-400: 31 110 38;
+  --accent-500: 59 140 50;
+  --accent-600: 20 80 25;
+  --accent-on: 255 255 255;
+  --accent-container: 93 156 58;
+  --accent-on-container: 10 40 5;
+
+  /* The classic blue hover with yellow text */
+  --secondary-container: 90 100 168;
+  --secondary-on-container: 255 255 160;
+
+  --tertiary-400: 31 90 140;
+  --tertiary-container: 230 220 160;
+  --tertiary-on-container: 63 40 10;
+
+  --error-400: 170 0 0;
+  --error-container: 240 170 170;
+  --error-on-container: 90 0 0;
+
+  --success-400: 20 110 20;
+  --success-500: 40 140 40;
+  --red-300: 120 0 0;
+  --red-400: 170 0 0;
+  --red-500: 200 30 30;
+  --yellow-400: 110 75 0;
+  --yellow-500: 190 140 0;
+  --sky-400: 30 60 170;
+  --sky-500: 60 90 200;
+
+  /* The purple-edged item tooltip */
+  --inverse: 16 0 16;
+  --inverse-on: 255 255 255;
+  --inverse-muted: 170 170 170;
+
+  --font-sans: 'Pixelify Sans';
+  --grid-line: rgba(0, 0, 0, 0.06);
+
+  --radius-sm: 0;
+  --radius: 0;
+  --radius-md: 0;
+  --radius-lg: 0;
+  --radius-xl: 0;
+  --radius-2xl: 0;
+  --radius-3xl: 0;
+  --radius-4xl: 0;
+  --radius-full: 0;
+}
+
+/* Stone page and dirt menu: 8×8 pixel tiles scaled up without smoothing. */
+[data-theme='minecraft'] body,
+[data-theme='minecraft'] .ui-app {
+  background-color: #aaa;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Crect width='8' height='8' fill='%23aaa'/%3E%3Cpath fill='%239d9d9d' d='M0 0h2v1H0zM5 1h2v1H5zM2 3h1v2H2zM6 4h2v1H6zM0 6h2v1H0zM4 6h1v2H4z'/%3E%3Cpath fill='%23b5b5b5' d='M3 0h1v1H3zM1 2h2v1H1zM5 3h1v1H5zM7 6h1v2H7zM2 7h1v1H2z'/%3E%3C/svg%3E");
+  background-size: 48px 48px;
+  image-rendering: pixelated;
+}
+
+[data-theme='minecraft'] .ui-sidebar {
+  background-color: #3b2a1d;
+  background-image: linear-gradient(rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0.45)),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Crect width='8' height='8' fill='%23866043'/%3E%3Cpath fill='%23593d29' d='M1 0h1v2H1zM5 1h2v1H5zM0 4h2v1H0zM4 3h1v2H4zM6 6h2v1H6zM2 6h1v2H2z'/%3E%3Cpath fill='%23b9855c' d='M3 1h1v1H3zM7 3h1v1H7zM1 6h1v1H1zM5 5h1v1H5z'/%3E%3Cpath fill='%2379553a' d='M6 0h1v1H6zM2 3h1v1H2zM4 7h2v1H4z'/%3E%3C/svg%3E");
+  background-size: auto, 48px 48px;
+  image-rendering: pixelated;
+  text-shadow: 2px 2px 0 #3f3f3f;
+  --ink-50: 255 255 255;
+  --ink-100: 255 255 255;
+  --ink-200: 224 224 224;
+  --ink-300: 224 224 224;
+  --ink-400: 190 190 190;
+  --ink-500: 170 170 170;
+  --surface-850: 55 40 28;
+  --surface-800: 70 52 36;
+  --surface-700: 90 68 48;
+  --secondary-container: 111 111 111;
+  --secondary-on-container: 255 255 160;
+  --accent-400: 120 220 119;
+  --accent-container: 93 156 58;
+  --accent-on-container: 255 255 255;
+}
+
+/* Inventory panel: black outline, white top-left bevel, gray bottom-right bevel. */
+[data-theme='minecraft'] .ui-card:not(.ui-terminal),
+[data-theme='minecraft'] .ui-modal {
+  background-color: #c6c6c6;
+  border: 2px solid #000;
+  box-shadow: inset 3px 3px 0 #fff, inset -3px -3px 0 #555;
+}
+[data-theme='minecraft'] .ui-card:not(.ui-terminal):hover {
+  transform: none;
+}
+[data-theme='minecraft'] .ui-terminal {
+  border: 2px solid #000;
+}
+
+/* Stone button */
+[data-theme='minecraft'] .ui-btn {
+  background: #6f6f6f;
+  border: 2px solid #000;
+  box-shadow: inset 2px 2px 0 #a8a8a8, inset -2px -3px 0 #4a4a4a;
+  color: #e0e0e0;
+  text-shadow: 2px 2px 0 #383838;
+}
+[data-theme='minecraft'] .ui-btn:not(:disabled):hover {
+  background: #7c86bf;
+  box-shadow: inset 2px 2px 0 #a8b0e0, inset -2px -3px 0 #4f5790;
+  color: #ffffa0;
+}
+[data-theme='minecraft'] .ui-btn:disabled {
+  background: #2c2c2c;
+  box-shadow: none;
+  color: #a0a0a0;
+  opacity: 1;
+}
+[data-theme='minecraft'] .ui-btn-primary {
+  background: #4c8a2e;
+  box-shadow: inset 2px 2px 0 #7fc25a, inset -2px -3px 0 #2e5a1a;
+  color: #fff;
+}
+[data-theme='minecraft'] .ui-btn-danger {
+  background: #8f2a2a;
+  box-shadow: inset 2px 2px 0 #c05050, inset -2px -3px 0 #5a1515;
+  color: #fff;
+}
+[data-theme='minecraft'] .ui-btn-ghost,
+[data-theme='minecraft'] .ui-btn-ghost:not(:disabled):hover {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  color: rgb(var(--accent-400));
+  text-shadow: none;
+}
+[data-theme='minecraft'] .ui-btn-ghost:not(:disabled):hover {
+  text-decoration: underline;
+}
+
+/* Text fields are black with a gray frame, like the in-game chat and sign editor. */
+[data-theme='minecraft'] .ui-input {
+  background: #000;
+  border: 2px solid #a0a0a0;
+  color: #e0e0e0;
+}
+[data-theme='minecraft'] .ui-input::placeholder {
+  color: #808080;
+}
+[data-theme='minecraft'] .ui-input:focus {
+  border-color: #fff;
+  box-shadow: none;
+}
+
+[data-theme='minecraft'] .ui-modal-close {
+  background: #6f6f6f;
+  border: 2px solid #000;
+  box-shadow: inset 2px 2px 0 #a8a8a8, inset -2px -2px 0 #4a4a4a;
+  color: #e0e0e0;
+  padding: 2px;
+}
+
+[data-theme='minecraft'] .ui-badge {
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35);
+}
+
+[data-theme='minecraft'] .ui-toast {
+  border: 2px solid #2d0a63;
+  box-shadow: inset 0 0 0 1px #5000ff, 0 4px 0 rgba(0, 0, 0, 0.35);
+  text-shadow: 1px 1px 0 #3f3f3f;
+}
+
+[data-theme='minecraft'] .ui-toast-success { color: #55ff55; }
+[data-theme='minecraft'] .ui-toast-error { color: #ff5555; }
+[data-theme='minecraft'] .ui-toast-info { color: #55ffff; }
+
+[data-theme='minecraft'] * {
+  scrollbar-color: #c6c6c6 #555;
+}
+[data-theme='minecraft'] ::-webkit-scrollbar-track {
+  background: #555;
+}
+[data-theme='minecraft'] ::-webkit-scrollbar-thumb {
+  background: #c6c6c6;
+  border: 2px solid #000;
+  border-radius: 0;
 }

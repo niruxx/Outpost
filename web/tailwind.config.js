@@ -12,7 +12,8 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        // Themes swap the font through --font-sans (see index.css).
+        sans: ['var(--font-sans)', 'ui-sans-serif', 'system-ui', 'sans-serif'],
         mono: ['"JetBrains Mono"', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
       },
       colors: {
@@ -37,14 +38,25 @@ export default {
           'on-container': themeColor('error-on-container'),
         },
         success: themeScale('success', [400, 500]),
-        // Status hues retuned to MD3's dark-scheme tones so existing red/yellow/sky classes match.
-        red: { 300: '#ffdad6', 400: '#ffb4ab', 500: '#f2847a' },
-        yellow: { 400: '#ecc65c', 500: '#d6ac3a' },
-        sky: { 400: '#9ecaff', 500: '#6fa8e8' },
+        // Status hues are tokens too, so light themes can darken them for contrast.
+        red: themeScale('red', [300, 400, 500]),
+        yellow: themeScale('yellow', [400, 500]),
+        sky: themeScale('sky', [400, 500]),
+        // Inverse surface: toasts and chart tooltips.
+        inverse: { DEFAULT: themeColor('inverse'), on: themeColor('inverse-on'), muted: themeColor('inverse-muted') },
       },
       borderRadius: {
+        // Tailwind's scale, overridable per theme (the retro themes square things off).
+        sm: 'var(--radius-sm, 0.125rem)',
+        DEFAULT: 'var(--radius, 0.25rem)',
+        md: 'var(--radius-md, 0.375rem)',
+        lg: 'var(--radius-lg, 0.5rem)',
+        xl: 'var(--radius-xl, 0.75rem)',
+        '2xl': 'var(--radius-2xl, 1rem)',
+        '3xl': 'var(--radius-3xl, 1.5rem)',
         // MD3 shape scale: extra-large containers (dialogs) are 28dp.
-        '4xl': '28px',
+        '4xl': 'var(--radius-4xl, 28px)',
+        full: 'var(--radius-full, 9999px)',
       },
       boxShadow: {
         // Flat, neutral elevation — no colored glow. Depth comes from blur + a hairline

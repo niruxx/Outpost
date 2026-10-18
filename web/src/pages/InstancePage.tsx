@@ -21,6 +21,7 @@ import { FilesTab } from './server/FilesTab.js';
 import { BackupsTab } from './server/BackupsTab.js';
 import { UpdateTab } from './server/UpdateTab.js';
 import { UpnpTab } from './server/UpnpTab.js';
+import { TasksTab } from './server/TasksTab.js';
 import { useEndpoint } from '../hooks/useEndpoint.js';
 import { api, ApiError } from '../api/client.js';
 import { isMinecraftPlatform, type ServerRecord } from '../api/types.js';
@@ -35,7 +36,7 @@ function InstanceNav({ server, onNavigate }: { server: ServerRecord; onNavigate:
         Return to Menu
       </NavLink>
 
-      <div className="my-3 flex items-center gap-3 rounded-2xl bg-surface-850 p-3">
+      <div className="ui-sidebar-panel my-3 flex items-center gap-3 rounded-2xl bg-surface-850 p-3">
         <GameTile kind={kind} className="h-10 w-10" running={server.status === 'running'} />
         <div className="min-w-0">
           <p className="truncate text-sm font-medium text-ink-50">{server.name}</p>
@@ -46,6 +47,7 @@ function InstanceNav({ server, onNavigate }: { server: ServerRecord; onNavigate:
       <NavItem to="status" icon="status" label="Status" onClick={onNavigate} />
       <NavItem to="console" icon="console" label="Console" onClick={onNavigate} />
       <NavItem to="backups" icon="backup" label="Backup Schedule" onClick={onNavigate} />
+      <NavItem to="tasks" icon="clock" label="Scheduled Tasks" onClick={onNavigate} />
       <NavItem to="configuration" icon="configuration" label="Configuration" onClick={onNavigate} />
       <NavItem to="files" icon="folder" label="File Management" onClick={onNavigate} />
       <NavItem to="upnp" icon="router" label="UPnP" onClick={onNavigate} />
@@ -196,7 +198,7 @@ function InstanceTopBar({ server }: { server: ServerRecord }) {
     <motion.header
       initial={{ opacity: 0, y: -6 }}
       animate={{ opacity: 1, y: 0 }}
-      className="relative overflow-hidden rounded-3xl bg-surface-850 px-5 py-5 sm:px-6"
+      className="ui-card relative overflow-hidden rounded-3xl bg-surface-850 px-5 py-5 sm:px-6"
     >
       <motion.div
         className="pointer-events-none absolute -right-6 -top-10"
@@ -330,6 +332,7 @@ function InstancePageInner() {
             <Route path="status" element={<StatusTab />} />
             <Route path="console" element={<ConsoleTab />} />
             <Route path="backups" element={<BackupsTab />} />
+            <Route path="tasks" element={<TasksTab />} />
             <Route path="configuration" element={<SettingsTab />} />
             <Route path="files" element={<FilesTab />} />
             <Route path="plugins" element={<PluginsTab />} />

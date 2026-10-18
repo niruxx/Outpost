@@ -7,9 +7,12 @@ import { useConfirm } from '../components/ConfirmDialog.js';
 import { EnvironmentBackupCard } from '../components/EnvironmentBackupCard.js';
 import { SteamCmdSettingsCard } from '../components/SteamCmdSettingsCard.js';
 import { FactoryResetCard } from '../components/FactoryResetCard.js';
+import { TwoFactorCard } from '../components/TwoFactorCard.js';
+import { NotificationsCard } from '../components/NotificationsCard.js';
 import { api, ApiError } from '../api/client.js';
 import type { NodeInfo, PanelNode, SandboxStatus, SystemInfo } from '../api/types.js';
 import { useAuth } from '../state/AuthContext.js';
+import { THEMES, saveTheme, storedTheme, type ThemeOption } from '../lib/theme.js';
 
 function formatUptime(sec: number): string {
   const d = Math.floor(sec / 86400);
@@ -67,6 +70,57 @@ function HostCard() {
           )}
         </>
       )}
+    </Card>
+  );
+}
+
+/** A tiny mock window in the theme's own colors: sidebar, panel, accent button, text lines. */
+function ThemePreview({ theme }: { theme: ThemeOption }) {
+  const [page, panel, accent, text] = theme.swatch;
+  const square = theme.id === 'minecraft';
+  const radius = square ? 0 : theme.id === 'xp' ? 3 : 8;
+  return (
+    <div className="flex h-20 overflow-hidden rounded-xl" style={{ background: page }} aria-hidden="true">
+      <div className="w-1/4" style={{ background: theme.id === 'xp' ? 'linear-gradient(#7ba2e7, #6375d6)' : theme.id === 'minecraft' ? '#4a3524' : panel }} />
+      <div className="flex-1 p-2">
+        <div className="h-full p-2" style={{ background: panel, borderRadius: radius, border: square ? '2px solid #000' : undefined }}>
+          <div className="mb-1.5 h-1.5 w-1/2" style={{ background: text, opacity: 0.8, borderRadius: radius }} />
+          <div className="mb-2 h-1.5 w-3/4" style={{ background: text, opacity: 0.4, borderRadius: radius }} />
+          <div className="h-3 w-10" style={{ background: accent, borderRadius: radius }} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AppearanceCard() {
+  const [current, setCurrent] = useState(storedTheme);
+  function choose(id: ThemeOption['id']) {
+    saveTheme(id);
+    setCurrent(id);
+  }
+  return (
+    <Card className="p-5">
+      <CardTitle>Appearance</CardTitle>
+      <p className="mb-4 text-sm text-ink-400">Changes the look of the whole panel. Saved in this browser only.</p>
+      <div className="grid gap-3 sm:grid-cols-3" role="radiogroup" aria-label="Theme">
+        {THEMES.map((t) => {
+          const active = current === t.id;
+          return (
+            <button
+              key={t.id}
+              role="radio"
+              aria-checked={active}
+              onClick={() => choose(t.id)}
+              className={`state-layer rounded-2xl p-2 text-left transition-colors ${active ? 'bg-secondary-container ring-2 ring-accent-400' : 'bg-surface-900'}`}
+            >
+              <ThemePreview theme={t} />
+              <p className={`mt-2 px-1 text-sm font-medium ${active ? 'text-secondary-on-container' : 'text-ink-100'}`}>{t.label}</p>
+              <p className={`px-1 pb-1 text-xs ${active ? 'text-secondary-on-container opacity-80' : 'text-ink-400'}`}>{t.description}</p>
+            </button>
+          );
+        })}
+      </div>
     </Card>
   );
 }
@@ -344,10 +398,13 @@ export function ConfigurationPage() {
     <Layout>
       <div className="stagger mx-auto max-w-5xl space-y-5 px-4 py-8 sm:px-8">
         <PageHeader title="Configuration" subtitle="Panel-wide settings for this Outpost host." />
+        <AppearanceCard />
+        <TwoFactorCard />
         <HostCard />
         {isAdmin ? (
           <>
             <SecurityCard />
+            <NotificationsCard />
             <NodesCard />
             <EnvironmentBackupCard />
             <SteamCmdSettingsCard />

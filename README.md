@@ -143,8 +143,22 @@ Open **http://localhost:8642** — the first visit walks you through creating th
       Op, kick, ban, whitelist/allowlist, broadcasts, time, weather and difficulty — from one page.
     </td>
     <td valign="top">
-      <h4>🎨 Material 3 dark</h4>
-      Tonal surfaces, a navigation drawer, list / grid / box views and smooth motion that respects <i>reduce motion</i>.
+      <h4>🎨 Themes</h4>
+      Material 3 dark by default, or switch the whole panel to <b>Windows XP</b> or <b>Minecraft</b> under Configuration → Appearance.
+    </td>
+  </tr>
+  <tr>
+    <td valign="top">
+      <h4>⏰ Scheduled tasks</h4>
+      Restart nightly with an in-game warning first, send console commands, or start and stop instances on a cron schedule.
+    </td>
+    <td valign="top">
+      <h4>🔔 Discord &amp; webhook alerts</h4>
+      Get told when an instance starts, stops or crashes, or a scheduled snapshot or task fails — as Discord embeds or plain JSON.
+    </td>
+    <td valign="top">
+      <h4>🔐 Two-factor sign-in &amp; audit log</h4>
+      Authenticator-app codes with recovery codes, and a searchable log of who signed in and changed what.
     </td>
   </tr>
 </table>

@@ -104,7 +104,7 @@ export function ConsoleTab() {
         </Card>
       )}
 
-      <Card className="min-h-0 flex-1 overflow-hidden !rounded-2xl !bg-surface-1000">
+      <Card className="ui-terminal min-h-0 flex-1 overflow-hidden !rounded-2xl !bg-surface-1000">
         <div
           ref={scrollRef}
           onScroll={(e) => {

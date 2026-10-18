@@ -19,6 +19,7 @@ import {
   updateServerRecord,
 } from './serverService.js';
 import { isRunning } from './processManager.js';
+import { forgetServerSchedules } from './schedulerService.js';
 import { appendLine } from './consoleLogService.js';
 import { publish, consoleTopic } from './wsHub.js';
 import type { ServerRecord, ServerStatus } from '../types/index.js';
@@ -299,6 +300,7 @@ export function startTransfer(serverId: string, nodeId: string, deleteSource: bo
       state.remoteServerId = body.serverId;
       appendLine(serverId, `[Outpost] Transfer complete — ${(state.bytesSent / 1024 / 1024).toFixed(1)} MB sent to "${node.name}"`);
       if (deleteSource) {
+        forgetServerSchedules(serverId);
         deleteServerRecord(serverId);
         state.sourceDeleted = true;
       } else {

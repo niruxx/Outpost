@@ -18,6 +18,16 @@ export function runMigrations(db: DatabaseSync): void {
   addIsolationColumn(db);
   addCreationPolicyColumn(db);
   grantCreatorsOwnerAccess(db);
+  addTotpColumns(db);
+}
+
+function addTotpColumns(db: DatabaseSync): void {
+  if (db.prepare("SELECT 1 FROM pragma_table_info('users') WHERE name = 'totp_secret'").get()) return;
+  logger.info('Migrating database: adding two-factor columns to users');
+  db.exec('ALTER TABLE users ADD COLUMN totp_secret TEXT');
+  db.exec('ALTER TABLE users ADD COLUMN totp_enabled BOOLEAN NOT NULL DEFAULT 0');
+  db.exec('ALTER TABLE users ADD COLUMN totp_last_step INTEGER NOT NULL DEFAULT 0');
+  db.exec('ALTER TABLE users ADD COLUMN totp_recovery TEXT');
 }
 
 /**

@@ -6,7 +6,11 @@ CREATE TABLE IF NOT EXISTS users (
   password_salt TEXT NOT NULL,
   role TEXT NOT NULL CHECK (role IN ('admin', 'moderator', 'viewer')),
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  creation TEXT -- JSON CreationPolicy: may this user create instances, which kinds, how many; NULL = role default
+  creation TEXT, -- JSON CreationPolicy: may this user create instances, which kinds, how many; NULL = role default
+  totp_secret TEXT, -- base32 TOTP secret; set (but not yet enabled) while 2FA is being set up
+  totp_enabled BOOLEAN NOT NULL DEFAULT 0,
+  totp_last_step INTEGER NOT NULL DEFAULT 0, -- last accepted time step, so a code can't be replayed
+  totp_recovery TEXT -- JSON array of SHA-256 hashes of unused recovery codes
 );
 
 -- Non-admin users can be restricted to specific servers. Admins always see everything.
@@ -73,6 +77,33 @@ CREATE TABLE IF NOT EXISTS backup_schedules (
   cron_expression TEXT NOT NULL,
   retention_count INTEGER NOT NULL DEFAULT 5,
   enabled BOOLEAN NOT NULL DEFAULT 1
+);
+
+-- Per-instance scheduled tasks (console commands, restarts, starts, stops) on a cron schedule.
+CREATE TABLE IF NOT EXISTS scheduled_tasks (
+  id TEXT PRIMARY KEY,
+  server_id TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  cron_expression TEXT NOT NULL,
+  action TEXT NOT NULL, -- command | restart | start | stop
+  command TEXT NOT NULL DEFAULT '', -- console command for action = 'command'
+  warn_command TEXT NOT NULL DEFAULT '', -- restart/stop: console command sent first (e.g. a "say" warning)
+  warn_seconds INTEGER NOT NULL DEFAULT 0, -- …and how long to wait after it
+  enabled BOOLEAN NOT NULL DEFAULT 1,
+  last_run_at TEXT,
+  last_result TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Outgoing notifications (Discord or any JSON webhook) for instance and backup events.
+CREATE TABLE IF NOT EXISTS webhooks (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  url TEXT NOT NULL,
+  events TEXT NOT NULL, -- JSON array of NotifyEvent
+  server_ids TEXT, -- JSON array of instance ids; NULL = every instance
+  enabled BOOLEAN NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS audit_log (

@@ -82,7 +82,7 @@ export function Sparkline({
         {hover && <circle cx={hover[0]} cy={hover[1]} r="2.2" fill={color} stroke="black" strokeOpacity="0.4" />}
       </svg>
       {hoverIdx !== null && (
-        <div className="pointer-events-none absolute -top-7 rounded-md bg-ink-100 px-2 py-1 text-[11px] font-medium text-[#2e312b] shadow-card" style={{ left: `${(hover![0] / width) * 100}%`, transform: 'translateX(-50%)' }}>
+        <div className="pointer-events-none absolute -top-7 rounded-md bg-inverse px-2 py-1 text-[11px] font-medium text-inverse-on shadow-card" style={{ left: `${(hover![0] / width) * 100}%`, transform: 'translateX(-50%)' }}>
           {formatValue(values[hoverIdx])}
         </div>
       )}

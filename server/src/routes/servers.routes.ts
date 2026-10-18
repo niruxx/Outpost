@@ -51,6 +51,7 @@ import { appendLine } from '../services/consoleLogService.js';
 import { findJava, getJavaVersion } from '../services/javaService.js';
 import { getDiskUsage } from '../services/diskUsageService.js';
 import { instanceDir, safeJoin } from '../utils/paths.js';
+import { forgetServerSchedules } from '../services/schedulerService.js';
 import { STEAM_GAME_PRESETS, findPreset } from '../services/steamGames.js';
 import { isMinecraftPlatform, type Loader, type Platform, type ServerRecord } from '../types/index.js';
 import { sanitizeLaunchConfig, launchConfigOf, launchVariables, resolveExecutable, ensureExecutable } from '../services/launchConfig.js';
@@ -612,6 +613,7 @@ serversRouter.delete(
     if (!server) throw new HttpError(404, 'Server not found');
     if (isRunning(server.id)) throw new HttpError(409, 'Stop the server before deleting it');
     cancelAutoRestart(server.id);
+    forgetServerSchedules(server.id);
     deleteServerRecord(server.id);
     logAudit(req.auth!.sub, req.auth!.username, 'server.delete', server.id);
     res.status(204).end();

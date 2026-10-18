@@ -9,9 +9,30 @@ export interface User {
   created_at: string;
   /** JSON CreationPolicy (services/userService.ts); NULL = the role's default. */
   creation: string | null;
+  totp_secret: string | null;
+  totp_enabled: 0 | 1;
+  totp_last_step: number;
+  totp_recovery: string | null;
 }
 
-export type PublicUser = Omit<User, 'password_hash' | 'password_salt'>;
+export type PublicUser = Omit<User, 'password_hash' | 'password_salt' | 'totp_secret' | 'totp_last_step' | 'totp_recovery'>;
+
+export type TaskAction = 'command' | 'restart' | 'start' | 'stop';
+
+export interface ScheduledTask {
+  id: string;
+  server_id: string;
+  name: string;
+  cron_expression: string;
+  action: TaskAction;
+  command: string;
+  warn_command: string;
+  warn_seconds: number;
+  enabled: 0 | 1;
+  last_run_at: string | null;
+  last_result: string | null;
+  created_at: string;
+}
 
 export type Platform = 'java' | 'bedrock' | 'steam' | 'custom' | 'docker';
 export type Loader = 'vanilla' | 'paper' | 'purpur' | 'spigot' | 'bedrock' | 'steam' | 'custom' | 'docker';

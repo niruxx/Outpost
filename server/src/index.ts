@@ -22,6 +22,9 @@ import { upnpRouter } from './routes/upnp.routes.js';
 import { dockerRouter } from './routes/docker.routes.js';
 import { catalogRouter } from './routes/catalog.routes.js';
 import { nodeLinkRouter } from './routes/nodeLink.routes.js';
+import { tasksRouter } from './routes/tasks.routes.js';
+import { notificationsRouter } from './routes/notifications.routes.js';
+import { auditRouter } from './routes/audit.routes.js';
 import { recoverInterruptedTransfers } from './services/nodeService.js';
 import { verifyToken } from './auth/tokens.js';
 import { userHasServerAccess } from './services/userService.js';
@@ -50,6 +53,7 @@ app.use('/api/servers/:serverId/whitelist', whitelistRouter);
 app.use('/api/servers/:serverId/plugins', pluginsRouter);
 app.use('/api/servers/:serverId/map', mapRouter);
 app.use('/api/servers/:serverId/upnp', upnpRouter);
+app.use('/api/servers/:serverId/tasks', tasksRouter);
 app.use('/api/servers', serversRouter);
 app.use('/api/plugins', pluginRegistryRouter);
 app.use('/api/system', systemRouter);
@@ -59,6 +63,8 @@ app.use('/api/nodes', nodesRouter);
 app.use('/api/docker', dockerRouter);
 app.use('/api/catalog', catalogRouter);
 app.use('/api/node-link', nodeLinkRouter);
+app.use('/api/notifications', notificationsRouter);
+app.use('/api/audit', auditRouter);
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 

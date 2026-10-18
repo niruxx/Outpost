@@ -19,9 +19,9 @@ const ToastContext = createContext<ToastState | null>(null);
 
 // MD3 snackbar: inverse-surface container, a status-tinted icon, inverse-on-surface text.
 const ICONS: Record<ToastKind, ReactNode> = {
-  success: <span className="text-[#2e7d32]">✓</span>,
-  error: <span className="text-[#ba1a1a]">✕</span>,
-  info: <span className="text-[#00639b]">ℹ</span>,
+  success: <span className="ui-toast-success text-[#2e7d32]">✓</span>,
+  error: <span className="ui-toast-error text-[#ba1a1a]">✕</span>,
+  info: <span className="ui-toast-info text-[#00639b]">ℹ</span>,
 };
 
 export function ToastProvider({ children }: { children: ReactNode }) {
@@ -55,13 +55,13 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, x: 40, scale: 0.94 }}
               transition={{ type: 'spring', stiffness: 420, damping: 32 }}
-              className="pointer-events-auto flex items-start gap-3 rounded-xl bg-ink-100 px-4 py-3 text-sm text-[#2e312b] shadow-card"
+              className="ui-toast pointer-events-auto flex items-start gap-3 rounded-xl bg-inverse px-4 py-3 text-sm text-inverse-on shadow-card"
             >
               <span className="mt-0.5">{ICONS[t.kind]}</span>
               <span className="flex-1 leading-snug">{t.message}</span>
               <button
                 onClick={() => setToasts((prev) => prev.filter((x) => x.id !== t.id))}
-                className="text-[#5a6155] hover:text-[#2e312b]"
+                className="text-inverse-muted hover:text-inverse-on"
               >
                 ✕
               </button>

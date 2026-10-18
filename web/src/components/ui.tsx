@@ -30,14 +30,14 @@ export function Button({
     outlined: 'border border-surface-500 bg-transparent text-accent-400',
   };
   return (
-    <button className={`${base} ${variants[variant]} ${className}`} {...props}>
+    <button className={`ui-btn ui-btn-${variant} ${base} ${variants[variant]} ${className}`} {...props}>
       {children}
     </button>
   );
 }
 
 const FIELD_BASE =
-  'w-full rounded-lg border border-surface-500 bg-transparent px-3 py-2 text-sm text-ink-100 outline-none transition-colors duration-150 hover:border-ink-300 focus:border-accent-400 focus:ring-1 focus:ring-accent-400 disabled:opacity-[0.38]';
+  'ui-input w-full rounded-lg border border-surface-500 bg-transparent px-3 py-2 text-sm text-ink-100 outline-none transition-colors duration-150 hover:border-ink-300 focus:border-accent-400 focus:ring-1 focus:ring-accent-400 disabled:opacity-[0.38]';
 
 /** MD3 outlined text field. */
 export function Input(props: InputHTMLAttributes<HTMLInputElement>) {
@@ -62,7 +62,7 @@ export function Card({
 }) {
   return (
     <div
-      className={`rounded-3xl ${glass ? 'bg-surface-850' : 'bg-surface-900'} ${
+      className={`ui-card rounded-3xl ${glass ? 'bg-surface-850' : 'bg-surface-900'} ${
         hover ? 'transition-[background-color,transform,box-shadow] duration-200 ease-out hover:-translate-y-0.5 hover:bg-surface-800 hover:shadow-card' : ''
       } ${className}`}
     >
@@ -75,7 +75,7 @@ export function Card({
 export function CardTitle({ children, action }: { children: ReactNode; action?: ReactNode }) {
   return (
     <div className="mb-4 flex items-center justify-between gap-3">
-      <h2 className="text-base font-medium text-ink-100">{children}</h2>
+      <h2 className="ui-card-title text-base font-medium text-ink-100">{children}</h2>
       {action}
     </div>
   );
@@ -108,7 +108,7 @@ export function Badge({
     blue: 'bg-sky-400',
   };
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-lg px-2 py-0.5 text-xs font-medium transition-colors duration-300 ${BADGE_TONES[tone]}`}>
+    <span className={`ui-badge inline-flex items-center gap-1.5 rounded-lg px-2 py-0.5 text-xs font-medium transition-colors duration-300 ${BADGE_TONES[tone]}`}>
       {pulse && (
         <span className="relative flex h-1.5 w-1.5">
           <span className={`absolute inline-flex h-full w-full animate-ping-slow rounded-full ${dotColor[tone]}`} />
@@ -164,22 +164,22 @@ export function Modal({
           onClick={onClose}
         >
           <motion.div
-            className={`flex max-h-[85vh] w-full ${MODAL_SIZE[size]} flex-col rounded-4xl bg-surface-800 shadow-card`}
+            className={`ui-modal flex max-h-[85vh] w-full ${MODAL_SIZE[size]} flex-col rounded-4xl bg-surface-800 shadow-card`}
             initial={{ opacity: 0, scale: 0.95, y: 12 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96, y: 8 }}
             transition={springy}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex shrink-0 items-center justify-between px-6 pb-2 pt-6">
-              <h3 className="text-xl font-normal text-ink-50">{title}</h3>
-              <button onClick={onClose} aria-label="Close" className="state-layer rounded-full p-2 text-ink-300">
+            <div className="ui-modal-header flex shrink-0 items-center justify-between px-6 pb-2 pt-6">
+              <h3 className="ui-modal-title text-xl font-normal text-ink-50">{title}</h3>
+              <button onClick={onClose} aria-label="Close" className="ui-modal-close state-layer rounded-full p-2 text-ink-300">
                 <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                   <path d="M18 6L6 18M6 6l12 12" />
                 </svg>
               </button>
             </div>
-            <div className="overflow-y-auto px-6 pb-6 pt-2">{children}</div>
+            <div className="ui-modal-body overflow-y-auto px-6 pb-6 pt-2">{children}</div>
           </motion.div>
         </motion.div>
       )}

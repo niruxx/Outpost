@@ -22,7 +22,8 @@ interface AuthState {
   refreshCreation: () => Promise<void>;
   loading: boolean;
   setupRequired: boolean;
-  login: (username: string, password: string) => Promise<void>;
+  /** Resolves 'two-factor' when the password was right and a code is needed (call again with it). */
+  login: (username: string, password: string, code?: string) => Promise<'ok' | 'two-factor'>;
   setup: (username: string, password: string) => Promise<void>;
   logout: () => void;
   refresh: () => Promise<void>;
@@ -86,13 +87,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const effectiveCreation = creation ?? (user ? roleFallbackCreation(user.role) : null);
 
-  const login = useCallback(async (username: string, password: string) => {
-    const { token, user } = await api.post<{ token: string; user: PublicUser }>('/auth/login', {
+  const login = useCallback(async (username: string, password: string, code?: string) => {
+    const res = await api.post<{ token?: string; user?: PublicUser; twoFactorRequired?: boolean }>('/auth/login', {
       username,
       password,
+      ...(code ? { code } : {}),
     });
-    setToken(token);
-    setUser(user);
+    if (res.twoFactorRequired || !res.token || !res.user) return 'two-factor' as const;
+    setToken(res.token);
+    setUser(res.user);
+    return 'ok' as const;
   }, []);
 
   const setup = useCallback(async (username: string, password: string) => {

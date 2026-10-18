@@ -111,7 +111,7 @@ export function SetupPage() {
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -24 }}
               transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-              className="rounded-4xl bg-surface-850 p-8"
+              className="ui-card rounded-4xl bg-surface-850 p-8"
             >
               <div className="mb-6 text-center">
                 <Logo className="mx-auto mb-4 h-12 w-12 rounded-2xl" />
@@ -148,7 +148,7 @@ export function SetupPage() {
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -24 }}
               transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-              className="rounded-4xl bg-surface-850 p-8"
+              className="ui-card rounded-4xl bg-surface-850 p-8"
             >
               <div className="mb-6">
                 <h1 className="text-xl font-bold text-ink-50">Create your admin account</h1>

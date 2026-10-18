@@ -4,8 +4,14 @@ import { hashPassword, verifyPassword } from '../auth/password.js';
 import type { PublicUser, Role, User } from '../types/index.js';
 
 function toPublic(user: User): PublicUser {
-  const { password_hash, password_salt, ...rest } = user;
+  const { password_hash, password_salt, totp_secret, totp_last_step, totp_recovery, ...rest } = user;
   return rest;
+}
+
+/** A user without credentials or 2FA secrets — safe to send to the browser. */
+export function getPublicUser(id: string): PublicUser | undefined {
+  const user = getUserById(id);
+  return user ? toPublic(user) : undefined;
 }
 
 export function countUsers(): number {

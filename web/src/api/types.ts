@@ -19,6 +19,8 @@ export interface PublicUser {
   username: string;
   role: Role;
   created_at: string;
+  /** Two-factor sign-in is on for this account. */
+  totp_enabled?: 0 | 1;
   serverAccess?: string[];
   /** serverId → explicit permission set, or null for the role's defaults */
   serverPermissions?: Record<string, ServerPermission[] | null>;
@@ -497,4 +499,51 @@ export interface SandboxStatus {
   version: string | null;
   reason: string | null;
   enabled: boolean;
+}
+
+export type TaskAction = 'command' | 'restart' | 'start' | 'stop';
+
+export interface ScheduledTask {
+  id: string;
+  server_id: string;
+  name: string;
+  cron_expression: string;
+  action: TaskAction;
+  command: string;
+  warn_command: string;
+  warn_seconds: number;
+  enabled: 0 | 1;
+  last_run_at: string | null;
+  last_result: string | null;
+  created_at: string;
+}
+
+export type NotifyEvent = 'server.started' | 'server.stopped' | 'server.crashed' | 'server.restart_gave_up' | 'backup.failed' | 'task.failed';
+
+export interface Webhook {
+  id: string;
+  name: string;
+  url: string;
+  events: NotifyEvent[];
+  /** null = every instance */
+  serverIds: string[] | null;
+  enabled: boolean;
+  createdAt: string;
+}
+
+export interface AuditEntry {
+  id: number;
+  userId: string | null;
+  username: string | null;
+  action: string;
+  target: string | null;
+  targetLabel: string | null;
+  targetKind: 'server' | 'user' | 'webhook' | null;
+  detail: string | null;
+  at: string;
+}
+
+export interface TwoFactorStatus {
+  enabled: boolean;
+  recoveryCodesLeft: number;
 }

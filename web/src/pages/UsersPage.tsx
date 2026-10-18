@@ -53,6 +53,23 @@ export function UsersPage() {
     }
   }
 
+  async function resetTwoFactor(user: PublicUser) {
+    const ok = await confirm({
+      title: 'Reset two-factor sign-in',
+      message: `Turn off two-factor sign-in for "${user.username}"? They'll sign in with just their password and can set it up again from Configuration.`,
+      confirmLabel: 'Reset 2FA',
+      tone: 'danger',
+    });
+    if (!ok) return;
+    try {
+      await api.delete(`/users/${user.id}/2fa`);
+      toast.success(`Two-factor sign-in reset for "${user.username}"`);
+      await load();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Failed to reset two-factor sign-in');
+    }
+  }
+
   return (
     <Layout>
       <div className="mx-auto max-w-3xl px-4 py-8 sm:px-8">
@@ -80,6 +97,7 @@ export function UsersPage() {
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-ink-100">{u.username}</span>
                     <Badge tone={u.role === 'admin' ? 'green' : u.role === 'moderator' ? 'blue' : 'neutral'}>{u.role}</Badge>
+                    {u.totp_enabled ? <Badge tone="neutral">2FA</Badge> : null}
                   </div>
                   {u.role !== 'admin' && (
                     <p className="mt-0.5 text-xs text-ink-500">
@@ -101,6 +119,11 @@ export function UsersPage() {
                 >
                   Edit
                 </Button>
+                {u.totp_enabled && u.id !== me?.id ? (
+                  <Button variant="ghost" onClick={() => resetTwoFactor(u)} title="For someone who lost their authenticator and recovery codes">
+                    Reset 2FA
+                  </Button>
+                ) : null}
                 {u.id !== me?.id && (
                   <Button variant="danger" onClick={() => deleteUser(u)}>
                     Delete

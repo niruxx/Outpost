@@ -15,6 +15,7 @@ import * as consoleLog from './consoleLogService.js';
 import { logger } from '../utils/logger.js';
 import { HttpError } from '../utils/asyncHandler.js';
 import { findPreset, type StopStrategy } from './steamGames.js';
+import { notify } from './notificationService.js';
 import type { ServerRecord } from '../types/index.js';
 import {
   ensureExecutable,
@@ -103,6 +104,7 @@ function maybeScheduleAutoRestart(serverId: string, crashed: boolean, ranForMs: 
   const max = server.restart_max_attempts;
   if (max > 0 && attempt > max) {
     appendLog(serverId, `[Outpost] Auto-restart gave up after ${max} attempt${max === 1 ? '' : 's'} — start it manually once the problem is fixed`, 'system');
+    notify('server.restart_gave_up', { id: server.id, name: server.name }, `Gave up after ${max} attempt${max === 1 ? '' : 's'} — it needs a manual start once the problem is fixed.`);
     restartAttempts.delete(serverId);
     return;
   }
@@ -130,6 +132,15 @@ function maybeScheduleAutoRestart(serverId: string, crashed: boolean, ranForMs: 
   publish(consoleTopic(serverId), { type: 'auto_restart', pendingAt: new Date(at).toISOString(), attempt });
 }
 
+/** starting → running, once the ready line appears (or straight away for games without one). */
+function markRunning(serverId: string) {
+  const server = getServer(serverId);
+  if (!server || server.status !== 'starting') return;
+  setServerStatus(serverId, 'running');
+  publish(consoleTopic(serverId), { type: 'status', status: 'running' });
+  notify('server.started', { id: server.id, name: server.name }, 'The instance is up and running.');
+}
+
 function appendLog(serverId: string, line: string, stream: 'stdout' | 'stderr' | 'system') {
   consoleLog.appendLine(serverId, line, stream);
 
@@ -138,13 +149,7 @@ function appendLog(serverId: string, line: string, stream: 'stdout' | 'stderr' |
 
   if (stream !== 'system') {
     const instance = running.get(serverId);
-    if (instance?.readyRegex?.test(line)) {
-      const server = getServer(serverId);
-      if (server && server.status === 'starting') {
-        setServerStatus(serverId, 'running');
-        publish(consoleTopic(serverId), { type: 'status', status: 'running' });
-      }
-    }
+    if (instance?.readyRegex?.test(line)) markRunning(serverId);
   }
 }
 
@@ -460,12 +465,7 @@ export async function startServer(serverId: string, options: { auto?: boolean } 
     // No known "ready" log line for this game — mark it running as soon as we know the process
     // didn't immediately fail to spawn, rather than leaving it stuck in "starting" forever.
     setImmediate(() => {
-      if (!running.has(serverId)) return; // already exited
-      const current = getServer(serverId);
-      if (current && current.status === 'starting') {
-        setServerStatus(serverId, 'running');
-        publish(consoleTopic(serverId), { type: 'status', status: 'running' });
-      }
+      if (running.has(serverId)) markRunning(serverId); // else it already exited
     });
   }
 
@@ -495,6 +495,11 @@ export async function startServer(serverId: string, options: { auto?: boolean } 
     setServerStatus(serverId, finalStatus);
     appendLog(serverId, `[Outpost] Process exited (code ${code ?? 'null'}, signal ${signal ?? 'none'})`, 'system');
     publish(consoleTopic(serverId), { type: 'status', status: finalStatus });
+    if (!shuttingDown) {
+      const who = { id: server.id, name: server.name };
+      if (finalStatus === 'crashed') notify('server.crashed', who, `Exited unexpectedly (code ${code ?? 'none'}${signal ? `, signal ${signal}` : ''}).`);
+      else notify('server.stopped', who, wasManual ? 'Stopped from the panel.' : 'Exited cleanly.');
+    }
     void upnpOnStop(serverId);
     if (!wasManual) maybeScheduleAutoRestart(serverId, code !== 0, Date.now() - instance.startedAt);
   });

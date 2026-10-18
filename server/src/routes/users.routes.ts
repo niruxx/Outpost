@@ -20,7 +20,9 @@ import {
   sanitizeCreationPolicy,
   setCreationPolicy,
   CREATABLE_PLATFORMS,
+  getPublicUser,
 } from '../services/userService.js';
+import { disableTotp } from '../services/twoFactorService.js';
 import type { Role } from '../types/index.js';
 
 export const usersRouter = Router();
@@ -97,7 +99,7 @@ usersRouter.patch(
       );
     }
     logAudit(req.auth!.sub, req.auth!.username, 'user.update', target.id);
-    res.json({ user: getUserById(target.id) });
+    res.json({ user: getPublicUser(target.id) });
   })
 );
 
@@ -111,6 +113,18 @@ usersRouter.get(
       creatablePlatforms: CREATABLE_PLATFORMS,
       creationDefaults: { moderator: roleDefaultCreation('moderator'), viewer: roleDefaultCreation('viewer') },
     });
+  })
+);
+
+/** Turns off two-factor sign-in for someone who lost their authenticator and recovery codes. */
+usersRouter.delete(
+  '/:id/2fa',
+  asyncHandler(async (req, res) => {
+    const target = getUserById(req.params.id);
+    if (!target) throw new HttpError(404, 'User not found');
+    disableTotp(target.id);
+    logAudit(req.auth!.sub, req.auth!.username, 'user.2fa_reset', target.id);
+    res.status(204).end();
   })
 );
 

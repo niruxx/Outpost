@@ -28,7 +28,7 @@ export function NavItem({
     <NavLink to={to} end={end} onClick={onClick} className="group block">
       {({ isActive }) => (
         <span
-          className={`state-layer relative flex h-12 items-center gap-3 rounded-full px-4 text-sm font-medium transition-colors duration-200 ${
+          className={`ui-nav-item state-layer relative flex h-12 items-center gap-3 rounded-full px-4 text-sm font-medium transition-colors duration-200 ${
             isActive ? 'text-secondary-on-container' : 'text-ink-300'
           }`}
         >
@@ -77,7 +77,7 @@ function useSidebarInstances(): ServerRecord[] | null {
 function InstanceNavItem({ server, onClick }: { server: ServerRecord; onClick?: () => void }) {
   return (
     <NavLink to={`/instances/${server.id}`} onClick={onClick} className="group block" title={server.name}>
-      <span className="state-layer relative flex h-10 items-center gap-3 rounded-full px-4 text-sm text-ink-300">
+      <span className="ui-nav-item state-layer relative flex h-10 items-center gap-3 rounded-full px-4 text-sm text-ink-300">
         <GameTile kind={gameKindOf(server)} className="h-6 w-6 !rounded-lg" />
         <span className="min-w-0 flex-1 truncate transition-transform duration-200 group-hover:translate-x-0.5">{server.name}</span>
         <StatusDot status={server.status} suspended={!!server.suspended} />
@@ -96,6 +96,7 @@ function MainNav({ onNavigate }: { onNavigate?: () => void }) {
       <NavItem to="/files" icon="folder" label="File Management" onClick={onNavigate} />
       <NavItem to="/docker" icon="container" label="Docker" onClick={onNavigate} />
       {user?.role === 'admin' && <NavItem to="/users" icon="users" label="Users" onClick={onNavigate} />}
+      {user?.role === 'admin' && <NavItem to="/audit" icon="checklist" label="Audit Log" onClick={onNavigate} />}
       {servers && servers.length > 0 && (
         <>
           <NavSectionLabel>Instances</NavSectionLabel>
@@ -113,7 +114,7 @@ function DrawerFooter({ system }: { system: SystemInfo | null }) {
   const navigate = useNavigate();
   return (
     <div className="mt-auto space-y-3 px-1 pt-4">
-      <motion.div layout className="flex items-center gap-3 rounded-2xl bg-surface-850 p-3 transition-colors hover:bg-surface-800">
+      <motion.div layout className="ui-sidebar-panel flex items-center gap-3 rounded-2xl bg-surface-850 p-3 transition-colors hover:bg-surface-800">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent-container text-sm font-medium text-accent-on-container">
           {user?.username?.slice(0, 1).toUpperCase()}
         </div>
@@ -206,15 +207,15 @@ export function Layout({
   );
 
   return (
-    <div className="flex h-screen bg-surface-950">
-      <aside className="hidden w-72 shrink-0 bg-surface-900 md:block">{drawer}</aside>
+    <div className="ui-app flex h-screen bg-surface-950">
+      <aside className="ui-sidebar hidden w-72 shrink-0 bg-surface-900 md:block">{drawer}</aside>
 
       <AnimatePresence>
         {mobileOpen && (
           <motion.div className="fixed inset-0 z-40 md:hidden" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
             <div className="absolute inset-0 bg-black/60" onClick={close} />
             <motion.aside
-              className="absolute inset-y-0 left-0 w-72 rounded-r-3xl bg-surface-900"
+              className="ui-sidebar absolute inset-y-0 left-0 w-72 rounded-r-3xl bg-surface-900"
               initial={{ x: -300 }}
               animate={{ x: 0 }}
               exit={{ x: -300 }}
@@ -257,7 +258,7 @@ export function PageHeader({ title, subtitle, action }: { title: string; subtitl
   return (
     <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} className="mb-6 flex flex-wrap items-end justify-between gap-4">
       <div>
-        <h1 className="text-[28px] font-normal leading-9 text-ink-50">{title}</h1>
+        <h1 className="ui-page-title text-[28px] font-normal leading-9 text-ink-50">{title}</h1>
         {subtitle && <p className="mt-1 text-sm text-ink-400">{subtitle}</p>}
       </div>
       {action}
