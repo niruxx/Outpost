@@ -13,7 +13,13 @@ export interface User {
   totp_enabled: 0 | 1;
   totp_last_step: number;
   totp_recovery: string | null;
+  firewall: FirewallAccess;
+  /** UI theme applied at sign-in (set by an admin); null = the browser's own choice. */
+  theme: string | null;
 }
+
+/** What a user may do with the host firewall. Admins can always do everything. */
+export type FirewallAccess = 'none' | 'view' | 'instances' | 'manage';
 
 export type PublicUser = Omit<User, 'password_hash' | 'password_salt' | 'totp_secret' | 'totp_last_step' | 'totp_recovery'>;
 
@@ -82,6 +88,8 @@ export interface ServerRecord {
   created_at: string;
   created_by: string | null;
   steam_app_id: string | null;
+  /** Curated preset id (STEAM_GAME_PRESETS); null for custom App IDs and older instances. */
+  steam_preset: string | null;
   steam_login: string;
   steam_extra_flags: string;
   /** Admin-imposed lock (non-payment, TOS violation, …): stopped, can't be started, and only

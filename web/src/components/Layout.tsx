@@ -96,6 +96,9 @@ function MainNav({ onNavigate }: { onNavigate?: () => void }) {
       <NavItem to="/files" icon="folder" label="File Management" onClick={onNavigate} />
       <NavItem to="/docker" icon="container" label="Docker" onClick={onNavigate} />
       {user?.role === 'admin' && <NavItem to="/users" icon="users" label="Users" onClick={onNavigate} />}
+      {(user?.role === 'admin' || (user?.firewall && user.firewall !== 'none')) && (
+        <NavItem to="/firewall" icon="shieldCheck" label="Firewall" onClick={onNavigate} />
+      )}
       {user?.role === 'admin' && <NavItem to="/audit" icon="checklist" label="Audit Log" onClick={onNavigate} />}
       {servers && servers.length > 0 && (
         <>
@@ -243,7 +246,7 @@ export function Layout({
           <Logo className="h-6 w-6 rounded-md" />
           <span className="font-medium text-ink-50">Outpost</span>
         </div>
-        <main className="min-h-0 flex-1 overflow-y-auto">
+        <main className="ui-main min-h-0 flex-1 overflow-y-auto">
           <motion.div
             key={pageKey}
             className={fill ? 'h-full' : 'min-h-full'}

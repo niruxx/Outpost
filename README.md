@@ -96,7 +96,7 @@ Open **http://localhost:8642** — the first visit walks you through creating th
     </td>
     <td valign="top">
       <h4>🧩 Plugins &amp; mods</h4>
-      Modrinth search for plugins and data packs, plus uploads for Bedrock packs, BepInEx and <code>.pak</code> mods.
+      One-click installs from Modrinth and CurseForge — plugins, data packs, and Bedrock add-ons &amp; texture packs — plus uploads for BepInEx and <code>.pak</code> mods.
     </td>
   </tr>
   <tr>
@@ -120,7 +120,7 @@ Open **http://localhost:8642** — the first visit walks you through creating th
     </td>
     <td valign="top">
       <h4>🔌 UPnP port forwarding</h4>
-      Forward ports and ranges on your router straight from the panel — automatically while an instance runs.
+      Forward ports and ranges on your router straight from the panel, then test the forward step by step — including from the internet.
     </td>
   </tr>
   <tr>
@@ -144,7 +144,7 @@ Open **http://localhost:8642** — the first visit walks you through creating th
     </td>
     <td valign="top">
       <h4>🎨 Themes</h4>
-      Material 3 dark by default, or switch the whole panel to <b>Windows XP</b> or <b>Minecraft</b> under Configuration → Appearance.
+      Material 3 dark by default, or <b>Windows XP</b>, <b>Windows Vista / 7</b>, <b>Frutiger Aero</b> or <b>Minecraft</b>. Admins can give each account its own theme.
     </td>
   </tr>
   <tr>
@@ -159,6 +159,12 @@ Open **http://localhost:8642** — the first visit walks you through creating th
     <td valign="top">
       <h4>🔐 Two-factor sign-in &amp; audit log</h4>
       Authenticator-app codes with recovery codes, and a searchable log of who signed in and changed what.
+    </td>
+  </tr>
+  <tr>
+    <td valign="top">
+      <h4>🧱 Firewall</h4>
+      Open and close ports through UFW or firewalld, per-user access levels, and SSH / the panel are never cut off by accident.
     </td>
   </tr>
 </table>
@@ -210,6 +216,8 @@ Every template is just a starting point — change the image, ports, environment
 | 🪨 | **Minecraft: Bedrock** | 🎒 `.mcpack` / `.mcaddon`, auto-activated per world | `19132/udp` |
 | 🪖 | **Valheim** | 🔌 BepInEx plugins (`.dll` / `.zip`) | `2456/udp` |
 | 🐾 | **Palworld** | 📦 `.pak` mods | `8211/udp` |
+| 🔫 | **Counter-Strike 2, CS:GO, Source, 1.6 & Condition Zero** | — | `27015/udp` |
+| 🎩 | **Team Fortress 2** | — | `27015/udp` |
 | 🧟 | **Project Zomboid** | — *(Workshop IDs live in its own `.ini`, under `<instance>/Zomboid/Server`)* | `16261/udp` |
 | 🌳 | **Terraria** | — *(the vanilla server has no mod loader)* | `7777/tcp` |
 | 🎯 | **Any Steam App ID** — CS2, TF2, Rust, ARK, Quake Live… | — | your choice |
@@ -441,6 +449,11 @@ Choose **Steam** when creating an instance, then a game:
 | 🧟 Project Zomboid | 380870 | `16261/udp` | Stops cleanly with `save` → `quit`. Saves, `.ini` files and logs go in `<instance>/Zomboid` (`-cachedir=`), not `~/Zomboid`. |
 | 🪖 Valheim | 896660 | `2456/udp` | Stops with SIGINT — it only saves its world on SIGINT. |
 | 🌳 Terraria | 105600 | `7777/tcp` | Fetched from terraria.org; started with `-autocreate`/`-world`. |
+| 🔫 Counter-Strike 2 | 730 | `27015/udp` | ~35 GB. Add `+sv_setsteamaccount TOKEN` to extra args to be listed publicly. |
+| 🔫 CS:GO (legacy) | 740 | `27015/udp` | Players join with CS2's `csgo_legacy` beta. |
+| 🔫 Counter-Strike: Source | 232330 | `27015/udp` | Settings in `cstrike/cfg/server.cfg`. |
+| 🔫 Counter-Strike 1.6 / Condition Zero | 90 | `27015/udp` | Half-Life Dedicated Server with the `cstrike` / `czero` mod; its download is flaky — run Update again if needed. |
+| 🎩 Team Fortress 2 | 232250 | `27015/udp` | Settings in `tf/cfg/server.cfg`; token for app 440 to be listed. |
 | 🎯 Other | any | any | Give its executable path; tune stop/restart under **Configuration → Launch**. |
 
 Game config files are edited in **File Management**. Players, Operators, Whitelist and Map are Minecraft-only.

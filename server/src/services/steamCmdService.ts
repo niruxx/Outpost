@@ -176,7 +176,8 @@ export async function steamAppUpdate(
   onLog?: LogFn,
   validate = true,
   login = 'anonymous',
-  extraFlags: string[] = []
+  extraFlags: string[] = [],
+  beforeUpdate: string[] = []
 ): Promise<void> {
   const steamCmdPath = await ensureSteamCmd(onLog);
   fs.mkdirSync(instanceDir, { recursive: true });
@@ -184,6 +185,7 @@ export async function steamAppUpdate(
   const args = [
     '+force_install_dir', instanceDir,
     '+login', ...loginArgs,
+    ...beforeUpdate,
     '+app_update', appId,
     ...(validate ? ['validate'] : []),
     ...extraFlags,
@@ -191,7 +193,7 @@ export async function steamAppUpdate(
   ];
   const loginLog = loginArgs[0] === 'anonymous' ? 'anonymous' : `${loginArgs[0]} ***`;
   const commandLog =
-    `steamcmd +force_install_dir <dir> +login ${loginLog} +app_update ${appId}${validate ? ' validate' : ''}` +
+    `steamcmd +force_install_dir <dir> +login ${loginLog}${beforeUpdate.length ? ' ' + beforeUpdate.join(' ') : ''} +app_update ${appId}${validate ? ' validate' : ''}` +
     `${extraFlags.length ? ' ' + extraFlags.join(' ') : ''} +quit`;
 
   const manifestPath = path.join(instanceDir, 'steamapps', `appmanifest_${appId}.acf`);

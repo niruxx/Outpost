@@ -10,7 +10,9 @@ CREATE TABLE IF NOT EXISTS users (
   totp_secret TEXT, -- base32 TOTP secret; set (but not yet enabled) while 2FA is being set up
   totp_enabled BOOLEAN NOT NULL DEFAULT 0,
   totp_last_step INTEGER NOT NULL DEFAULT 0, -- last accepted time step, so a code can't be replayed
-  totp_recovery TEXT -- JSON array of SHA-256 hashes of unused recovery codes
+  totp_recovery TEXT, -- JSON array of SHA-256 hashes of unused recovery codes
+  firewall TEXT NOT NULL DEFAULT 'none', -- host firewall access: none | view | instances | manage (admins: always manage)
+  theme TEXT -- UI theme applied when this user signs in (an admin's choice); NULL = whatever their browser last used
 );
 
 -- Non-admin users can be restricted to specific servers. Admins always see everything.
@@ -39,6 +41,7 @@ CREATE TABLE IF NOT EXISTS servers (
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   created_by TEXT REFERENCES users(id),
   steam_app_id TEXT, -- Steam App ID actually installed, for platform = 'steam' servers
+  steam_preset TEXT, -- curated preset id (several presets can share an App ID, e.g. CS 1.6 / Condition Zero)
   steam_login TEXT NOT NULL DEFAULT 'anonymous', -- raw value passed after "+login" (e.g. "anonymous" or "user pass")
   steam_extra_flags TEXT NOT NULL DEFAULT '', -- extra steamcmd CLI flags spliced into the install/update invocation
   launch_config TEXT,

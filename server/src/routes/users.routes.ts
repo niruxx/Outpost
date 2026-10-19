@@ -21,6 +21,10 @@ import {
   setCreationPolicy,
   CREATABLE_PLATFORMS,
   getPublicUser,
+  FIREWALL_ACCESS,
+  setFirewallAccess,
+  THEME_IDS,
+  setUserTheme,
 } from '../services/userService.js';
 import { disableTotp } from '../services/twoFactorService.js';
 import type { Role } from '../types/index.js';
@@ -83,6 +87,15 @@ usersRouter.patch(
         throw new HttpError(400, 'Password must be at least 8 characters');
       }
       updateUserPassword(target.id, password);
+    }
+    if (req.body && 'theme' in req.body) {
+      const theme = req.body.theme;
+      if (theme !== null && !THEME_IDS.includes(theme)) throw new HttpError(400, `theme must be null or one of ${THEME_IDS.join(', ')}`);
+      setUserTheme(target.id, theme);
+    }
+    if (req.body?.firewall !== undefined) {
+      if (!FIREWALL_ACCESS.includes(req.body.firewall)) throw new HttpError(400, `firewall must be one of ${FIREWALL_ACCESS.join(', ')}`);
+      setFirewallAccess(target.id, req.body.firewall);
     }
     if (req.body && 'creation' in req.body) {
       // null = follow the role's default; an object = this user's own creation policy.

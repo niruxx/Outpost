@@ -19,6 +19,27 @@ export function runMigrations(db: DatabaseSync): void {
   addCreationPolicyColumn(db);
   grantCreatorsOwnerAccess(db);
   addTotpColumns(db);
+  addFirewallColumn(db);
+  addSteamPresetColumn(db);
+  addUserThemeColumn(db);
+}
+
+function addUserThemeColumn(db: DatabaseSync): void {
+  if (db.prepare("SELECT 1 FROM pragma_table_info('users') WHERE name = 'theme'").get()) return;
+  logger.info('Migrating database: adding users.theme column');
+  db.exec('ALTER TABLE users ADD COLUMN theme TEXT');
+}
+
+function addSteamPresetColumn(db: DatabaseSync): void {
+  if (db.prepare("SELECT 1 FROM pragma_table_info('servers') WHERE name = 'steam_preset'").get()) return;
+  logger.info('Migrating database: adding servers.steam_preset column');
+  db.exec('ALTER TABLE servers ADD COLUMN steam_preset TEXT');
+}
+
+function addFirewallColumn(db: DatabaseSync): void {
+  if (db.prepare("SELECT 1 FROM pragma_table_info('users') WHERE name = 'firewall'").get()) return;
+  logger.info('Migrating database: adding users.firewall column');
+  db.exec("ALTER TABLE users ADD COLUMN firewall TEXT NOT NULL DEFAULT 'none'");
 }
 
 function addTotpColumns(db: DatabaseSync): void {

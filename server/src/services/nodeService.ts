@@ -207,6 +207,7 @@ type TransferMeta = Pick<
   | 'extra_java_args'
   | 'extra_args'
   | 'steam_app_id'
+  | 'steam_preset'
   | 'steam_login'
   | 'steam_extra_flags'
   | 'launch_config'
@@ -259,6 +260,7 @@ export function startTransfer(serverId: string, nodeId: string, deleteSource: bo
     extra_java_args: server.extra_java_args,
     extra_args: server.extra_args,
     steam_app_id: server.steam_app_id,
+    steam_preset: server.steam_preset,
     steam_login: server.steam_login,
     steam_extra_flags: server.steam_extra_flags,
     launch_config: server.launch_config,
@@ -348,6 +350,7 @@ export async function receiveTransfer(req: Request): Promise<ServerRecord> {
     extraArgs: meta.extra_args,
     createdBy: null,
     steamAppId: meta.steam_app_id,
+    steamPreset: meta.steam_preset ?? null,
     steamLogin: meta.steam_login,
     steamExtraFlags: meta.steam_extra_flags,
     launchConfig: meta.launch_config ?? null,

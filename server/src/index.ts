@@ -25,6 +25,7 @@ import { nodeLinkRouter } from './routes/nodeLink.routes.js';
 import { tasksRouter } from './routes/tasks.routes.js';
 import { notificationsRouter } from './routes/notifications.routes.js';
 import { auditRouter } from './routes/audit.routes.js';
+import { firewallRouter } from './routes/firewall.routes.js';
 import { recoverInterruptedTransfers } from './services/nodeService.js';
 import { verifyToken } from './auth/tokens.js';
 import { userHasServerAccess } from './services/userService.js';
@@ -65,6 +66,7 @@ app.use('/api/catalog', catalogRouter);
 app.use('/api/node-link', nodeLinkRouter);
 app.use('/api/notifications', notificationsRouter);
 app.use('/api/audit', auditRouter);
+app.use('/api/firewall', firewallRouter);
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 

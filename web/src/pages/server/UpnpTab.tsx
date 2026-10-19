@@ -7,6 +7,7 @@ import { Badge, Button, Card, CardTitle, ErrorText, Field, Input, Notice, Select
 import { Icon } from '../../components/icons.js';
 import { EMPHASIZED } from '../../components/motion.js';
 import { useToast } from '../../components/Toast.js';
+import { PortTestCard } from './PortTestCard.js';
 
 const LEASES = [
   { value: 1800, label: '30 minutes' },
@@ -327,6 +328,8 @@ export function UpnpTab() {
           </div>
         )}
       </Card>
+
+      <PortTestCard base={base} config={config} defaultPort={server.server_port} canTestOutside={editable} />
 
       {states.length > 0 && (
         <Card className="p-5">

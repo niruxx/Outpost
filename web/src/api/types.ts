@@ -21,6 +21,10 @@ export interface PublicUser {
   created_at: string;
   /** Two-factor sign-in is on for this account. */
   totp_enabled?: 0 | 1;
+  /** Host firewall access (admins can always manage). */
+  firewall?: FirewallAccess;
+  /** Theme applied when this user signs in (an admin's choice); null = their own browser's choice. */
+  theme?: string | null;
   serverAccess?: string[];
   /** serverId → explicit permission set, or null for the role's defaults */
   serverPermissions?: Record<string, ServerPermission[] | null>;
@@ -280,7 +284,7 @@ export interface InstalledPlugin {
   detail: string | null;
 }
 
-export type AddonCatalog = 'plugin' | 'datapack';
+export type AddonCatalog = 'plugin' | 'datapack' | 'bedrock';
 
 export interface AddonProfile {
   kind: 'bukkit' | 'datapack' | 'bedrock' | 'bepinex' | 'pak';
@@ -303,6 +307,12 @@ export interface PluginSearchResult {
   downloads: number;
   author: string;
   categories: string[];
+  /** CurseForge results only */
+  id?: number;
+  className?: string | null;
+  websiteUrl?: string | null;
+  /** false when the author only allows downloads from CurseForge's own site */
+  downloadable?: boolean;
 }
 
 export interface ResolvedPluginVersion {
@@ -546,4 +556,38 @@ export interface AuditEntry {
 export interface TwoFactorStatus {
   enabled: boolean;
   recoveryCodesLeft: number;
+}
+
+export type FirewallAccess = 'none' | 'view' | 'instances' | 'manage';
+
+export interface FirewallRule {
+  id: string;
+  action: 'allow' | 'deny' | 'reject' | 'limit';
+  port: string | null;
+  protocol: 'tcp' | 'udp' | 'any';
+  source: string | null;
+  label: string | null;
+  comment: string | null;
+  direction: 'in' | 'out';
+}
+
+export interface FirewallStatus {
+  available: boolean;
+  backend: 'ufw' | 'firewalld' | null;
+  reason: string | null;
+  sudoersHint: string | null;
+  active: boolean;
+  defaults: string | null;
+  zone: string | null;
+  rules: FirewallRule[];
+  protectedPorts: { port: number; protocol: 'tcp'; why: string }[];
+  canToggle: boolean;
+}
+
+export interface FirewallInstancePort {
+  serverId: string;
+  name: string;
+  port: number;
+  protocol: 'tcp' | 'udp';
+  open: boolean;
 }

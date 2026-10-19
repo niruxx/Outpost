@@ -13,6 +13,7 @@ import {
   setPluginEnabled,
 } from '../services/pluginService.js';
 import { resolvePluginVersion } from '../services/pluginRegistryService.js';
+import { curseforge } from '../services/curseforgeService.js';
 import { appendLine } from '../services/consoleLogService.js';
 import { logAudit } from '../services/userService.js';
 import type { ServerRecord } from '../types/index.js';
@@ -20,7 +21,24 @@ import type { ServerRecord } from '../types/index.js';
 export const pluginsRouter = Router({ mergeParams: true });
 pluginsRouter.use(requireAuth, requireServerAccess());
 
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 512 * 1024 * 1024 } });
+const MAX_DOWNLOAD_BYTES = 512 * 1024 * 1024;
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_DOWNLOAD_BYTES } });
+
+/** Downloads a catalog file into memory (Bedrock packs are unpacked from it), refusing anything huge. */
+async function downloadToBuffer(url: string, maxBytes: number): Promise<Buffer> {
+  const res = await fetch(url, { signal: AbortSignal.timeout(120_000) });
+  if (!res.ok || !res.body) throw new HttpError(502, `Download failed (${res.status})`);
+  const declared = Number(res.headers.get('content-length') ?? 0);
+  if (declared > maxBytes) throw new HttpError(413, 'That file is too large');
+  const chunks: Buffer[] = [];
+  let total = 0;
+  for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
+    total += chunk.length;
+    if (total > maxBytes) throw new HttpError(413, 'That file is too large');
+    chunks.push(Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks);
+}
 
 
 function requireServer(serverId: string): ServerRecord {
@@ -47,6 +65,31 @@ pluginsRouter.post(
     const server = requireServer(req.params.serverId);
     const profile = requireAddonProfile(server);
     if (!profile.catalog) throw new HttpError(400, `${profile.label} for this instance can only be uploaded, not installed from a catalog`);
+
+    if (req.body?.source === 'curseforge') {
+      const modId = Number(req.body?.modId);
+      if (!Number.isInteger(modId) || modId <= 0) throw new HttpError(400, 'modId is required');
+      const javaVersion = profile.kind === 'bedrock' ? null : server.version;
+      const file = await curseforge.resolveFile(modId, javaVersion);
+      if (file.versionMismatchWarning) {
+        appendLine(server.id, `[Outpost] No CurseForge file is tagged for Minecraft ${server.version} — installing the newest one (${file.versionLabel}). Check it's compatible.`);
+      }
+      appendLine(server.id, `[Outpost] Downloading ${file.fileName} from CurseForge`);
+      let installed: string[];
+      if (profile.kind === 'bedrock') {
+        // Bedrock packs go through the same installer as uploads (unpacks .mcaddon, activates for the world).
+        const buffer = await downloadToBuffer(file.downloadUrl, MAX_DOWNLOAD_BYTES);
+        installed = installUploadedAddon(server, file.fileName, buffer);
+      } else {
+        await installPluginFile(server, file.downloadUrl, file.fileName, (line) => appendLine(server.id, line));
+        installed = [file.fileName];
+      }
+      appendLine(server.id, `[Outpost] Installed ${installed.join(', ')} — restart the server for it to load`);
+      logAudit(req.auth!.sub, req.auth!.username, 'plugin.install', server.id, `CurseForge ${modId}: ${installed.join(', ')}`);
+      return res.status(201).json({ plugins: listPlugins(server), installed, resolved: { versionNumber: file.versionLabel, fileName: file.fileName, versionMismatchWarning: file.versionMismatchWarning } });
+    }
+
+    if (profile.catalog === 'bedrock') throw new HttpError(400, 'Bedrock packs install from CurseForge');
     const { slug } = req.body ?? {};
     if (typeof slug !== 'string' || !slug.trim()) throw new HttpError(400, 'slug is required');
 

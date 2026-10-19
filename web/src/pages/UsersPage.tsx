@@ -4,9 +4,10 @@ import { Badge, Button, Card, ErrorText, Field, Input, Modal, Select } from '../
 import { useToast } from '../components/Toast.js';
 import { useConfirm } from '../components/ConfirmDialog.js';
 import { api, ApiError } from '../api/client.js';
-import type { CreatablePlatform, CreationPolicy, PublicUser, Role, ServerPermission, ServerRecord } from '../api/types.js';
+import type { CreatablePlatform, CreationPolicy, FirewallAccess, PublicUser, Role, ServerPermission, ServerRecord } from '../api/types.js';
 import { GameTile, gameKindOf } from '../components/GameArt.js';
 import { useAuth } from '../state/AuthContext.js';
+import { THEMES } from '../lib/theme.js';
 
 export function UsersPage() {
   const { user: me } = useAuth();
@@ -98,6 +99,7 @@ export function UsersPage() {
                     <span className="font-medium text-ink-100">{u.username}</span>
                     <Badge tone={u.role === 'admin' ? 'green' : u.role === 'moderator' ? 'blue' : 'neutral'}>{u.role}</Badge>
                     {u.totp_enabled ? <Badge tone="neutral">2FA</Badge> : null}
+                    {u.theme ? <Badge tone="neutral">{THEMES.find((t) => t.id === u.theme)?.label ?? u.theme} theme</Badge> : null}
                   </div>
                   {u.role !== 'admin' && (
                     <p className="mt-0.5 text-xs text-ink-500">
@@ -224,6 +226,8 @@ function EditUserModal({
   const [access, setAccess] = useState<Record<string, ServerPermission[] | null>>({});
   // null = follow the role's default creation policy
   const [creation, setCreation] = useState<CreationPolicy | null>(null);
+  const [firewall, setFirewall] = useState<FirewallAccess>('none');
+  const [theme, setTheme] = useState<string>('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -231,6 +235,8 @@ function EditUserModal({
   useEffect(() => {
     if (!user) return;
     setRole(user.role);
+    setFirewall(user.firewall ?? 'none');
+    setTheme(user.theme ?? '');
     setPassword('');
     setAccess(Object.fromEntries((user.serverAccess ?? []).map((id) => [id, user.serverPermissions?.[id] ?? null])));
     setCreation(user.creationPolicy ?? null);
@@ -246,7 +252,8 @@ function EditUserModal({
         role,
         password: password || undefined,
         serverAccess: Object.entries(access).map(([serverId, permissions]) => ({ serverId, permissions })),
-        ...(role === 'admin' ? {} : { creation }),
+        theme: theme || null,
+        ...(role === 'admin' ? {} : { creation, firewall }),
       });
       toast.success(`Updated "${user.username}"`);
       onSaved();
@@ -268,9 +275,29 @@ function EditUserModal({
             <option value="viewer">Viewer — read-only on assigned instances</option>
           </Select>
         </Field>
+        <Field label="Theme when they sign in">
+          <Select value={theme} onChange={(e) => setTheme(e.target.value)}>
+            <option value="">Their own choice (whatever their browser last used)</option>
+            {THEMES.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.label}
+              </option>
+            ))}
+          </Select>
+        </Field>
         <Field label="New password (leave blank to keep current)">
           <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={8} />
         </Field>
+        {role !== 'admin' && (
+          <Field label="Host firewall">
+            <Select value={firewall} onChange={(e) => setFirewall(e.target.value as FirewallAccess)}>
+              <option value="none">No access</option>
+              <option value="view">View rules</option>
+              <option value="instances">Open & close their instances’ ports</option>
+              <option value="manage">Manage any port (except SSH and Outpost’s own)</option>
+            </Select>
+          </Field>
+        )}
         {role !== 'admin' && <CreationEditor role={role} value={creation} onChange={setCreation} owned={user?.owned ?? 0} />}
         {role !== 'admin' && <AccessEditor role={role} servers={servers} access={access} onChange={setAccess} />}
         <ErrorText>{error}</ErrorText>

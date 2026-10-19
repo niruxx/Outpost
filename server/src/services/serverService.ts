@@ -16,6 +16,7 @@ export interface CreateServerInput {
   extraArgs?: string;
   createdBy: string | null;
   steamAppId?: string | null;
+  steamPreset?: string | null;
   steamLogin?: string;
   steamExtraFlags?: string;
   launchConfig?: string | null;
@@ -28,8 +29,8 @@ export function createServerRecord(input: CreateServerInput): ServerRecord {
   fs.mkdirSync(backupDir(id), { recursive: true });
   prep(
     `INSERT INTO servers
-      (id, name, platform, loader, version, min_memory_mb, max_memory_mb, server_port, extra_java_args, extra_args, status, created_by, steam_app_id, steam_login, steam_extra_flags, launch_config, docker_config)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'installing', ?, ?, ?, ?, ?, ?)`
+      (id, name, platform, loader, version, min_memory_mb, max_memory_mb, server_port, extra_java_args, extra_args, status, created_by, steam_app_id, steam_preset, steam_login, steam_extra_flags, launch_config, docker_config)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'installing', ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     id,
     input.name,
@@ -43,6 +44,7 @@ export function createServerRecord(input: CreateServerInput): ServerRecord {
     input.extraArgs ?? '',
     input.createdBy,
     input.steamAppId ?? null,
+    input.steamPreset ?? null,
     input.steamLogin ?? 'anonymous',
     input.steamExtraFlags ?? '',
     input.launchConfig ?? null,

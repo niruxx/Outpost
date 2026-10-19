@@ -18,7 +18,7 @@ const MARKED_GAMES: Record<string, MarkedGame> = {
   '730': { label: 'Counter-Strike 2', mark: { type: 'crosshair', color: '#f2a03d' }, tile: 'from-[#3a2a12] to-[#1f170b]' },
   '740': { label: 'Counter-Strike: Global Offensive', mark: { type: 'crosshair', color: '#e8b04a' }, tile: 'from-[#3a2a12] to-[#1f170b]' },
   '232330': { label: 'Counter-Strike: Source', mark: { type: 'crosshair', color: '#d9c27a' }, tile: 'from-[#33301c] to-[#1c1a0f]' },
-  '90': { label: 'Half-Life Dedicated (CS 1.6)', mark: { type: 'crosshair', color: '#e0c890' }, tile: 'from-[#33301c] to-[#1c1a0f]' },
+  '90': { label: 'Counter-Strike 1.6 / Condition Zero', mark: { type: 'crosshair', color: '#e0c890' }, tile: 'from-[#33301c] to-[#1c1a0f]' },
   '232250': { label: 'Team Fortress 2', mark: { type: 'monogram', text: 'TF2', color: '#e07a3d' }, tile: 'from-[#3d2212] to-[#22130a]' },
   '222860': { label: 'Left 4 Dead 2', mark: { type: 'monogram', text: 'L4D2', color: '#d94a3d' }, tile: 'from-[#3d1712] to-[#220d0a]' },
   '4020': { label: "Garry's Mod", mark: { type: 'monogram', text: 'GM', color: '#4aa3df' }, tile: 'from-[#12293d] to-[#0a1722]' },

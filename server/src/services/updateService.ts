@@ -180,7 +180,8 @@ export async function performUpdate(
       onLog,
       server.steam_app_id,
       server.steam_login,
-      server.steam_extra_flags
+      server.steam_extra_flags,
+      server.steam_preset
     );
     return { version: server.version, build: null, jarFile: result.jarFile ?? server.jar_file };
   }

@@ -52,7 +52,8 @@ import { findJava, getJavaVersion } from '../services/javaService.js';
 import { getDiskUsage } from '../services/diskUsageService.js';
 import { instanceDir, safeJoin } from '../utils/paths.js';
 import { forgetServerSchedules } from '../services/schedulerService.js';
-import { STEAM_GAME_PRESETS, findPreset } from '../services/steamGames.js';
+import { instancePortProtocol } from '../services/portProtocol.js';
+import { STEAM_GAME_PRESETS, findPreset, findPresetById, findPresetFor } from '../services/steamGames.js';
 import { isMinecraftPlatform, type Loader, type Platform, type ServerRecord } from '../types/index.js';
 import { sanitizeLaunchConfig, launchConfigOf, launchVariables, resolveExecutable, ensureExecutable } from '../services/launchConfig.js';
 import { getOnlinePlayers } from '../services/playerService.js';
@@ -99,10 +100,11 @@ async function runServerInstall(server: ServerRecord): Promise<void> {
       (line) => appendLine(server.id, line),
       server.platform === 'steam' ? server.steam_app_id ?? undefined : undefined,
       server.steam_login,
-      server.steam_extra_flags
+      server.steam_extra_flags,
+      server.steam_preset
     );
 
-    const preset = server.platform === 'steam' ? findPreset(server.steam_app_id) : undefined;
+    const preset = server.platform === 'steam' ? findPresetFor(server) : undefined;
     if (server.platform === 'steam' && !preset) {
       if (!server.jar_file) throw new Error('No custom executable path is recorded for this server');
       const exePath = safeJoin(instanceDir(server.id), server.jar_file);
@@ -203,11 +205,16 @@ serversRouter.post(
       extraJavaArgs,
       extraArgs,
       acceptEula,
-      steamAppId,
+      steamPreset,
       customExecutable,
       steamLogin,
       steamExtraFlags,
     } = req.body ?? {};
+    let { steamAppId } = req.body ?? {};
+    // A curated game can be picked by preset id (needed when presets share an App ID).
+    const chosenPreset = platform === 'steam' && typeof steamPreset === 'string' && steamPreset ? findPresetById(steamPreset) : undefined;
+    if (platform === 'steam' && typeof steamPreset === 'string' && steamPreset && !chosenPreset) throw new HttpError(400, `Unknown game preset: ${steamPreset}`);
+    if (chosenPreset) steamAppId = chosenPreset.appId;
 
     if (typeof name !== 'string' || !name.trim()) throw new HttpError(400, 'Server name is required');
 
@@ -263,7 +270,7 @@ serversRouter.post(
       if (typeof steamAppId !== 'string' || !/^\d+$/.test(steamAppId)) {
         throw new HttpError(400, 'steamAppId is required for Steam servers and must be a numeric Steam App ID');
       }
-      preset = findPreset(steamAppId);
+      preset = chosenPreset ?? findPreset(steamAppId);
       if (!preset && (typeof customExecutable !== 'string' || !customExecutable.trim())) {
         throw new HttpError(400, "customExecutable is required when steamAppId isn't one of the curated presets");
       }
@@ -291,6 +298,7 @@ serversRouter.post(
       extraArgs: typeof extraArgs === 'string' ? extraArgs : '',
       createdBy: req.auth!.sub,
       steamAppId: platform === 'steam' ? steamAppId : null,
+      steamPreset: platform === 'steam' ? preset?.id ?? null : null,
       steamLogin: platform === 'steam' && typeof steamLogin === 'string' && steamLogin.trim() ? steamLogin.trim() : 'anonymous',
       steamExtraFlags: platform === 'steam' && typeof steamExtraFlags === 'string' ? steamExtraFlags.trim() : '',
       launchConfig,
@@ -378,16 +386,7 @@ serversRouter.get(
     const bind = props.find((p) => p.key === 'server-ip')?.value.trim() ?? '';
     const wildcard = !bind || bind === '0.0.0.0' || bind === '::';
     const primary = await getPrimaryAddress();
-    const protocol =
-      server.platform === 'java'
-        ? 'tcp'
-        : server.platform === 'bedrock'
-          ? 'udp'
-          : server.platform === 'custom'
-            ? launchConfigOf(server).protocol ?? 'tcp'
-            : server.platform === 'docker'
-              ? dockerConfigOf(server)?.ports[0]?.protocol ?? 'tcp'
-              : findPreset(server.steam_app_id)?.portProtocol ?? 'udp';
+    const protocol = instancePortProtocol(server);
     const host = wildcard ? primary ?? '127.0.0.1' : bind;
     const web = server.platform === 'docker' ? dockerConfigOf(server)?.webUi : server.platform === 'custom' ? launchConfigOf(server).webUi : undefined;
     res.json({

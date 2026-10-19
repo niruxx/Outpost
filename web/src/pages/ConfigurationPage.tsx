@@ -9,6 +9,7 @@ import { SteamCmdSettingsCard } from '../components/SteamCmdSettingsCard.js';
 import { FactoryResetCard } from '../components/FactoryResetCard.js';
 import { TwoFactorCard } from '../components/TwoFactorCard.js';
 import { NotificationsCard } from '../components/NotificationsCard.js';
+import { CurseForgeCard } from '../components/CurseForgeCard.js';
 import { api, ApiError } from '../api/client.js';
 import type { NodeInfo, PanelNode, SandboxStatus, SystemInfo } from '../api/types.js';
 import { useAuth } from '../state/AuthContext.js';
@@ -77,13 +78,12 @@ function HostCard() {
 /** A tiny mock window in the theme's own colors: sidebar, panel, accent button, text lines. */
 function ThemePreview({ theme }: { theme: ThemeOption }) {
   const [page, panel, accent, text] = theme.swatch;
-  const square = theme.id === 'minecraft';
-  const radius = square ? 0 : theme.id === 'xp' ? 3 : 8;
+  const { radius, border } = theme.preview;
   return (
-    <div className="flex h-20 overflow-hidden rounded-xl" style={{ background: page }} aria-hidden="true">
-      <div className="w-1/4" style={{ background: theme.id === 'xp' ? 'linear-gradient(#7ba2e7, #6375d6)' : theme.id === 'minecraft' ? '#4a3524' : panel }} />
+    <div className="flex h-20 overflow-hidden rounded-xl" style={{ background: theme.preview.page ?? page }} aria-hidden="true">
+      <div className="w-1/4" style={{ background: theme.preview.sidebar }} />
       <div className="flex-1 p-2">
-        <div className="h-full p-2" style={{ background: panel, borderRadius: radius, border: square ? '2px solid #000' : undefined }}>
+        <div className="h-full p-2" style={{ background: panel, borderRadius: radius, border }}>
           <div className="mb-1.5 h-1.5 w-1/2" style={{ background: text, opacity: 0.8, borderRadius: radius }} />
           <div className="mb-2 h-1.5 w-3/4" style={{ background: text, opacity: 0.4, borderRadius: radius }} />
           <div className="h-3 w-10" style={{ background: accent, borderRadius: radius }} />
@@ -102,8 +102,10 @@ function AppearanceCard() {
   return (
     <Card className="p-5">
       <CardTitle>Appearance</CardTitle>
-      <p className="mb-4 text-sm text-ink-400">Changes the look of the whole panel. Saved in this browser only.</p>
-      <div className="grid gap-3 sm:grid-cols-3" role="radiogroup" aria-label="Theme">
+      <p className="mb-4 text-sm text-ink-400">
+        Changes the look of the whole panel. Saved in this browser — an admin can also set a theme for your account that applies when you sign in.
+      </p>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" role="radiogroup" aria-label="Theme">
         {THEMES.map((t) => {
           const active = current === t.id;
           return (
@@ -409,6 +411,7 @@ export function ConfigurationPage() {
             <NotificationsCard />
             <NodesCard />
             <EnvironmentBackupCard />
+            <CurseForgeCard />
             <SteamCmdSettingsCard />
             <FactoryResetCard />
           </>

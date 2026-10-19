@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { api, getToken, setToken } from '../api/client.js';
+import { isThemeId, saveTheme } from '../lib/theme.js';
 import type { EffectiveCreation, PublicUser, Role } from '../api/types.js';
 
 /** What a role can create when the server's creation policy hasn't loaded (yet) — so the
@@ -95,6 +96,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
     if (res.twoFactorRequired || !res.token || !res.user) return 'two-factor' as const;
     setToken(res.token);
+    // An admin can give an account its own theme; it applies at every sign-in (and can still be changed after).
+    if (isThemeId(res.user.theme)) saveTheme(res.user.theme);
     setUser(res.user);
     return 'ok' as const;
   }, []);

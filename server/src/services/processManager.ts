@@ -14,7 +14,7 @@ import { publish, consoleTopic } from './wsHub.js';
 import * as consoleLog from './consoleLogService.js';
 import { logger } from '../utils/logger.js';
 import { HttpError } from '../utils/asyncHandler.js';
-import { findPreset, type StopStrategy } from './steamGames.js';
+import { findPresetFor, type StopStrategy } from './steamGames.js';
 import { notify } from './notificationService.js';
 import type { ServerRecord } from '../types/index.js';
 import {
@@ -235,7 +235,7 @@ export async function buildLaunch(server: ServerRecord): Promise<LaunchPlan> {
     requireFile(exe, 'Bedrock server executable');
     ({ cmd, args } = scriptCommand(exe, customArgs ?? splitPlain(server.extra_args)));
   } else if (server.platform === 'steam') {
-    const preset = findPreset(server.steam_app_id);
+    const preset = findPresetFor(server);
     const defaultExe = preset ? (process.platform === 'win32' ? preset.executable.win32 : preset.executable.linux) : server.jar_file;
     const exe = executable ?? (defaultExe ? path.join(dir, defaultExe) : null);
     if (!exe) throw new HttpError(400, 'No launch executable is configured for this server');
@@ -286,7 +286,7 @@ function resolveReadyRegex(server: ServerRecord, config: LaunchConfig): RegExp |
   if (server.platform === 'java') return JAVA_READY_RE;
   if (server.platform === 'bedrock') return BEDROCK_READY_RE;
   if (server.platform === 'custom' || server.platform === 'docker') return null;
-  return findPreset(server.steam_app_id)?.readyRegex ?? null;
+  return findPresetFor(server)?.readyRegex ?? null;
 }
 
 function resolveStopStrategy(server: ServerRecord, config: LaunchConfig): StopPlan {
@@ -298,7 +298,7 @@ function resolveStopStrategy(server: ServerRecord, config: LaunchConfig): StopPl
   if (server.platform === 'java') return JAVA_STOP;
   if (server.platform === 'bedrock') return BEDROCK_STOP;
   if (server.platform === 'custom' || server.platform === 'docker') return CUSTOM_STEAM_STOP; // docker: proxied to the container
-  return findPreset(server.steam_app_id)?.stopStrategy ?? CUSTOM_STEAM_STOP;
+  return findPresetFor(server)?.stopStrategy ?? CUSTOM_STEAM_STOP;
 }
 
 /** Sends a signal to the instance — to its whole process group when it was spawned detached. */
@@ -400,7 +400,7 @@ export async function startServer(serverId: string, options: { auto?: boolean } 
   const dir = instanceDir(serverId);
   const config = launchConfigOf(server);
   if (server.platform === 'steam') {
-    const note = findPreset(server.steam_app_id)?.prepareInstance?.(server);
+    const note = findPresetFor(server)?.prepareInstance?.(server);
     if (note) appendLog(serverId, `[Outpost] ${note}`, 'system');
   }
   const plan = await buildLaunch(server);

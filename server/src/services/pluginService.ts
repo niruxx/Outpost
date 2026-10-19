@@ -5,7 +5,7 @@ import { instanceDir, safeJoin, safeJoinReal } from '../utils/paths.js';
 import { downloadFile, type LogFn } from '../utils/download.js';
 import { HttpError } from '../utils/asyncHandler.js';
 import { readServerProperties } from './propertiesService.js';
-import { findPreset } from './steamGames.js';
+import { findPresetFor } from './steamGames.js';
 import type { ServerRecord } from '../types/index.js';
 import { PLUGIN_CAPABLE_LOADERS } from '../types/index.js';
 
@@ -20,7 +20,7 @@ import { PLUGIN_CAPABLE_LOADERS } from '../types/index.js';
  *   pak      — Palworld .pak mods in Pal/Content/Paks/~mods
  */
 export type AddonKind = 'bukkit' | 'datapack' | 'bedrock' | 'bepinex' | 'pak';
-export type AddonCatalog = 'plugin' | 'datapack';
+export type AddonCatalog = 'plugin' | 'datapack' | 'bedrock';
 
 export interface AddonProfile {
   kind: AddonKind;
@@ -28,7 +28,7 @@ export interface AddonProfile {
   singular: string; // "plugin", "data pack", …
   folder: string; // where they live, relative to the instance, for display
   extensions: string[]; // accepted uploads
-  catalog: AddonCatalog | null; // searchable Modrinth catalog, if any
+  catalog: AddonCatalog | null; // searchable catalog, if any (Bedrock: CurseForge only)
   notes: string[];
   warning: string | null;
 }
@@ -64,7 +64,7 @@ function inInstance(server: ServerRecord, relative: string): string {
 }
 
 function isValheim(server: ServerRecord) {
-  return server.platform === 'steam' && findPreset(server.steam_app_id)?.id === 'valheim';
+  return server.platform === 'steam' && findPresetFor(server)?.id === 'valheim';
 }
 
 function bepinexInstalled(server: ServerRecord): boolean {
@@ -116,9 +116,9 @@ export function getAddonSupport(server: ServerRecord): AddonSupport {
         singular: 'pack',
         folder: 'behavior_packs · resource_packs',
         extensions: ['.mcpack', '.mcaddon', '.zip'],
-        catalog: null,
+        catalog: 'bedrock',
         notes: [
-          `Uploaded packs are installed and activated for the world “${levelName(server)}”. Restart the server to apply changes.`,
+          `Packs are installed and activated for the world “${levelName(server)}” — search CurseForge or upload .mcpack/.mcaddon files. Restart the server to apply changes.`,
           'Resource packs are sent to players when they join. Packs that use experimental features also need those experiments enabled on the world.',
         ],
         warning: null,
@@ -127,7 +127,7 @@ export function getAddonSupport(server: ServerRecord): AddonSupport {
   }
 
   if (server.platform === 'steam') {
-    const preset = findPreset(server.steam_app_id);
+    const preset = findPresetFor(server);
     if (preset?.id === 'valheim') {
       return {
         supported: true,

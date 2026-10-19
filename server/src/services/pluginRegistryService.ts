@@ -31,6 +31,7 @@ interface ModrinthSearchHit {
 }
 
 function loadersFor(catalog: AddonCatalog): string[] {
+  if (catalog === 'bedrock') throw new Error('Modrinth has no Bedrock packs — use CurseForge');
   return catalog === 'datapack' ? ['datapack'] : BUKKIT_LOADERS;
 }
 

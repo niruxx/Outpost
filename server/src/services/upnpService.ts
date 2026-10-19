@@ -5,7 +5,7 @@ import { HttpError } from '../utils/asyncHandler.js';
 import { logger } from '../utils/logger.js';
 import { getServer, setUpnpConfig } from './serverService.js';
 import { appendLine } from './consoleLogService.js';
-import { findPreset } from './steamGames.js';
+import { findPresetFor } from './steamGames.js';
 import { launchConfigOf } from './launchConfig.js';
 import { dockerConfigOf } from './containerService.js';
 import type { ServerRecord } from '../types/index.js';
@@ -277,6 +277,33 @@ async function deleteMapping(gw: Gateway, externalPort: number, protocol: 'TCP' 
   }
 }
 
+/** The router's mapping for one external port, or null when there is none (error 714). Falls back
+ *  to scanning the list on routers that don't implement the direct lookup. */
+export async function getSpecificMapping(gw: Gateway, externalPort: number, protocol: 'TCP' | 'UDP'): Promise<RouterMapping | null> {
+  try {
+    const r = await soap(gw, 'GetSpecificPortMappingEntry', [
+      ['NewRemoteHost', ''],
+      ['NewExternalPort', externalPort],
+      ['NewProtocol', protocol],
+    ]);
+    return {
+      externalPort,
+      internalPort: Number(r.NewInternalPort),
+      internalClient: r.NewInternalClient ?? '',
+      protocol,
+      description: r.NewPortMappingDescription ?? '',
+      enabled: r.NewEnabled !== '0',
+      leaseSeconds: Number(r.NewLeaseDuration) || 0,
+    };
+  } catch (err) {
+    if (err instanceof UpnpError && err.code === 714) return null;
+    // Only fall back when the router answered (e.g. 401 "invalid action"); a silent router is an error.
+    if (!(err instanceof UpnpError) || err.code === null) throw err;
+    const all = await listRouterMappings(gw);
+    return all.find((m) => m.externalPort === externalPort && m.protocol.toUpperCase() === protocol) ?? null;
+  }
+}
+
 /** Mappings currently on the router (most routers expose them by index). */
 export async function listRouterMappings(gw: Gateway, limit = 128): Promise<RouterMapping[]> {
   const out: RouterMapping[] = [];
@@ -308,7 +335,7 @@ export function defaultProtocol(server: ServerRecord): UpnpProtocol {
   if (server.platform === 'bedrock') return 'UDP';
   if (server.platform === 'custom') return (launchConfigOf(server).protocol ?? 'tcp').toUpperCase() as UpnpProtocol;
   if (server.platform === 'docker') return (dockerConfigOf(server)?.ports[0]?.protocol ?? 'tcp').toUpperCase() as UpnpProtocol;
-  return (findPreset(server.steam_app_id)?.portProtocol ?? 'udp').toUpperCase() as UpnpProtocol;
+  return (findPresetFor(server)?.portProtocol ?? 'udp').toUpperCase() as UpnpProtocol;
 }
 
 export function defaultUpnpConfig(server: ServerRecord): UpnpConfig {

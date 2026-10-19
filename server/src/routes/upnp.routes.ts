@@ -15,6 +15,7 @@ import {
 } from '../services/upnpService.js';
 import { isRunning } from '../services/processManager.js';
 import { logAudit } from '../services/userService.js';
+import { testPort } from '../services/portTestService.js';
 
 /** Per-instance UPnP port forwarding. Viewing needs instance access; changing needs "network". */
 export const upnpRouter = Router({ mergeParams: true });
@@ -75,6 +76,30 @@ upnpRouter.post(
     if (!upnpConfigOf(server).configured) throw new HttpError(400, 'Save the port rules first');
     const result = await applyMappings(server.id, `requested by ${req.auth!.username}`);
     logAudit(req.auth!.sub, req.auth!.username, 'server.upnp.apply', server.id);
+    res.json(result);
+  })
+);
+
+/**
+ * Tests one forwarded port: router mapping, this machine, public address and — when `outside` is
+ * set — a real connection from the internet via a public port checker. Anyone who can see the
+ * instance may run the local checks; the outside check sends the public IP to a third party, so
+ * it needs the "network" permission.
+ */
+upnpRouter.post(
+  '/test',
+  asyncHandler(async (req, res) => {
+    const server = requireServer(req.params.serverId);
+    const externalPort = Number(req.body?.externalPort);
+    const internalPort = Number(req.body?.internalPort ?? externalPort);
+    const protocol = req.body?.protocol === 'UDP' ? 'UDP' : 'TCP';
+    const outside = req.body?.outside === true;
+    for (const p of [externalPort, internalPort]) {
+      if (!Number.isInteger(p) || p < 1 || p > 65535) throw new HttpError(400, 'Ports must be between 1 and 65535');
+    }
+    if (outside) requirePermission(req, 'network');
+    const result = await testPort(server, { externalPort, internalPort, protocol, outside });
+    if (outside) logAudit(req.auth!.sub, req.auth!.username, 'server.upnp.test_outside', server.id, `${protocol} ${externalPort}: ${result.summary}`);
     res.json(result);
   })
 );

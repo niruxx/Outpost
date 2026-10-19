@@ -6,7 +6,7 @@ import { logger } from '../utils/logger.js';
 import { downloadFile, fetchJson, formatBytes, type LogFn } from '../utils/download.js';
 import { findJava, findJavac } from './javaService.js';
 import { steamAppUpdate } from './steamCmdService.js';
-import { findPreset } from './steamGames.js';
+import { findPresetFor } from './steamGames.js';
 import type { Loader, Platform } from '../types/index.js';
 
 const MOJANG_MANIFEST = 'https://launchermeta.mojang.com/mc/game/version_manifest_v2.json';
@@ -174,7 +174,8 @@ export async function installServer(
   onLog?: LogFn,
   steamAppId?: string,
   steamLogin?: string,
-  steamExtraFlags?: string
+  steamExtraFlags?: string,
+  steamPreset?: string | null
 ): Promise<InstallResult> {
   fs.mkdirSync(instanceDir, { recursive: true });
   onLog?.(`==> Installing ${loader} ${version} (${platform}) into ${instanceDir}`);
@@ -193,9 +194,10 @@ export async function installServer(
     } else {
       onProgress?.(0, `Installing Steam app ${steamAppId} via steamcmd`);
       const extraFlags = steamExtraFlags ? steamExtraFlags.split(' ').filter(Boolean) : [];
-      await steamAppUpdate(steamAppId, instanceDir, onLog, true, steamLogin ?? 'anonymous', extraFlags);
+      const installFlags = findPresetFor({ steam_app_id: steamAppId, steam_preset: steamPreset })?.installFlags ?? [];
+      await steamAppUpdate(steamAppId, instanceDir, onLog, true, steamLogin ?? 'anonymous', extraFlags, installFlags);
     }
-    const preset = findPreset(steamAppId);
+    const preset = findPresetFor({ steam_app_id: steamAppId, steam_preset: steamPreset });
     const executable = preset ? (process.platform === 'win32' ? preset.executable.win32 : preset.executable.linux) : null;
     if (preset?.needsExecuteBit && process.platform !== 'win32' && executable) {
       try {

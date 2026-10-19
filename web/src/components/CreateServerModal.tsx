@@ -135,6 +135,7 @@ export function CreateServerModal({
         serverPort,
         acceptEula,
         steamAppId: platform === 'steam' ? (selectedSteamGame ? selectedSteamGame.appId : customAppId.trim()) : undefined,
+        steamPreset: platform === 'steam' && selectedSteamGame ? selectedSteamGame.id : undefined,
         customExecutable: platform === 'steam' && !selectedSteamGame ? customExecutable.trim() : undefined,
         steamLogin: platform === 'steam' ? steamLogin.trim() || 'anonymous' : undefined,
         steamExtraFlags: platform === 'steam' ? steamExtraFlags.trim() : undefined,

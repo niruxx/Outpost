@@ -50,6 +50,25 @@ export function authenticate(username: string, password: string): PublicUser | n
   return toPublic(user);
 }
 
+export const FIREWALL_ACCESS = ['none', 'view', 'instances', 'manage'] as const;
+
+/** Theme ids the web app ships (web/src/lib/theme.ts). */
+export const THEME_IDS = ['outpost', 'xp', 'minecraft', 'vista', 'aero'] as const;
+
+export function setUserTheme(id: string, theme: (typeof THEME_IDS)[number] | null) {
+  prep('UPDATE users SET theme = ? WHERE id = ?').run(theme, id);
+}
+
+export function setFirewallAccess(id: string, access: (typeof FIREWALL_ACCESS)[number]) {
+  prep('UPDATE users SET firewall = ? WHERE id = ?').run(access, id);
+}
+
+/** Admins always manage; everyone else gets what their account allows. */
+export function effectiveFirewallAccess(userId: string, role: Role): (typeof FIREWALL_ACCESS)[number] {
+  if (role === 'admin') return 'manage';
+  return getUserById(userId)?.firewall ?? 'none';
+}
+
 export function updateUserRole(id: string, role: Role) {
   prep('UPDATE users SET role = ? WHERE id = ?').run(role, id);
 }

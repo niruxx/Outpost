@@ -354,6 +354,28 @@ else
   warn "Skipping bubblewrap — instances will run without the process sandbox."
 fi
 
+# The Firewall page drives UFW or firewalld, which need root. Let the panel's user run just that
+# tool through sudo without a password (nothing else).
+FW_BIN="$(command -v ufw 2>/dev/null || command -v firewall-cmd 2>/dev/null || true)"
+if [[ -z "$FW_BIN" ]]; then
+  for candidate in /usr/sbin/ufw /sbin/ufw /usr/bin/firewall-cmd /usr/sbin/firewall-cmd; do
+    [[ -x "$candidate" ]] && FW_BIN="$candidate" && break
+  done
+fi
+if [[ -n "$FW_BIN" && "$RUN_USER" != "root" ]] \
+  && confirm "Let Outpost manage the firewall ($(basename "$FW_BIN")) from its Firewall page? (adds a sudoers rule for that one command)" n; then
+  SUDOERS_FILE="/etc/sudoers.d/outpost-firewall"
+  SUDOERS_TMP="$(mktemp)"
+  echo "$RUN_USER ALL=(root) NOPASSWD: $FW_BIN" >"$SUDOERS_TMP"
+  if $SUDO visudo -cf "$SUDOERS_TMP" >/dev/null; then
+    $SUDO install -m 0440 -o root -g root "$SUDOERS_TMP" "$SUDOERS_FILE"
+    ok "Outpost can now run $FW_BIN (rule in $SUDOERS_FILE)"
+  else
+    warn "Couldn't validate the sudoers rule — skipping. Add it yourself: $RUN_USER ALL=(root) NOPASSWD: $FW_BIN"
+  fi
+  rm -f "$SUDOERS_TMP"
+fi
+
 if [[ "$CONTAINERS" == "1" ]] && confirm "Install a container engine for Docker, Portainer and app-catalog instances?" y; then
   if [[ -z "$ENGINE" ]]; then
     if command -v podman >/dev/null 2>&1 && ! command -v docker >/dev/null 2>&1; then

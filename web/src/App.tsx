@@ -13,6 +13,7 @@ import { FileManagerPage } from './pages/FileManagerPage.js';
 import { DockerPage } from './pages/DockerPage.js';
 import { UsersPage } from './pages/UsersPage.js';
 import { AuditPage } from './pages/AuditPage.js';
+import { FirewallPage } from './pages/FirewallPage.js';
 import type { ReactNode } from 'react';
 
 function FullScreenLoader() {
@@ -104,6 +105,14 @@ function AppRoutes() {
             <RequireAdmin>
               <UsersPage />
             </RequireAdmin>
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/firewall"
+        element={
+          <RequireAuth>
+            <FirewallPage />
           </RequireAuth>
         }
       />
