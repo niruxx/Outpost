@@ -170,7 +170,8 @@ serversRouter.get(
   '/catalog/steam-games',
   asyncHandler(async (_req, res) => {
     res.json({
-      games: STEAM_GAME_PRESETS.map(({ id, label, appId, defaultPort, portProtocol, notes }) => ({
+      // Only games whose server runs on this host's OS.
+      games: STEAM_GAME_PRESETS.filter((p) => !p.hosts || p.hosts.includes(process.platform)).map(({ id, label, appId, defaultPort, portProtocol, notes }) => ({
         id,
         label,
         appId,
@@ -215,6 +216,9 @@ serversRouter.post(
     const chosenPreset = platform === 'steam' && typeof steamPreset === 'string' && steamPreset ? findPresetById(steamPreset) : undefined;
     if (platform === 'steam' && typeof steamPreset === 'string' && steamPreset && !chosenPreset) throw new HttpError(400, `Unknown game preset: ${steamPreset}`);
     if (chosenPreset) steamAppId = chosenPreset.appId;
+    if (chosenPreset?.hosts && !chosenPreset.hosts.includes(process.platform)) {
+      throw new HttpError(400, `${chosenPreset.label} servers only run on ${chosenPreset.hosts.join(' / ')} hosts`);
+    }
 
     if (typeof name !== 'string' || !name.trim()) throw new HttpError(400, 'Server name is required');
 

@@ -144,7 +144,7 @@ Open **http://localhost:8642** — the first visit walks you through creating th
     </td>
     <td valign="top">
       <h4>🎨 Themes</h4>
-      Material 3 dark by default, or <b>Windows XP</b>, <b>Windows Vista / 7</b>, <b>Frutiger Aero</b> or <b>Minecraft</b>. Admins can give each account its own theme.
+      Material 3 dark by default, or <b>Windows XP</b>, <b>Windows Vista / 7</b>, <b>Frutiger Aero</b> or <b>Minecraft</b> — each with its own animated (or still) wallpaper. Admins can give each account its own theme.
     </td>
   </tr>
   <tr>
@@ -218,6 +218,9 @@ Every template is just a starting point — change the image, ports, environment
 | 🐾 | **Palworld** | 📦 `.pak` mods | `8211/udp` |
 | 🔫 | **Counter-Strike 2, CS:GO, Source, 1.6 & Condition Zero** | — | `27015/udp` |
 | 🎩 | **Team Fortress 2** | — | `27015/udp` |
+| ⚡ | **Quake III Arena (ioquake3) & Quake Live** | — | `27960/udp` |
+| 🛠️ | **Garry's Mod, Left 4 Dead 2, HL2:DM, DoD:S, Half-Life DM, TFC** | — | `27015/udp` |
+| 🏝️ | **Rust, ARK, 7 Days to Die, Satisfactory, Unturned** | — | game default |
 | 🧟 | **Project Zomboid** | — *(Workshop IDs live in its own `.ini`, under `<instance>/Zomboid/Server`)* | `16261/udp` |
 | 🌳 | **Terraria** | — *(the vanilla server has no mod loader)* | `7777/tcp` |
 | 🎯 | **Any Steam App ID** — CS2, TF2, Rust, ARK, Quake Live… | — | your choice |
@@ -453,6 +456,15 @@ Choose **Steam** when creating an instance, then a game:
 | 🔫 CS:GO (legacy) | 740 | `27015/udp` | Players join with CS2's `csgo_legacy` beta. |
 | 🔫 Counter-Strike: Source | 232330 | `27015/udp` | Settings in `cstrike/cfg/server.cfg`. |
 | 🔫 Counter-Strike 1.6 / Condition Zero | 90 | `27015/udp` | Half-Life Dedicated Server with the `cstrike` / `czero` mod; its download is flaky — run Update again if needed. |
+| ⚡ Quake III Arena | — | `27960/udp` | ioquake3 engine + id's free point release, downloaded from ioquake3.org. Upload your own `baseq3/pak0.pk3`; settings in `baseq3/server.cfg`. |
+| ⚡ Quake Live | 349090 | `27960/udp` | Linux hosts only. |
+| 🛠️ Garry's Mod / L4D2 / HL2:DM / DoD:S | 4020 / 222860 / 232370 / 232290 | `27015/udp` | Source dedicated servers (`srcds`). |
+| 🛠️ Half-Life DM / Team Fortress Classic | 90 | `27015/udp` | Half-Life Dedicated Server with the `valve` / `tfc` mod. |
+| 🏝️ Rust | 258550 | `28015/udp` | ~10 GB, 8–12 GB RAM. |
+| 🏝️ ARK: Survival Evolved | 376030 | `7777/udp` | ~20 GB; also forward query port 27015. |
+| 🏝️ 7 Days to Die | 294420 | `26900/udp` | Port and settings live in `serverconfig.xml`. |
+| 🏝️ Satisfactory | 1690800 | `7777/udp` | Claim the server from the game's Server Manager. |
+| 🏝️ Unturned | 1110390 | `27015/udp` | Settings in `Servers/outpost/Server/Commands.dat`. |
 | 🎩 Team Fortress 2 | 232250 | `27015/udp` | Settings in `tf/cfg/server.cfg`; token for app 440 to be listed. |
 | 🎯 Other | any | any | Give its executable path; tune stop/restart under **Configuration → Launch**. |
 

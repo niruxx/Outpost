@@ -18,7 +18,10 @@ const MARKED_GAMES: Record<string, MarkedGame> = {
   '730': { label: 'Counter-Strike 2', mark: { type: 'crosshair', color: '#f2a03d' }, tile: 'from-[#3a2a12] to-[#1f170b]' },
   '740': { label: 'Counter-Strike: Global Offensive', mark: { type: 'crosshair', color: '#e8b04a' }, tile: 'from-[#3a2a12] to-[#1f170b]' },
   '232330': { label: 'Counter-Strike: Source', mark: { type: 'crosshair', color: '#d9c27a' }, tile: 'from-[#33301c] to-[#1c1a0f]' },
-  '90': { label: 'Counter-Strike 1.6 / Condition Zero', mark: { type: 'crosshair', color: '#e0c890' }, tile: 'from-[#33301c] to-[#1c1a0f]' },
+  '90': { label: 'Half-Life Dedicated Server', mark: { type: 'crosshair', color: '#e0c890' }, tile: 'from-[#33301c] to-[#1c1a0f]' },
+  '2200': { label: 'Quake III Arena', mark: { type: 'monogram', text: 'Q3', color: '#e0623a' }, tile: 'from-[#3a1a12] to-[#1c0d08]' },
+  '232370': { label: 'Half-Life 2: Deathmatch', mark: { type: 'monogram', text: 'HL2', color: '#f08a24' }, tile: 'from-[#3a2412] to-[#21140a]' },
+  '232290': { label: 'Day of Defeat: Source', mark: { type: 'monogram', text: 'DoD', color: '#b9a36a' }, tile: 'from-[#2e2a1c] to-[#1a1810]' },
   '232250': { label: 'Team Fortress 2', mark: { type: 'monogram', text: 'TF2', color: '#e07a3d' }, tile: 'from-[#3d2212] to-[#22130a]' },
   '222860': { label: 'Left 4 Dead 2', mark: { type: 'monogram', text: 'L4D2', color: '#d94a3d' }, tile: 'from-[#3d1712] to-[#220d0a]' },
   '4020': { label: "Garry's Mod", mark: { type: 'monogram', text: 'GM', color: '#4aa3df' }, tile: 'from-[#12293d] to-[#0a1722]' },
@@ -90,7 +93,9 @@ const IMAGE_GAME: [RegExp, GameKind][] = [
   [/(^|\/)cs2|counter-?strike/i, 'steam:730'],
 ];
 
-export function gameKindOf(server: Pick<ServerRecord, 'platform' | 'steam_app_id'> & { version?: string; docker_config?: string | null }): GameKind {
+export function gameKindOf(
+  server: Pick<ServerRecord, 'platform' | 'steam_app_id'> & { version?: string; docker_config?: string | null; steam_preset?: string | null }
+): GameKind {
   if (server.platform === 'docker') {
     let icon: string | null = null;
     try {
@@ -108,7 +113,7 @@ export function gameKindOf(server: Pick<ServerRecord, 'platform' | 'steam_app_id
   const appId = server.steam_app_id ?? '';
   if (DRAWN_APP[appId]) return DRAWN_APP[appId];
   if (QUAKE_APP_IDS.has(appId)) return 'quake';
-  if (MARKED_GAMES[appId]) return `steam:${appId}`;
+  if (MARKED_GAMES[appId]) return server.steam_preset && PRESET_LABEL[server.steam_preset] ? `steam:${appId}:${server.steam_preset}` : `steam:${appId}`;
   return 'steam';
 }
 
@@ -122,12 +127,21 @@ export function isGameKind(kind: GameKind): boolean {
 }
 
 function marked(kind: GameKind): MarkedGame | null {
-  return kind.startsWith('steam:') ? MARKED_GAMES[kind.slice(6)] ?? null : null;
+  return kind.startsWith('steam:') ? MARKED_GAMES[kind.slice(6).split(':')[0]] ?? null : null;
 }
+
+/** Games that share an App ID (the Half-Life server runs several) are told apart by their preset. */
+const PRESET_LABEL: Record<string, string> = {
+  cs16: 'Counter-Strike 1.6',
+  cscz: 'Counter-Strike: Condition Zero',
+  hldm: 'Half-Life Deathmatch',
+  tfc: 'Team Fortress Classic',
+};
 
 /** Human-readable game name for an emblem kind. */
 export function gameLabel(kind: GameKind): string {
-  return appIcon(kind)?.label ?? marked(kind)?.label ?? DRAWN_LABEL[kind as DrawnKind] ?? DRAWN_LABEL.steam;
+  const preset = kind.startsWith('steam:') ? kind.split(':')[2] : undefined;
+  return (preset && PRESET_LABEL[preset]) ?? appIcon(kind)?.label ?? marked(kind)?.label ?? DRAWN_LABEL[kind as DrawnKind] ?? DRAWN_LABEL.steam;
 }
 
 /** Tile background per game — tonal, so the emblems read on the dark MD3 surfaces. */

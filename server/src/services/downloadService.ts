@@ -193,9 +193,14 @@ export async function installServer(
       await installTerraria(instanceDir, onLog);
     } else {
       onProgress?.(0, `Installing Steam app ${steamAppId} via steamcmd`);
-      const extraFlags = steamExtraFlags ? steamExtraFlags.split(' ').filter(Boolean) : [];
-      const installFlags = findPresetFor({ steam_app_id: steamAppId, steam_preset: steamPreset })?.installFlags ?? [];
-      await steamAppUpdate(steamAppId, instanceDir, onLog, true, steamLogin ?? 'anonymous', extraFlags, installFlags);
+      const target = findPresetFor({ steam_app_id: steamAppId, steam_preset: steamPreset });
+      if (target?.install) {
+        onProgress?.(0, `Downloading ${target.label}`);
+        await target.install(instanceDir, onLog);
+      } else {
+        const extraFlags = steamExtraFlags ? steamExtraFlags.split(' ').filter(Boolean) : [];
+        await steamAppUpdate(steamAppId, instanceDir, onLog, true, steamLogin ?? 'anonymous', extraFlags, target?.installFlags ?? []);
+      }
     }
     const preset = findPresetFor({ steam_app_id: steamAppId, steam_preset: steamPreset });
     const executable = preset ? (process.platform === 'win32' ? preset.executable.win32 : preset.executable.linux) : null;

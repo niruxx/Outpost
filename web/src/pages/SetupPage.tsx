@@ -5,6 +5,7 @@ import { useAuth } from '../state/AuthContext.js';
 import { ApiError } from '../api/client.js';
 import { Button, ErrorText, Field, Input } from '../components/ui.js';
 import { Logo } from '../components/Logo.js';
+import { Wallpaper } from '../components/Wallpaper.js';
 
 const FEATURES = [
   { icon: '🖥️', title: 'Create & run servers', desc: 'Vanilla, Paper, Purpur & Bedrock — installed for you.' },
@@ -99,7 +100,8 @@ export function SetupPage() {
   }
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center px-4">
+    <div className="relative isolate flex min-h-screen items-center justify-center px-4">
+      <Wallpaper />
       <Backdrop />
       <div className="relative z-10 w-full max-w-md">
         <StepDots step={step} />

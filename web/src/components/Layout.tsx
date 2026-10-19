@@ -9,6 +9,7 @@ import { api } from '../api/client.js';
 import type { ServerRecord, SystemInfo } from '../api/types.js';
 import { GameTile, gameKindOf } from './GameArt.js';
 import { StatusDot } from './StatusBadge.js';
+import { Wallpaper } from './Wallpaper.js';
 
 /** One MD3 navigation-drawer item: full-width pill, secondary-container indicator when active. */
 export function NavItem({
@@ -215,8 +216,9 @@ export function Layout({
   );
 
   return (
-    <div className="ui-app flex h-screen bg-surface-950">
-      <aside className="ui-sidebar hidden w-72 shrink-0 bg-surface-900 md:block">{drawer}</aside>
+    <div className="ui-app relative isolate flex h-screen bg-surface-950">
+      <Wallpaper />
+      <aside className="ui-sidebar relative z-[1] hidden w-72 shrink-0 bg-surface-900 md:block">{drawer}</aside>
 
       {/* Phone drawer. It stays mounted and slides with CSS: when closed it ignores every touch, so
           its backdrop can never be left covering the page (an interrupted exit animation used to
@@ -236,7 +238,7 @@ export function Layout({
         </aside>
       </div>
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="relative z-[1] flex min-w-0 flex-1 flex-col">
         <div className="flex items-center gap-3 bg-surface-900 px-4 py-3 md:hidden">
           <button onClick={() => setMobileOpen(true)} aria-label="Open navigation" className="state-layer rounded-full p-2 text-ink-200">
             <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">

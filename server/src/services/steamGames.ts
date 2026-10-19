@@ -1,6 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { instanceDir } from '../utils/paths.js';
+import { HttpError } from '../utils/asyncHandler.js';
+import { installQuake3 } from './directInstallers.js';
+import type { LogFn } from '../utils/download.js';
 import type { ServerRecord } from '../types/index.js';
 
 export type StopStrategy =
@@ -21,6 +24,12 @@ export interface SteamGamePreset {
   needsExecuteBit: boolean;
   /** steamcmd arguments that must come before `+app_update` (e.g. HLDS's `+app_set_config 90 mod cstrike`). */
   installFlags?: string[];
+  /** Installs without steamcmd (files published elsewhere). `appId` then only identifies the game. */
+  install?: (instanceDir: string, onLog?: LogFn) => Promise<void>;
+  /** Host OSes the server runs on; omitted = all. */
+  hosts?: NodeJS.Platform[];
+  /** Extra folders (relative to the instance) the game's own libraries live in, added to LD_LIBRARY_PATH on Linux. */
+  libraryPaths?: string[];
   /** Runs before each start (never for a preview) — e.g. to move data into a new location. Returns a log line, if any. */
   prepareInstance?(server: ServerRecord): string | null;
   notes?: string;
@@ -276,6 +285,292 @@ export const STEAM_GAME_PRESETS: SteamGamePreset[] = [
     notes:
       'Settings live in tf/cfg/server.cfg (create it in File Management). To appear in the server browser, add a Game Server Login Token ' +
       'for app 440: "+sv_setsteamaccount YOUR_TOKEN" in extra args. Players connect on UDP 27015.',
+  },
+  // ---- Quake ----
+  {
+    id: 'quake3',
+    label: 'Quake III Arena (ioquake3)',
+    appId: '2200',
+    defaultPort: 27960,
+    portProtocol: 'udp',
+    executable: { win32: 'ioq3ded.x86_64.exe', linux: 'ioq3ded.x86_64' },
+    install: installQuake3,
+    buildLaunchArgs: (server) => [
+      '+set', 'dedicated', '2',
+      '+set', 'net_port', String(server.server_port),
+      // Keep configs, logs and downloads in the instance instead of ~/.q3a.
+      '+set', 'fs_homepath', instanceDir(server.id),
+      '+exec', 'server.cfg',
+      '+map', 'q3dm17',
+      ...extraArgs(server),
+    ],
+    readyRegex: /Hunk_Clear: reset the hunk ok/i,
+    stopStrategy: { kind: 'stdin', commands: ['quit'], delayMs: 0 },
+    needsExecuteBit: true,
+    prepareInstance: (server) => {
+      if (!fs.existsSync(path.join(instanceDir(server.id), 'baseq3', 'pak0.pk3'))) {
+        throw new HttpError(
+          409,
+          'Quake III needs its main game data first: upload baseq3/pak0.pk3 from your own copy of the game (Steam: steamapps/common/Quake 3 Arena/baseq3) in File Management.'
+        );
+      }
+      return null;
+    },
+    notes:
+      'Runs the open-source ioquake3 engine with id’s free point-release data. The main game data (baseq3/pak0.pk3) isn’t free — ' +
+      'after installing, upload it from your own copy (Steam or GOG) to baseq3/ in File Management. Settings and map rotation are in baseq3/server.cfg.',
+  },
+  {
+    id: 'quakelive',
+    label: 'Quake Live',
+    appId: '349090',
+    defaultPort: 27960,
+    portProtocol: 'udp',
+    hosts: ['linux'],
+    executable: { win32: 'qzeroded.exe', linux: 'run_server_x64.sh' },
+    buildLaunchArgs: (server) => [
+      '+set', 'net_strict', '1',
+      '+set', 'net_port', String(server.server_port),
+      '+set', 'sv_hostname', server.name,
+      '+set', 'fs_homepath', path.join(instanceDir(server.id), 'home'),
+      '+exec', 'server.cfg',
+      '+map', 'campgrounds', 'ffa',
+      ...extraArgs(server),
+    ],
+    stopStrategy: { kind: 'stdin', commands: ['quit'], delayMs: 0 },
+    needsExecuteBit: true,
+    notes:
+      'Linux hosts only (id publishes no Windows server). Configs go in home/baseq3/server.cfg; change the starting map and factory ' +
+      'with extra args, e.g. "+map bloodrun duel". Workshop items go in home/baseq3/workshop.txt.',
+  },
+  // ---- Source / GoldSrc ----
+  {
+    id: 'gmod',
+    label: "Garry's Mod",
+    appId: '4020',
+    defaultPort: 27015,
+    portProtocol: 'udp',
+    executable: { win32: 'srcds.exe', linux: 'srcds_run' },
+    buildLaunchArgs: (server) => [
+      '-game', 'garrysmod',
+      '-console',
+      '-norestart',
+      '-port', String(server.server_port),
+      '+maxplayers', '16',
+      '+gamemode', 'sandbox',
+      '+map', 'gm_construct',
+      ...extraArgs(server),
+    ],
+    readyRegex: /Connection to Steam servers successful|VAC secure mode is activated/i,
+    stopStrategy: { kind: 'stdin', commands: ['quit'], delayMs: 0 },
+    needsExecuteBit: true,
+    notes: 'Change the gamemode with extra args (e.g. "+gamemode terrortown"); addons go in garrysmod/addons. Settings live in garrysmod/cfg/server.cfg.',
+  },
+  {
+    id: 'l4d2',
+    label: 'Left 4 Dead 2',
+    appId: '222860',
+    defaultPort: 27015,
+    portProtocol: 'udp',
+    executable: { win32: 'srcds.exe', linux: 'srcds_run' },
+    buildLaunchArgs: (server) => [
+      '-game', 'left4dead2',
+      '-console',
+      '-norestart',
+      '-port', String(server.server_port),
+      '+maxplayers', '8',
+      '+map', 'c1m1_hotel',
+      ...extraArgs(server),
+    ],
+    readyRegex: /Connection to Steam servers successful|VAC secure mode is activated/i,
+    stopStrategy: { kind: 'stdin', commands: ['quit'], delayMs: 0 },
+    needsExecuteBit: true,
+    notes: 'Settings live in left4dead2/cfg/server.cfg. Lobbies can reserve the server with "sv_allow_lobby_connect_only 0" off for direct connects.',
+  },
+  {
+    id: 'hl2dm',
+    label: 'Half-Life 2: Deathmatch',
+    appId: '232370',
+    defaultPort: 27015,
+    portProtocol: 'udp',
+    executable: { win32: 'srcds.exe', linux: 'srcds_run' },
+    buildLaunchArgs: (server) => [
+      '-game', 'hl2mp',
+      '-console',
+      '-norestart',
+      '-port', String(server.server_port),
+      '+maxplayers', '16',
+      '+map', 'dm_lockdown',
+      ...extraArgs(server),
+    ],
+    readyRegex: /Connection to Steam servers successful|VAC secure mode is activated/i,
+    stopStrategy: { kind: 'stdin', commands: ['quit'], delayMs: 0 },
+    needsExecuteBit: true,
+    notes: 'Settings live in hl2mp/cfg/server.cfg.',
+  },
+  {
+    id: 'dods',
+    label: 'Day of Defeat: Source',
+    appId: '232290',
+    defaultPort: 27015,
+    portProtocol: 'udp',
+    executable: { win32: 'srcds.exe', linux: 'srcds_run' },
+    buildLaunchArgs: (server) => [
+      '-game', 'dod',
+      '-console',
+      '-norestart',
+      '-port', String(server.server_port),
+      '+maxplayers', '24',
+      '+map', 'dod_anzio',
+      ...extraArgs(server),
+    ],
+    readyRegex: /Connection to Steam servers successful|VAC secure mode is activated/i,
+    stopStrategy: { kind: 'stdin', commands: ['quit'], delayMs: 0 },
+    needsExecuteBit: true,
+    notes: 'Settings live in dod/cfg/server.cfg.',
+  },
+  {
+    id: 'hldm',
+    label: 'Half-Life Deathmatch',
+    appId: '90',
+    defaultPort: 27015,
+    portProtocol: 'udp',
+    executable: { win32: 'hlds.exe', linux: 'hlds_run' },
+    installFlags: ['+app_set_config', '90', 'mod', 'valve'],
+    buildLaunchArgs: (server) => [
+      '-game', 'valve',
+      '-console',
+      '-norestart',
+      '-port', String(server.server_port),
+      '+maxplayers', '16',
+      '+map', 'crossfire',
+      ...extraArgs(server),
+    ],
+    readyRegex: /Connection to Steam servers successful|VAC secure mode is activated/i,
+    stopStrategy: { kind: 'stdin', commands: ['quit'], delayMs: 0 },
+    needsExecuteBit: true,
+    notes: 'Half-Life Dedicated Server (app 90). Its steamcmd download is flaky — run Update again if the server won’t start. Linux needs the 32-bit libraries.',
+  },
+  {
+    id: 'tfc',
+    label: 'Team Fortress Classic',
+    appId: '90',
+    defaultPort: 27015,
+    portProtocol: 'udp',
+    executable: { win32: 'hlds.exe', linux: 'hlds_run' },
+    installFlags: ['+app_set_config', '90', 'mod', 'tfc'],
+    buildLaunchArgs: (server) => [
+      '-game', 'tfc',
+      '-console',
+      '-norestart',
+      '-port', String(server.server_port),
+      '+maxplayers', '16',
+      '+map', '2fort',
+      ...extraArgs(server),
+    ],
+    readyRegex: /Connection to Steam servers successful|VAC secure mode is activated/i,
+    stopStrategy: { kind: 'stdin', commands: ['quit'], delayMs: 0 },
+    needsExecuteBit: true,
+    notes: 'Half-Life Dedicated Server (app 90) with the tfc mod. Run Update again if the first download is incomplete. Linux needs the 32-bit libraries.',
+  },
+  // ---- Survival / sandbox ----
+  {
+    id: 'rust',
+    label: 'Rust',
+    appId: '258550',
+    defaultPort: 28015,
+    portProtocol: 'udp',
+    executable: { win32: 'RustDedicated.exe', linux: 'RustDedicated' },
+    libraryPaths: ['RustDedicated_Data/Plugins/x86_64'],
+    buildLaunchArgs: (server) => [
+      '-batchmode',
+      '-nographics',
+      '+server.port', String(server.server_port),
+      '+server.identity', 'outpost',
+      '+server.hostname', server.name,
+      '+server.level', 'Procedural Map',
+      '+server.seed', '12345',
+      '+server.worldsize', '3500',
+      '+server.maxplayers', '50',
+      ...extraArgs(server),
+    ],
+    readyRegex: /Server startup complete/i,
+    stopStrategy: { kind: 'stdin', commands: ['quit'], delayMs: 0 },
+    needsExecuteBit: true,
+    notes:
+      'About 10 GB, and wants 8–12 GB of RAM. Change the map with extra args, e.g. "+server.seed 9876 +server.worldsize 4000". ' +
+      'Saves live in server/outpost. Players connect on UDP 28015.',
+  },
+  {
+    id: 'ark',
+    label: 'ARK: Survival Evolved',
+    appId: '376030',
+    defaultPort: 7777,
+    portProtocol: 'udp',
+    executable: { win32: 'ShooterGame/Binaries/Win64/ShooterGameServer.exe', linux: 'ShooterGame/Binaries/Linux/ShooterGameServer' },
+    buildLaunchArgs: (server) => [
+      `TheIsland?listen?SessionName=${server.name.replace(/[?\s]+/g, '_')}?Port=${server.server_port}?QueryPort=27015?MaxPlayers=20`,
+      '-server',
+      '-log',
+      ...extraArgs(server),
+    ],
+    stopStrategy: { kind: 'signal', signal: 'SIGINT' },
+    needsExecuteBit: true,
+    notes:
+      'About 20 GB, and wants 8+ GB of RAM. Players also need UDP 27015 (query) forwarded. Server settings live in ' +
+      'ShooterGame/Saved/Config/*/GameUserSettings.ini. Change the map in the first extra arg or by editing the preset’s launch command.',
+  },
+  {
+    id: '7dtd',
+    label: '7 Days to Die',
+    appId: '294420',
+    defaultPort: 26900,
+    portProtocol: 'udp',
+    executable: { win32: '7DaysToDieServer.exe', linux: '7DaysToDieServer.x86_64' },
+    buildLaunchArgs: (server) => ['-quit', '-batchmode', '-nographics', '-configfile=serverconfig.xml', '-dedicated', ...extraArgs(server)],
+    stopStrategy: { kind: 'signal', signal: 'SIGINT' },
+    needsExecuteBit: true,
+    notes:
+      'Everything is set in serverconfig.xml (File Management) — including ServerPort, which must match the port here. ' +
+      'It also uses UDP 26901–26903. The world autosaves; stopping sends Ctrl+C.',
+  },
+  {
+    id: 'satisfactory',
+    label: 'Satisfactory',
+    appId: '1690800',
+    defaultPort: 7777,
+    portProtocol: 'udp',
+    executable: { win32: 'FactoryServer.exe', linux: 'FactoryServer.sh' },
+    buildLaunchArgs: (server) => [`-Port=${server.server_port}`, '-log', '-unattended', ...extraArgs(server)],
+    stopStrategy: { kind: 'signal', signal: 'SIGINT' },
+    needsExecuteBit: true,
+    notes:
+      'Claim and configure the server from the game: Server Manager → Add Server → this host’s address. Uses UDP and TCP 7777. ' +
+      'Saves autosave every few minutes.',
+  },
+  {
+    id: 'unturned',
+    label: 'Unturned',
+    appId: '1110390',
+    defaultPort: 27015,
+    portProtocol: 'udp',
+    executable: { win32: 'Unturned.exe', linux: 'ServerHelper.sh' },
+    buildLaunchArgs: (server) => [
+      ...(process.platform === 'win32' ? ['-batchmode', '-nographics'] : []),
+      '+InternetServer/outpost',
+      ...extraArgs(server),
+    ],
+    stopStrategy: { kind: 'stdin', commands: ['shutdown'], delayMs: 0 },
+    needsExecuteBit: true,
+    prepareInstance: (server) => {
+      // Unturned reads its port from Servers/<name>/Server/Commands.dat — seed it from the instance's port once.
+      const file = path.join(instanceDir(server.id), 'Servers', 'outpost', 'Server', 'Commands.dat');
+      if (fs.existsSync(file)) return null;
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, `Port ${server.server_port}\nName ${server.name}\nMaxplayers 24\nPerspective Both\n`);
+      return 'Wrote Servers/outpost/Server/Commands.dat (port, name, max players) — edit it in File Management.';
+    },
+    notes: 'Settings live in Servers/outpost/Server/Commands.dat (created on first start). Players connect on UDP 27015–27016.',
   },
 ];
 

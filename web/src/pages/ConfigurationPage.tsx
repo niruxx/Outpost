@@ -10,10 +10,11 @@ import { FactoryResetCard } from '../components/FactoryResetCard.js';
 import { TwoFactorCard } from '../components/TwoFactorCard.js';
 import { NotificationsCard } from '../components/NotificationsCard.js';
 import { CurseForgeCard } from '../components/CurseForgeCard.js';
+import { UserThemesPanel } from '../components/UserThemesPanel.js';
 import { api, ApiError } from '../api/client.js';
 import type { NodeInfo, PanelNode, SandboxStatus, SystemInfo } from '../api/types.js';
 import { useAuth } from '../state/AuthContext.js';
-import { THEMES, saveTheme, storedTheme, type ThemeOption } from '../lib/theme.js';
+import { THEMES, saveTheme, saveWallpaper, storedTheme, storedWallpaper, type ThemeOption } from '../lib/theme.js';
 
 function formatUptime(sec: number): string {
   const d = Math.floor(sec / 86400);
@@ -93,8 +94,9 @@ function ThemePreview({ theme }: { theme: ThemeOption }) {
   );
 }
 
-function AppearanceCard() {
+function AppearanceCard({ isAdmin }: { isAdmin: boolean }) {
   const [current, setCurrent] = useState(storedTheme);
+  const [animated, setAnimated] = useState(() => storedWallpaper() === 'animated');
   function choose(id: ThemeOption['id']) {
     saveTheme(id);
     setCurrent(id);
@@ -103,7 +105,7 @@ function AppearanceCard() {
     <Card className="p-5">
       <CardTitle>Appearance</CardTitle>
       <p className="mb-4 text-sm text-ink-400">
-        Changes the look of the whole panel. Saved in this browser — an admin can also set a theme for your account that applies when you sign in.
+        Changes the look of the whole panel for you. Saved in this browser{isAdmin ? '.' : ' — an admin can also give your account a theme.'}
       </p>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" role="radiogroup" aria-label="Theme">
         {THEMES.map((t) => {
@@ -123,6 +125,21 @@ function AppearanceCard() {
           );
         })}
       </div>
+      <label className="mt-4 flex items-center gap-3 rounded-2xl bg-surface-900 p-3 text-sm text-ink-200">
+        <input
+          type="checkbox"
+          checked={animated}
+          onChange={(e) => {
+            setAnimated(e.target.checked);
+            saveWallpaper(e.target.checked ? 'animated' : 'static');
+          }}
+        />
+        <span>
+          <span className="font-medium">Animated wallpaper</span>
+          <span className="block text-xs text-ink-400">Each theme has its own background. Turn this off for a still picture (it’s also still when your device asks for reduced motion).</span>
+        </span>
+      </label>
+      {isAdmin && <UserThemesPanel />}
     </Card>
   );
 }
@@ -402,7 +419,7 @@ export function ConfigurationPage() {
     <Layout>
       <div className="stagger mx-auto max-w-5xl space-y-5 px-4 py-8 sm:px-8">
         <PageHeader title="Configuration" subtitle="Panel-wide settings for this Outpost host." />
-        <AppearanceCard />
+        <AppearanceCard isAdmin={isAdmin} />
         <TwoFactorCard />
         <HostCard />
         {isAdmin ? (

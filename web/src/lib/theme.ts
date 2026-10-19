@@ -92,6 +92,62 @@ export function applyTheme(id: ThemeId) {
   meta?.setAttribute('content', THEMES.find((t) => t.id === id)?.chrome ?? THEMES[0].chrome);
 }
 
+const WALLPAPER_KEY = 'outpost_wallpaper';
+export type WallpaperMode = 'animated' | 'static';
+
+export function storedWallpaper(): WallpaperMode {
+  try {
+    return localStorage.getItem(WALLPAPER_KEY) === 'static' ? 'static' : 'animated';
+  } catch {
+    return 'animated';
+  }
+}
+
+export function applyWallpaper(mode: WallpaperMode) {
+  document.documentElement.dataset.wallpaper = mode;
+}
+
+export function saveWallpaper(mode: WallpaperMode) {
+  applyWallpaper(mode);
+  try {
+    localStorage.setItem(WALLPAPER_KEY, mode);
+  } catch {
+    // per-browser preference only
+  }
+}
+
+const ASSIGNED_KEY = 'outpost_theme_assigned';
+
+/**
+ * Applies the theme an admin gave this account — once per assignment, so the user can still switch
+ * afterwards and is only overridden again when the admin picks something new.
+ */
+export function applyAssignedTheme(assigned: string | null | undefined) {
+  let last: string | null = null;
+  try {
+    last = localStorage.getItem(ASSIGNED_KEY);
+  } catch {
+    // storage unavailable — apply every time
+  }
+  if (!isThemeId(assigned)) {
+    if (last) {
+      try {
+        localStorage.removeItem(ASSIGNED_KEY);
+      } catch {
+        // ignore
+      }
+    }
+    return;
+  }
+  if (assigned === last) return;
+  saveTheme(assigned);
+  try {
+    localStorage.setItem(ASSIGNED_KEY, assigned);
+  } catch {
+    // ignore
+  }
+}
+
 export function saveTheme(id: ThemeId) {
   applyTheme(id);
   try {

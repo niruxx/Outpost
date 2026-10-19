@@ -5,6 +5,7 @@ import { useAuth } from '../state/AuthContext.js';
 import { ApiError } from '../api/client.js';
 import { Badge, Button, ErrorText, Field, Input } from '../components/ui.js';
 import { Logo } from '../components/Logo.js';
+import { Wallpaper } from '../components/Wallpaper.js';
 
 const APP_VERSION = '1.0.0';
 
@@ -43,7 +44,8 @@ export function LoginPage() {
   }
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center px-4">
+    <div className="relative isolate flex min-h-screen items-center justify-center px-4">
+      <Wallpaper />
       <div className="pointer-events-none fixed inset-0 overflow-hidden">
         <div className="grid-backdrop absolute inset-0" />
         <motion.div

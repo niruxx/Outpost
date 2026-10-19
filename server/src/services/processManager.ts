@@ -383,7 +383,8 @@ function buildLaunchEnv(server: ServerRecord, dir: string, base: NodeJS.ProcessE
   const needsLocalLibs = server.platform === 'bedrock' || (server.platform === 'steam' && process.platform !== 'win32');
   if (!needsLocalLibs) return base;
   const addon = addonLaunchEnv(server, dir);
-  const libPath = [...addon.libraryPaths, dir].join(':');
+  const gameLibs = server.platform === 'steam' ? (findPresetFor(server)?.libraryPaths ?? []).map((p) => path.join(dir, p)) : [];
+  const libPath = [...addon.libraryPaths, ...gameLibs, dir].join(':');
   return { ...base, ...addon.env, LD_LIBRARY_PATH: libPath };
 }
 
