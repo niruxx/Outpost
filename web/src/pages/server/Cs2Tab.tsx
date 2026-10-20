@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { setVisibleInterval } from '../../lib/perf.js';
 import { formatBytes } from './StatusTab.js';
+import { PluginConfigModal } from './Cs2PluginConfig.js';
 import { useServerDetail } from './ServerContext.js';
 import { api, ApiError } from '../../api/client.js';
 import { Badge, Button, Card, CardTitle, ErrorText, Field, Input, Notice, Select, Spinner } from '../../components/ui.js';
@@ -756,6 +757,7 @@ function Cs2Plugins({ serverId, canManage, onFrameworkReady }: { serverId: strin
   const [busy, setBusy] = useState('');
   const [repo, setRepo] = useState('');
   const [updates, setUpdates] = useState<Record<string, string>>({});
+  const [configuring, setConfiguring] = useState<string | null>(null);
   useEffect(() => {
     api
       .get<PluginsView>(base)
@@ -938,6 +940,11 @@ function Cs2Plugins({ serverId, canManage, onFrameworkReady }: { serverId: strin
                     >
                       {p.enabled ? 'Turn off' : 'Turn on'}
                     </Button>
+                    {!p.swiftly && (
+                      <Button variant="ghost" disabled={!!busy} onClick={() => setConfiguring(p.folder)}>
+                        Configure
+                      </Button>
+                    )}
                     <Button
                       variant="ghost"
                       disabled={!!busy}
@@ -1021,6 +1028,7 @@ function Cs2Plugins({ serverId, canManage, onFrameworkReady }: { serverId: strin
         Outpost installs each repo’s latest release. Plugins load on the next start; check with <span className="font-mono">meta list</span> / <span className="font-mono">css_plugins list</span>. CS2
         updates can unhook Metamod — Outpost re-links it before every start.
       </p>
+      <PluginConfigModal serverId={serverId} folder={configuring} onClose={() => setConfiguring(null)} />
     </Card>
   );
 }

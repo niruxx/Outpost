@@ -666,6 +666,7 @@ Every CS2 instance gets a **CS2** tab. Settings are written to `game/csgo/cfg/ou
 1. **Install (one click)** downloads Metamod:Source 2.0 and CounterStrikeSharp (with its .NET runtime, ~55 MB). Outpost adds Metamod to `gameinfo.gi` and re-adds it before every start, because CS2 updates replace that file.
 2. Pick from the catalog — **Speedometer HUD + WASD** (speed and pressed keys on screen; its GameHUD dependency installs itself), **SharpTimer** (surf/bhop/KZ timer), **CS2-SimpleAdmin**, **Retakes** (de_ maps only — turn it off for other modes), **MatchZy** — or paste any CounterStrikeSharp plugin's GitHub link. Outpost installs the latest release and works out where its files go.
 3. Turn plugins on/off (moved to `plugins/disabled`), check for updates, update or remove them. Configs you edited are kept.
+4. **Configure** opens the plugin's config files — wherever it keeps them (`addons/counterstrikesharp/configs/plugins/<Name>/`, its own folder, or `cfg/<name>/` like SharpTimer and Retakes). JSON configs get a form (switches, numbers, text, lists; passwords and webhooks masked) or a raw editor that checks the JSON as CounterStrikeSharp reads it (comments allowed). **Use this** turns a shipped `example.*` file into the real one, and **Undo last save** puts the previous version back. Most plugins write their config on first load, so start the server once first.
 
 - **Switch to vanilla** takes Metamod out of `gameinfo.gi`, so CS2 starts with no plugins at all — handy when a CS2 update breaks plugins. Nothing is deleted; **Turn plugins on** puts it back.
 - **SwiftlyS2 plugins** (another framework) can't load in CounterStrikeSharp and can stop other plugins loading: Outpost refuses to install them and flags any already there.
@@ -886,7 +887,7 @@ Nodes on older versions can still transfer instances to and from upgraded ones.
 - [x] ⏪ World Rewind — scheduled Minecraft world restore points (Java & Bedrock) and level.dat rollback
 - [x] ⚡ Lighter UI — far less CPU/GPU while the tab is open, polling pauses in background tabs, and a *Reduce effects* switch
 - [x] 🔫 Counter-Strike 2 tab — modes, surf/bhop presets, Workshop map library, commands &amp; admin setup
-- [x] 🧩 CS2 plugins — one-click Metamod + CounterStrikeSharp, plugin catalog, GitHub installs, vanilla switch
+- [x] 🧩 CS2 plugins — one-click Metamod + CounterStrikeSharp, plugin catalog, GitHub installs, vanilla switch, config editor
 
 ## 📝 TODO
 
@@ -933,7 +934,8 @@ Features other game panels (Pterodactyl, AMP, Crafty, PufferPanel) have that Out
 - [ ] 🔑 **Automatic server tokens** — create and renew the GSLT through Steam's Web API
 - [ ] 🔄 **Framework auto-update after CS2 updates** — update Metamod / CounterStrikeSharp when CS2 updates, and fall back to vanilla automatically if they crash on start
 - [ ] 🧩 **SwiftlyS2 support** — a second plugin framework, so SwiftlyS2-only plugins work too
-- [ ] 📝 **Plugin config editor** — edit each plugin's JSON config from a form, with reload
+- [x] 📝 **Plugin config editor** — form and raw editing of each plugin's config files, example files, undo
+- [ ] 🔃 **Live plugin reload** — apply a config change without restarting the server
 - [ ] 🗂️ **Shared game files** — run several CS2 instances from one ~35 GB install (overlay / hard links) instead of a copy each
 - [ ] 📈 **Server-browser stats** — A2S query of players and map on the dashboard, with player-count history
 - [ ] 🎟️ **Reserved slots & whitelist** — SteamID lists for private or pug servers

@@ -23,7 +23,7 @@ import {
   saveCs2Settings,
   writeCs2Configs,
 } from '../services/cs2Service.js';
-import { CATALOG, checkUpdates, frameworkStatus, installFrameworks, installPlugin, listCs2Plugins, removePlugin, setPluginEnabled, setPluginsLoaded } from '../services/cs2PluginService.js';
+import { CATALOG, checkUpdates, frameworkStatus, installFrameworks, installPlugin, listCs2Plugins, removePlugin, setPluginEnabled, setPluginsLoaded, pluginConfigFiles, readPluginConfig, writePluginConfig, revertPluginConfig, useExampleConfig } from '../services/cs2PluginService.js';
 import type { Request } from 'express';
 import { getPrimaryAddress } from '../services/networkService.js';
 import type { ServerRecord } from '../types/index.js';
@@ -251,6 +251,61 @@ cs2Router.get(
   '/plugins/updates',
   asyncHandler(async (req, res) => {
     res.json({ updates: await checkUpdates(requireCs2(req.params.serverId)) });
+  }),
+);
+
+// Plugin configs can hold database passwords and webhooks, so even reading them needs "plugins".
+cs2Router.get(
+  '/plugins/:folder/configs',
+  asyncHandler(async (req, res) => {
+    requirePermission(req, 'plugins');
+    const server = requireCs2(req.params.serverId);
+    res.json({ files: pluginConfigFiles(server, req.params.folder), running: isRunning(server.id) });
+  }),
+);
+
+cs2Router.get(
+  '/plugins/:folder/configs/file',
+  asyncHandler(async (req, res) => {
+    requirePermission(req, 'plugins');
+    res.json(readPluginConfig(requireCs2(req.params.serverId), req.params.folder, String(req.query.path ?? '')));
+  }),
+);
+
+cs2Router.put(
+  '/plugins/:folder/configs/file',
+  asyncHandler(async (req, res) => {
+    requirePermission(req, 'plugins');
+    const server = requireCs2(req.params.serverId);
+    const rel = String(req.body?.path ?? '');
+    if (typeof req.body?.content !== 'string') throw new HttpError(400, 'content is required');
+    writePluginConfig(server, req.params.folder, rel, req.body.content);
+    logAudit(req.auth!.sub, req.auth!.username, 'server.cs2.plugin_config', server.id, rel);
+    appendLine(server.id, `[Outpost] ${rel} edited by ${req.auth!.username}${isRunning(server.id) ? ' — restart (or reload the plugin) to apply it' : ''}`, 'system');
+    res.json(readPluginConfig(server, req.params.folder, rel));
+  }),
+);
+
+cs2Router.post(
+  '/plugins/:folder/configs/revert',
+  asyncHandler(async (req, res) => {
+    requirePermission(req, 'plugins');
+    const server = requireCs2(req.params.serverId);
+    const rel = String(req.body?.path ?? '');
+    revertPluginConfig(server, req.params.folder, rel);
+    logAudit(req.auth!.sub, req.auth!.username, 'server.cs2.plugin_config_revert', server.id, rel);
+    res.json(readPluginConfig(server, req.params.folder, rel));
+  }),
+);
+
+cs2Router.post(
+  '/plugins/:folder/configs/use-example',
+  asyncHandler(async (req, res) => {
+    requirePermission(req, 'plugins');
+    const server = requireCs2(req.params.serverId);
+    const target = useExampleConfig(server, req.params.folder, String(req.body?.path ?? ''));
+    logAudit(req.auth!.sub, req.auth!.username, 'server.cs2.plugin_config', server.id, `created ${target}`);
+    res.status(201).json({ created: target, files: pluginConfigFiles(server, req.params.folder) });
   }),
 );
 

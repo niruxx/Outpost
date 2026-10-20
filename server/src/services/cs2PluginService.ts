@@ -541,3 +541,144 @@ export async function checkUpdates(server: ServerRecord): Promise<Record<string,
   }
   return out;
 }
+
+// ---------------------------------------------------------------------------
+// Plugin config editor
+// ---------------------------------------------------------------------------
+
+export interface PluginConfigFile {
+  /** Relative to game/csgo. */
+  path: string;
+  size: number;
+  kind: 'json' | 'text';
+  /** An example.* file the plugin ships — copy it to use it. */
+  example: boolean;
+  /** For an example: the file it becomes, and whether that exists already. */
+  target: string | null;
+  targetExists: boolean;
+}
+
+const CONFIG_EXT = /\.(json|jsonc|toml|ini|cfg|txt|ya?ml)$/i;
+const NOT_CONFIG = /\.(deps|runtimeconfig)\.json$|\.outpost\.bak$|^readme/i;
+const MAX_CONFIG_BYTES = 512 * 1024;
+const BACKUP = '.outpost.bak';
+/** "RetakesPlugin", "cs2-retakes", "CS2_Retakes" → "retakes". */
+const stem = (s: string) => s.toLowerCase().replace(/plugin|cs2|[^a-z0-9]/g, '');
+
+function pluginDirOf(server: ServerRecord, folder: string): string {
+  for (const enabled of [true, false]) {
+    const p = folderPath(server, folder, enabled);
+    if (fs.existsSync(p)) return p;
+  }
+  throw new HttpError(404, 'Plugin not found');
+}
+
+/** Config files a plugin uses: CounterStrikeSharp's configs/plugins/<Name>/, its own folder, and cfg/<name>/. */
+export function pluginConfigFiles(server: ServerRecord, folder: string): PluginConfigFile[] {
+  const root = csgo(server);
+  const pluginDir = pluginDirOf(server, folder);
+  const found = new Map<string, number>();
+  const scan = (dir: string, depth: number) => {
+    let entries: fs.Dirent[] = [];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) {
+        // translations and per-map/per-player data aren't settings
+        if (depth > 0 && !/^(lang|map_?config|mapdata|playerrecords|logs?|data)$/i.test(e.name)) scan(p, depth - 1);
+      } else if (e.isFile() && CONFIG_EXT.test(e.name) && !NOT_CONFIG.test(e.name)) {
+        const size = fs.statSync(p).size;
+        if (size <= MAX_CONFIG_BYTES) found.set(path.relative(root, p).replace(/\\/g, '/'), size);
+      }
+    }
+  };
+  scan(path.join(cssRoot(server), 'configs', 'plugins', folder), 2);
+  scan(pluginDir, 0);
+  try {
+    for (const d of fs.readdirSync(path.join(root, 'cfg'), { withFileTypes: true })) if (d.isDirectory() && stem(d.name) && stem(d.name) === stem(folder)) scan(path.join(root, 'cfg', d.name), 1);
+  } catch {
+    // no cfg yet
+  }
+  return [...found.entries()]
+    .map(([p, size]) => {
+      const base = path.posix.basename(p);
+      const example = /^example\./i.test(base) || /\.example\.[^.]+$/i.test(base);
+      const target = example ? path.posix.join(path.posix.dirname(p), base.replace(/^example\./i, '').replace(/\.example(\.[^.]+)$/i, '$1')) : null;
+      return { path: p, size, kind: /\.jsonc?$/i.test(p) ? ('json' as const) : ('text' as const), example, target, targetExists: !!target && found.has(target) };
+    })
+    .sort((a, b) => Number(a.example) - Number(b.example) || a.path.localeCompare(b.path));
+}
+
+function resolveConfig(server: ServerRecord, folder: string, rel: string): { file: PluginConfigFile; abs: string } {
+  const file = pluginConfigFiles(server, folder).find((f) => f.path === rel);
+  if (!file) throw new HttpError(404, 'Not one of this plugin’s config files');
+  return { file, abs: path.join(csgo(server), rel) };
+}
+
+export function readPluginConfig(server: ServerRecord, folder: string, rel: string): { path: string; content: string; hasBackup: boolean } {
+  const { abs } = resolveConfig(server, folder, rel);
+  return { path: rel, content: fs.readFileSync(abs, 'utf8'), hasBackup: fs.existsSync(abs + BACKUP) };
+}
+
+/** JSON as CounterStrikeSharp reads it: comments and trailing commas are allowed. */
+export function parseLenientJson(text: string): unknown {
+  let out = '';
+  let inStr = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inStr) {
+      out += c;
+      if (c === '\\') out += text[++i] ?? '';
+      else if (c === '"') inStr = false;
+    } else if (c === '"') {
+      inStr = true;
+      out += c;
+    } else if (c === '/' && text[i + 1] === '/') {
+      while (i < text.length && text[i] !== '\n') i++;
+      out += '\n';
+    } else if (c === '/' && text[i + 1] === '*') {
+      i = text.indexOf('*/', i + 2);
+      if (i < 0) break;
+      i++;
+    } else out += c;
+  }
+  return JSON.parse(out.replace(/,(\s*[}\]])/g, '$1'));
+}
+
+/** Saves a config (the previous version is kept as <file>.outpost.bak). JSON must parse. */
+export function writePluginConfig(server: ServerRecord, folder: string, rel: string, content: string) {
+  const { file, abs } = resolveConfig(server, folder, rel);
+  if (Buffer.byteLength(content) > MAX_CONFIG_BYTES) throw new HttpError(400, 'Config files are limited to 512 KB');
+  if (file.kind === 'json') {
+    try {
+      parseLenientJson(content);
+    } catch (err) {
+      throw new HttpError(400, `Not valid JSON — ${(err as Error).message}`);
+    }
+  }
+  fs.copyFileSync(abs, abs + BACKUP);
+  fs.writeFileSync(abs, content);
+}
+
+/** Puts the version from before the last save back. */
+export function revertPluginConfig(server: ServerRecord, folder: string, rel: string) {
+  const { abs } = resolveConfig(server, folder, rel);
+  if (!fs.existsSync(abs + BACKUP)) throw new HttpError(404, 'No earlier version saved');
+  const cur = fs.readFileSync(abs);
+  fs.copyFileSync(abs + BACKUP, abs);
+  fs.writeFileSync(abs + BACKUP, cur);
+}
+
+/** example.foo.json → foo.json (plugins like SharpTimer only read the real name). */
+export function useExampleConfig(server: ServerRecord, folder: string, rel: string): string {
+  const { file, abs } = resolveConfig(server, folder, rel);
+  if (!file.example || !file.target) throw new HttpError(400, 'Not an example file');
+  const dest = path.join(csgo(server), file.target);
+  if (fs.existsSync(dest)) throw new HttpError(409, `${file.target} already exists`);
+  fs.copyFileSync(abs, dest);
+  return file.target;
+}
