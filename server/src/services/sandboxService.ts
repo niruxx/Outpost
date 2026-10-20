@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { instanceDir } from '../utils/paths.js';
+import { instanceDir, STEAMCMD_DIR } from '../utils/paths.js';
 import { getSetting, setSetting } from './systemSettingsService.js';
 import type { ServerRecord } from '../types/index.js';
 
@@ -117,22 +117,54 @@ export function sandboxHome(server: ServerRecord): string {
   return path.join(instanceDir(server.id), '.home');
 }
 
+/** Where steamcmd keeps its own steamclient.so (Outpost's copy, then the usual system installs). */
+function steamcmdClientLibs(lib: 'linux64' | 'linux32'): string[] {
+  const realHome = process.env.HOME ?? '';
+  return [
+    path.join(STEAMCMD_DIR, lib, 'steamclient.so'),
+    ...(realHome
+      ? [
+          path.join(realHome, '.steam', lib === 'linux64' ? 'sdk64' : 'sdk32', 'steamclient.so'),
+          path.join(realHome, '.local', 'share', 'Steam', 'steamcmd', lib, 'steamclient.so'),
+          path.join(realHome, '.steam', 'steamcmd', lib, 'steamclient.so'),
+        ]
+      : []),
+  ];
+}
+
 /**
- * Steam dedicated servers look for ~/.steam/sdk64/steamclient.so. Outside the sandbox SteamCMD
- * created that in the real home; inside, home is the instance's own .home — so point it at the copy
- * the game ships in its linux64/ (linux32/) folder, as LinuxGSM does.
+ * Steam dedicated servers load ~/.steam/sdk64/steamclient.so. Outside the sandbox steamcmd created
+ * that in the real home; inside, home is the instance's own .home. Use the copy the game ships in its
+ * linux64/ (linux32/) folder when it has one (as LinuxGSM does, linked); otherwise — CS2, for one,
+ * doesn't ship it — copy steamcmd's, since the sandbox can't see steamcmd's folder. The copy is
+ * refreshed when steamcmd updates.
  */
-function linkSteamClient(dir: string, home: string) {
+export function linkSteamClient(dir: string, home: string) {
   for (const [sdk, lib] of [
     ['sdk64', 'linux64'],
     ['sdk32', 'linux32'],
-  ]) {
-    const source = path.join(dir, lib, 'steamclient.so');
+  ] as const) {
     const target = path.join(home, '.steam', sdk, 'steamclient.so');
-    if (!fs.existsSync(source) || fs.existsSync(target)) continue;
     try {
+      // A link left dangling (game folder moved, file removed) blocks a fresh one.
+      const lst = fs.lstatSync(target, { throwIfNoEntry: false });
+      if (lst?.isSymbolicLink() && !fs.existsSync(target)) fs.rmSync(target, { force: true });
+
+      const shipped = path.join(dir, lib, 'steamclient.so');
+      if (fs.existsSync(shipped)) {
+        if (fs.existsSync(target)) continue;
+        fs.mkdirSync(path.dirname(target), { recursive: true });
+        fs.symlinkSync(path.relative(path.dirname(target), shipped), target);
+        continue;
+      }
+      const fromSteamcmd = steamcmdClientLibs(lib).find((p) => fs.existsSync(p));
+      if (!fromSteamcmd) continue;
+      const src = fs.statSync(fromSteamcmd);
+      const cur = fs.statSync(target, { throwIfNoEntry: false });
+      if (cur && cur.size === src.size && cur.mtimeMs >= src.mtimeMs) continue;
       fs.mkdirSync(path.dirname(target), { recursive: true });
-      fs.symlinkSync(path.relative(path.dirname(target), source), target);
+      fs.rmSync(target, { force: true });
+      fs.copyFileSync(fs.realpathSync(fromSteamcmd), target);
     } catch {
       // best effort; the game logs its own error if it really needs it
     }
