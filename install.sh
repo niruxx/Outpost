@@ -184,12 +184,17 @@ install_steamcmd_deps() {
       $SUDO dpkg --add-architecture i386
       $SUDO apt-get update -y
       $SUDO apt-get install -y lib32gcc-s1 lib32stdc++6
+      # ICU: the .NET runtime in CS2's CounterStrikeSharp plugin framework needs it (libicu-dev pulls in
+      # whichever libicuNN this release ships).
+      $SUDO apt-get install -y libicu-dev || true
       ;;
     fedora)
       $SUDO dnf install -y glibc.i686 libstdc++.i686
+      $SUDO dnf install -y libicu || true
       ;;
     opensuse)
       $SUDO zypper --non-interactive install libstdc++6-32bit glibc-32bit
+      $SUDO zypper --non-interactive install icu || true
       ;;
     arch)
       if ! grep -q '^\[multilib\]' /etc/pacman.conf; then
@@ -197,7 +202,7 @@ install_steamcmd_deps() {
         warn "Uncomment [multilib] and its Include line in /etc/pacman.conf, run 'sudo pacman -Sy', then install lib32-gcc-libs yourself."
         return 1
       fi
-      $SUDO pacman -Sy --needed --noconfirm lib32-gcc-libs
+      $SUDO pacman -Sy --needed --noconfirm lib32-gcc-libs icu
       ;;
     *)
       warn "Don't know how to install steamcmd's 32-bit runtime deps on this distro — install them manually if you plan to use Steam-platform servers."

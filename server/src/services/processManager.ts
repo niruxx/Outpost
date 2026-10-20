@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import { assertDiskRoom, wrapWithLimits } from './limitsService.js';
 import path from 'node:path';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
@@ -453,15 +454,51 @@ function issueStop(serverId: string, instance: RunningInstance) {
   }
 }
 
+/**
+ * Files in the instance owned by someone other than the panel's user (left by a `sudo` run) are
+ * read-only to the server — plugins then fail with "Permission denied". Linux/macOS only; bounded walk.
+ */
+function foreignOwnedPaths(dir: string): { count: number; examples: string[] } {
+  const uid = process.getuid?.();
+  if (uid === undefined || uid === 0) return { count: 0, examples: [] };
+  const examples: string[] = [];
+  let count = 0;
+  let seen = 0;
+  const walk = (p: string, depth: number) => {
+    if (seen++ > 50_000) return;
+    let st: fs.Stats;
+    try {
+      st = fs.lstatSync(p);
+    } catch {
+      return;
+    }
+    if (st.uid !== uid) {
+      count++;
+      if (examples.length < 3) examples.push(p);
+    }
+    if (!st.isDirectory() || depth >= 8) return;
+    let names: string[] = [];
+    try {
+      names = fs.readdirSync(p);
+    } catch {
+      return;
+    }
+    for (const n of names) walk(path.join(p, n), depth + 1);
+  };
+  walk(dir, 0);
+  return { count, examples };
+}
+
 /** Bedrock and Linux Steam servers ship their shared libraries next to the binary; mod loaders
  *  (e.g. BepInEx for Valheim) may add their own preload libraries and variables on top. */
 function buildLaunchEnv(server: ServerRecord, dir: string, base: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const presetEnv = server.platform === 'steam' ? (findPresetFor(server)?.launchEnv?.(server) ?? {}) : {};
   const needsLocalLibs = server.platform === 'bedrock' || (server.platform === 'steam' && process.platform !== 'win32');
-  if (!needsLocalLibs) return base;
+  if (!needsLocalLibs) return { ...base, ...presetEnv };
   const addon = addonLaunchEnv(server, dir);
   const gameLibs = server.platform === 'steam' ? (findPresetFor(server)?.libraryPaths ?? []).map((p) => path.join(dir, p)) : [];
   const libPath = [...addon.libraryPaths, ...gameLibs, dir].join(':');
-  return { ...base, ...addon.env, LD_LIBRARY_PATH: libPath };
+  return { ...base, ...addon.env, ...presetEnv, LD_LIBRARY_PATH: libPath };
 }
 
 export async function startServer(serverId: string, options: { auto?: boolean } = {}): Promise<void> {
@@ -502,6 +539,15 @@ export async function startServer(serverId: string, options: { auto?: boolean } 
   if (plan.wine) appendLog(serverId, '[Outpost] Running under Wine', 'system');
 
   appendLog(serverId, `[Outpost] Host environment: ${process.platform} (${process.arch})`, 'system');
+  // Containers map files to their own users, so ownership only means something for host processes.
+  const foreign = server.platform === 'docker' ? { count: 0, examples: [] } : foreignOwnedPaths(dir);
+  if (foreign.count) {
+    appendLog(
+      serverId,
+      `[Outpost] Warning: ${foreign.count} file(s)/folder(s) in this instance belong to another user (e.g. ${foreign.examples.map((p) => path.relative(dir, p) || '.').join(', ')}), so the server can’t write to them — usually left by running something with sudo. Fix: sudo chown -R ${os.userInfo().username}: "${dir}"`,
+      'stderr',
+    );
+  }
   for (const note of plan.notes ?? []) appendLog(serverId, `[Outpost] ${note}`, 'system');
   appendLog(serverId, `[Outpost] Launching: ${plan.display}`, 'system');
   if (config.env?.length) appendLog(serverId, `[Outpost] Extra environment: ${config.env.map((e) => e.key).join(', ')}`, 'system');

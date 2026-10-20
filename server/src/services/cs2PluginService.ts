@@ -66,13 +66,6 @@ export const CATALOG: CatalogPlugin[] = [
     folder: 'CS2-GameHUD',
   },
   {
-    id: 'extended-speedmeter',
-    name: 'Extended Speedometer',
-    repo: 'PoncikMarket/Extended-Speedmeter',
-    description: 'Lag-free speedometer HUD with per-player top-speed records.',
-    tags: ['speed', 'hud', 'surf', 'bhop'],
-  },
-  {
     id: 'sharptimer',
     name: 'SharpTimer',
     repo: 'SharpTimer/SharpTimer',
@@ -92,8 +85,9 @@ export const CATALOG: CatalogPlugin[] = [
     id: 'retakes',
     name: 'Retakes',
     repo: 'B3none/cs2-retakes',
-    description: 'Retake mode: rounds start with the bomb planted and attackers defending it, with spawns for the official maps.',
+    description: 'Retake mode: rounds start with the bomb planted and attackers defending it. Only for bombsite (de_) maps it has spawns for — on any other map it ends every round, so turn it off there.',
     tags: ['mode', 'retakes'],
+    note: 'Retakes takes over every round — turn it off when playing anything else (surf, bhop, arms race…).',
     avoidAssets: /no-map-configs/i,
   },
   {
@@ -149,6 +143,10 @@ export interface FrameworkStatus {
   metamod: { installed: boolean; version: string | null };
   css: { installed: boolean; version: string | null };
   gameinfoPatched: boolean;
+  /** The "Load plugins" switch. */
+  loaded: boolean;
+  /** .NET's ICU dependency found on the host (Linux). */
+  icu: boolean;
 }
 
 function frameworkVersions(server: ServerRecord): { metamod?: string; css?: string } {
@@ -173,7 +171,7 @@ export function frameworkStatus(server: ServerRecord): FrameworkStatus {
   } catch {
     // not installed yet
   }
-  return { metamod: { installed: mm, version: mm ? (v.metamod ?? 'installed') : null }, css: { installed: css, version: css ? (v.css ?? 'installed') : null }, gameinfoPatched: patched };
+  return { metamod: { installed: mm, version: mm ? (v.metamod ?? 'installed') : null }, css: { installed: css, version: css ? (v.css ?? 'installed') : null }, gameinfoPatched: patched, loaded: pluginsLoaded(server), icu: hostHasIcu() };
 }
 
 /**
@@ -194,9 +192,64 @@ export function patchGameinfo(server: ServerRecord): boolean {
   return true;
 }
 
+/** Takes the Metamod line back out of gameinfo.gi, so CS2 starts without any plugins. */
+export function unpatchGameinfo(server: ServerRecord): boolean {
+  const file = gameinfoPath(server);
+  if (!fs.existsSync(file)) return false;
+  const text = fs.readFileSync(file, 'utf8');
+  const next = text.replace(/^[ \t]*Game[ \t]+csgo\/addons\/metamod[ \t]*\r?\n/gim, '');
+  if (next === text) return false;
+  fs.writeFileSync(file, next);
+  return true;
+}
+
+/** "Load plugins" switch — off starts CS2 without Metamod (and so without any plugin), files untouched. */
+export function pluginsLoaded(server: ServerRecord): boolean {
+  try {
+    return !(server.game_settings && (JSON.parse(server.game_settings) as { pluginsOff?: boolean }).pluginsOff);
+  } catch {
+    return true;
+  }
+}
+
+export function setPluginsLoaded(server: ServerRecord, on: boolean) {
+  const row = prep('SELECT game_settings FROM servers WHERE id = ?').get(server.id) as { game_settings: string | null };
+  const raw = row?.game_settings ? (JSON.parse(row.game_settings) as Record<string, unknown>) : {};
+  prep('UPDATE servers SET game_settings = ? WHERE id = ?').run(JSON.stringify({ ...raw, pluginsOff: !on }), server.id);
+  if (on) patchGameinfo(server);
+  else unpatchGameinfo(server);
+}
+
+const ICU_DIRS = ['/usr/lib', '/usr/lib64', '/usr/lib/x86_64-linux-gnu', '/lib/x86_64-linux-gnu', '/usr/lib/aarch64-linux-gnu', '/usr/local/lib'];
+let icuCache: boolean | null = null;
+/** .NET (inside CounterStrikeSharp) needs ICU on Linux; without it the runtime aborts while CS2 is loading. */
+export function hostHasIcu(): boolean {
+  if (process.platform === 'win32') return true;
+  if (icuCache === null) {
+    icuCache = ICU_DIRS.some((d) => {
+      try {
+        return fs.readdirSync(d).some((f) => /^libicuuc\.so(\.\d+)*$/.test(f));
+      } catch {
+        return false;
+      }
+    });
+  }
+  return icuCache;
+}
+
+/** Extra environment for CS2 when CounterStrikeSharp is in: run .NET without ICU if the host has none. */
+export function cs2PluginEnv(server: ServerRecord): Record<string, string> {
+  if (!pluginsLoaded(server) || !frameworkStatus(server).css.installed || hostHasIcu()) return {};
+  return { DOTNET_SYSTEM_GLOBALIZATION_INVARIANT: '1' };
+}
+
 /** Called before each start: CS2 updates replace gameinfo.gi, which would silently unload every plugin. */
 export function ensurePluginLoader(server: ServerRecord): string | null {
-  return patchGameinfo(server) ? 'Re-added Metamod to gameinfo.gi (a CS2 update had replaced it) — plugins load as usual' : null;
+  if (!pluginsLoaded(server)) return unpatchGameinfo(server) || frameworkStatus(server).metamod.installed ? 'Plugins are switched off (Metamod not loaded)' : null;
+  const notes: string[] = [];
+  if (patchGameinfo(server)) notes.push('Re-added Metamod to gameinfo.gi (a CS2 update had replaced it) — plugins load as usual');
+  if (frameworkStatus(server).css.installed && !hostHasIcu()) notes.push('No ICU library on this host — running CounterStrikeSharp’s .NET in invariant mode (install libicu to avoid it)');
+  return notes.join(' · ') || null;
 }
 
 async function extractTarGz(archive: string, dest: string, onLog?: LogFn) {
@@ -228,7 +281,9 @@ export async function installFrameworks(server: ServerRecord, onLog: LogFn): Pro
     new AdmZip(cssFile).extractAllTo(csgo(server), true);
     saveFrameworkVersion({ ...server, game_settings: (prep('SELECT game_settings FROM servers WHERE id = ?').get(server.id) as { game_settings: string }).game_settings }, 'css', rel.tag_name);
 
-    if (patchGameinfo(server)) onLog('==> Added Metamod to gameinfo.gi');
+    setPluginsLoaded(server, true);
+    if (frameworkStatus(server).gameinfoPatched) onLog('==> Added Metamod to gameinfo.gi');
+    if (!hostHasIcu()) onLog('==> Note: this host has no ICU library (libicu) — .NET will run in invariant mode. Installing libicu is better.');
     onLog('==> Plugin frameworks ready — restart the server, then type "meta list" / "css_plugins list" in the console to check');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
@@ -243,6 +298,8 @@ export async function installFrameworks(server: ServerRecord, onLog: LogFn): Pro
 export interface InstalledCs2Plugin {
   folder: string;
   enabled: boolean;
+  /** Built for SwiftlyS2 (another plugin framework) — CounterStrikeSharp can't load it. */
+  swiftly: boolean;
   /** Where it came from (catalog/GitHub), when Outpost installed it. */
   repo: string | null;
   version: string | null;
@@ -271,6 +328,24 @@ function saveSources(serverId: string, sources: Record<string, PluginSource>) {
   prep('UPDATE servers SET game_settings = ? WHERE id = ?').run(JSON.stringify({ ...raw, pluginSources: sources }), serverId);
 }
 
+/** SwiftlyS2 plugins look like CounterStrikeSharp ones (C# dlls) but reference SwiftlyS2's API instead. */
+function isSwiftlyPlugin(dlls: Buffer[]): boolean {
+  return dlls.some((d) => d.includes('SwiftlyS2')) && !dlls.some((d) => d.includes('CounterStrikeSharp.API'));
+}
+
+function folderIsSwiftly(dir: string): boolean {
+  try {
+    return isSwiftlyPlugin(
+      fs
+        .readdirSync(dir)
+        .filter((f) => f.toLowerCase().endsWith('.dll'))
+        .map((f) => fs.readFileSync(path.join(dir, f))),
+    );
+  } catch {
+    return false;
+  }
+}
+
 const hasDll = (dir: string) => {
   try {
     return fs.readdirSync(dir).some((f) => f.toLowerCase().endsWith('.dll'));
@@ -297,7 +372,7 @@ export function listCs2Plugins(server: ServerRecord): InstalledCs2Plugin[] {
     for (const name of names) {
       if (name === 'disabled' || !hasDll(path.join(dir, name))) continue;
       const src = byFolder.get(name);
-      out.push({ folder: name, enabled, repo: src?.repo ?? null, version: src?.version ?? null, catalogId: src?.catalogId ?? null });
+      out.push({ folder: name, enabled, swiftly: folderIsSwiftly(path.join(dir, name)), repo: src?.repo ?? null, version: src?.version ?? null, catalogId: src?.catalogId ?? null });
     }
   }
   return out.sort((a, b) => a.folder.localeCompare(b.folder));
@@ -394,6 +469,8 @@ export async function installPlugin(server: ServerRecord, input: { catalogId?: s
     if (!folders.length) throw new HttpError(400, `Couldn’t find a CounterStrikeSharp plugin in ${asset.name} — it may need installing by hand`);
     if (files.some(([, d]) => /^addons\/counterstrikesharp\/(api|bin|dotnet)\//i.test(d)))
       throw new HttpError(400, `${asset.name} bundles CounterStrikeSharp itself — refusing to overwrite the framework`);
+    const dlls = files.filter(([, d]) => /\/plugins\/[^/]+\/[^/]+\.dll$/i.test(d)).map(([e]) => zip.getEntry(e)?.getData() ?? Buffer.alloc(0));
+    if (isSwiftlyPlugin(dlls)) throw new HttpError(400, `${repo} ${rel.tag_name} is a SwiftlyS2 plugin, not a CounterStrikeSharp one — it can’t load here`);
     const root = csgo(server);
     // A disabled copy is replaced by the fresh one (enabled).
     for (const f of folders) fs.rmSync(path.join(disabledDir(server), f), { recursive: true, force: true });

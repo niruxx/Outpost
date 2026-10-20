@@ -90,7 +90,6 @@ const MOVEMENT = {
   sv_staminarecoveryrate: '0',
   sv_falldamage_scale: '0',
   sv_maxvelocity: '3500',
-  sv_clamp_unsafe_velocities: '0',
   sv_accelerate: '10',
   sv_friction: '4',
   sv_wateraccelerate: '10',
@@ -103,7 +102,6 @@ const ENDLESS = {
   mp_roundtime_hostage: '60',
   mp_freezetime: '0',
   mp_warmuptime: '0',
-  mp_do_warmup_period: '0',
   mp_respawn_on_death_ct: '1',
   mp_respawn_on_death_t: '1',
   mp_ignore_round_win_conditions: '1',
@@ -336,6 +334,9 @@ export function cs2LaunchArgs(server: ServerRecord): string[] {
 const MARK = '// Managed by Outpost (CS2 tab) — edits here are overwritten. Put your own settings in server.cfg.';
 
 /** All cvars the settings produce, in order (identity, bots, preset, your overrides). */
+/** CS:GO cvars that CS2 doesn't have ("Unknown command") — older presets saved them into servers' own cvars. */
+const NOT_IN_CS2 = new Set(['sv_clamp_unsafe_velocities', 'mp_do_warmup_period']);
+
 export function cs2Cvars(s: Cs2Settings): [string, string][] {
   const out: [string, string][] = [];
   if (s.hostname) out.push(['hostname', s.hostname]);
@@ -345,7 +346,7 @@ export function cs2Cvars(s: Cs2Settings): [string, string][] {
   out.push(['bot_difficulty', String(s.bots.difficulty)]);
   out.push(['bot_join_after_player', s.bots.joinAfterPlayer ? '1' : '0']);
   if (s.bots.quota === 0) out.push(['bot_kick', '']);
-  for (const [k, v] of Object.entries(s.cvars)) out.push([k, v]);
+  for (const [k, v] of Object.entries(s.cvars)) if (!NOT_IN_CS2.has(k)) out.push([k, v]);
   return out;
 }
 

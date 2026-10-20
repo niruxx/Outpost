@@ -726,6 +726,7 @@ function MapLibrary({
 interface Cs2PluginInfo {
   folder: string;
   enabled: boolean;
+  swiftly: boolean;
   repo: string | null;
   version: string | null;
   catalogId: string | null;
@@ -740,7 +741,7 @@ interface CatalogEntry {
   note?: string;
 }
 interface PluginsView {
-  frameworks: { metamod: { installed: boolean; version: string | null }; css: { installed: boolean; version: string | null }; gameinfoPatched: boolean };
+  frameworks: { metamod: { installed: boolean; version: string | null }; css: { installed: boolean; version: string | null }; gameinfoPatched: boolean; loaded: boolean; icu: boolean };
   frameworkJob: { state: 'running' | 'failed'; error?: string } | null;
   installed: Cs2PluginInfo[];
   catalog: CatalogEntry[];
@@ -842,7 +843,8 @@ function Cs2Plugins({ serverId, canManage, onFrameworkReady }: { serverId: strin
         {fw.metamod.installed ? <Badge tone="green">{fw.metamod.version}</Badge> : <Badge>not installed</Badge>}
         <span className="ml-2 text-ink-200">CounterStrikeSharp</span>
         {fw.css.installed ? <Badge tone="green">{fw.css.version}</Badge> : <Badge>not installed</Badge>}
-        {fw.metamod.installed && !fw.gameinfoPatched && <Badge tone="yellow">re-linked on next start</Badge>}
+        {fw.metamod.installed && fw.loaded && !fw.gameinfoPatched && <Badge tone="yellow">re-linked on next start</Badge>}
+        {fw.metamod.installed && !fw.loaded && <Badge tone="yellow">off — vanilla CS2</Badge>}
         <span className="flex-1" />
         {canManage && (
           <Button
@@ -854,6 +856,37 @@ function Cs2Plugins({ serverId, canManage, onFrameworkReady }: { serverId: strin
           </Button>
         )}
       </div>
+      {fw.metamod.installed && (
+        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-2xl border border-surface-600 px-3 py-2.5 text-sm">
+          <span className="min-w-0 flex-1">
+            <span className="block font-medium text-ink-100">{fw.loaded ? 'Plugins are on' : 'Vanilla CS2 — plugins are off'}</span>
+            <span className="block text-xs text-ink-400">
+              {fw.loaded
+                ? 'Turn them off to start plain CS2 without Metamod or any plugin — e.g. if the server stops loading after a CS2 update. Nothing is deleted.'
+                : 'CS2 starts without Metamod, so no plugin loads. Your plugins and their configs are kept for when you turn them back on.'}
+            </span>
+          </span>
+          {canManage && (
+            <Button
+              variant={fw.loaded ? 'ghost' : 'primary'}
+              disabled={!!busy}
+              onClick={() =>
+                run('load', () => api.post<PluginsView>(`${base}/loading`, { enabled: !fw.loaded }), fw.loaded ? `Plugins off — vanilla CS2 from the next start${restartHint ? ' (restart now)' : ''}` : `Plugins on from the next start${restartHint ? ' (restart now)' : ''}`)
+              }
+            >
+              {fw.loaded ? 'Switch to vanilla' : 'Turn plugins on'}
+            </Button>
+          )}
+        </div>
+      )}
+      {fw.css.installed && fw.loaded && !fw.icu && (
+        <div className="mb-3">
+          <Notice tone="warning">
+            This host has no ICU library, which CounterStrikeSharp’s .NET runtime needs. Outpost runs it in invariant mode so CS2 can start, but installing ICU is better: <span className="font-mono">sudo apt install libicu-dev</span> (Arch:{' '}
+            <span className="font-mono">icu</span>, Fedora: <span className="font-mono">libicu</span>).
+          </Notice>
+        </div>
+      )}
       {pv.frameworkJob?.state === 'failed' && (
         <div className="mb-3">
           <Notice tone="error">Framework install failed: {pv.frameworkJob.error}</Notice>
@@ -872,6 +905,11 @@ function Cs2Plugins({ serverId, canManage, onFrameworkReady }: { serverId: strin
                   <span className="block truncate text-[11px] text-ink-400">{p.repo ? `${sourceName(p.repo)} · ${p.version}` : 'added by hand'}</span>
                 </span>
                 {upd && <Badge tone="blue">{upd} available</Badge>}
+                {p.swiftly && (
+                  <span title="Built for SwiftlyS2, a different plugin framework — CounterStrikeSharp can’t load it and it can stop other plugins loading. Remove it.">
+                    <Badge tone="red">SwiftlyS2 plugin — remove</Badge>
+                  </span>
+                )}
                 {!p.enabled && <Badge>off</Badge>}
                 {canManage && (
                   <span className="flex gap-1">
@@ -934,6 +972,7 @@ function Cs2Plugins({ serverId, canManage, onFrameworkReady }: { serverId: strin
                   {has && <Badge tone="green">installed</Badge>}
                 </div>
                 <p className="flex-1 text-xs text-ink-400">{c.description}</p>
+                {c.note && <p className="mt-1 text-[11px] text-ink-500">{c.note}</p>}
                 <div className="mt-2 flex flex-wrap items-center gap-1">
                   {c.tags.slice(0, 4).map((t) => (
                     <span key={t} className="rounded-full bg-surface-800 px-2 py-0.5 text-[10px] text-ink-400">

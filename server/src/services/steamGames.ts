@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import { cs2LaunchArgs, ensureWorkshopLibrary, writeCs2Configs } from './cs2Service.js';
-import { ensurePluginLoader } from './cs2PluginService.js';
+import { cs2PluginEnv, ensurePluginLoader } from './cs2PluginService.js';
 import path from 'node:path';
 import { instanceDir, STEAMCMD_DIR } from '../utils/paths.js';
 import { HttpError } from '../utils/asyncHandler.js';
@@ -50,6 +50,8 @@ export interface SteamGamePreset {
   };
   /** Runs before each start (never for a preview) — e.g. to move data into a new location. Returns a log line, if any. */
   prepareInstance?(server: ServerRecord): string | null;
+  /** Extra environment variables for the game process. */
+  launchEnv?(server: ServerRecord): Record<string, string>;
   notes?: string;
 }
 
@@ -220,6 +222,7 @@ export const STEAM_GAME_PRESETS: SteamGamePreset[] = [
     // Mode, map, slots, token… come from the instance's CS2 tab (services/cs2Service.ts).
     buildLaunchArgs: (server) => [...cs2LaunchArgs(server), ...extraArgs(server)],
     prepareInstance: (server) => [writeCs2Configs(server), ensureWorkshopLibrary(server) ? 'Created the Workshop download folders' : null, ensurePluginLoader(server)].filter(Boolean).join(' · '),
+    launchEnv: (server) => cs2PluginEnv(server),
     readyRegex: /Host activate: Loading|Connection to Steam servers successful|GC Connection established/i,
     stopStrategy: { kind: 'stdin', commands: ['quit'], delayMs: 0 },
     needsExecuteBit: true,

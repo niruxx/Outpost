@@ -23,7 +23,7 @@ import {
   saveCs2Settings,
   writeCs2Configs,
 } from '../services/cs2Service.js';
-import { CATALOG, checkUpdates, frameworkStatus, installFrameworks, installPlugin, listCs2Plugins, removePlugin, setPluginEnabled } from '../services/cs2PluginService.js';
+import { CATALOG, checkUpdates, frameworkStatus, installFrameworks, installPlugin, listCs2Plugins, removePlugin, setPluginEnabled, setPluginsLoaded } from '../services/cs2PluginService.js';
 import type { Request } from 'express';
 import { getPrimaryAddress } from '../services/networkService.js';
 import type { ServerRecord } from '../types/index.js';
@@ -230,6 +230,20 @@ cs2Router.post(
       appendLine(server.id, `[Outpost] Plugin install failed: ${(err as Error).message}`, 'stderr');
       throw err;
     }
+  }),
+);
+
+/** The "Load plugins" switch: off starts CS2 without Metamod — to rule plugins out when a start hangs. */
+cs2Router.post(
+  '/plugins/loading',
+  asyncHandler(async (req, res) => {
+    requirePermission(req, 'plugins');
+    const server = requireCs2(req.params.serverId);
+    const on = !!req.body?.enabled;
+    setPluginsLoaded(server, on);
+    logAudit(req.auth!.sub, req.auth!.username, on ? 'server.cs2.plugins_on' : 'server.cs2.plugins_off', server.id, '');
+    appendLine(server.id, `[Outpost] Plugins switched ${on ? 'on' : 'off'} by ${req.auth!.username} — applies on the next start`, 'system');
+    res.json(pluginView(getServer(server.id)!));
   }),
 );
 
