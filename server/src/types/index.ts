@@ -118,6 +118,8 @@ export interface ServerRecord {
   modpack: string | null;
   /** JSON Limits (services/limitsService.ts). */
   limits: string | null;
+  /** JSON per-game settings (services/cs2Service.ts for Counter-Strike 2). */
+  game_settings: string | null;
   steam_login: string;
   steam_extra_flags: string;
   /** Admin-imposed lock (non-payment, TOS violation, …): stopped, can't be started, and only

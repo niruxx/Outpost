@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Cs2Tab } from './server/Cs2Tab.js';
 import { setVisibleInterval } from '../lib/perf.js';
 import { Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import { motion, LayoutGroup } from 'framer-motion';
@@ -31,6 +32,7 @@ import { api, ApiError } from '../api/client.js';
 import { isMinecraftPlatform, type ServerRecord } from '../api/types.js';
 
 function InstanceNav({ server, onNavigate }: { server: ServerRecord; onNavigate: () => void }) {
+  const isCs2 = server.platform === 'steam' && (server.steam_preset === 'cs2' || (!server.steam_preset && server.steam_app_id === '730'));
   const steam = !isMinecraftPlatform(server.platform);
   const kind = gameKindOf(server);
   return (
@@ -61,6 +63,7 @@ function InstanceNav({ server, onNavigate }: { server: ServerRecord; onNavigate:
       {(server.platform === 'java' || server.platform === 'bedrock' || server.platform === 'steam') && (
         <NavItem to="plugins" icon="plugin" label={addonNavLabel(server)} onClick={onNavigate} />
       )}
+      {isCs2 && <NavItem to="cs2" icon="bolt" label="CS2" onClick={onNavigate} />}
       {server.platform === 'steam' && <NavItem to="workshop" icon="box" label="Workshop" onClick={onNavigate} />}
       {(server.platform === 'steam' || server.platform === 'custom') && <NavItem to="wine" icon="wine" label="Wine" onClick={onNavigate} />}
       {!steam && <NavItem to="players" icon="player" label="Players" onClick={onNavigate} />}
@@ -347,6 +350,7 @@ function InstancePageInner() {
             <Route path="backups" element={<BackupsTab />} />
             <Route path="tasks" element={<TasksTab />} />
             <Route path="workshop" element={<WorkshopTab />} />
+            <Route path="cs2" element={<Cs2Tab />} />
             <Route path="wine" element={<WineTab />} />
             <Route path="configuration" element={<SettingsTab />} />
             <Route path="files" element={<FilesTab />} />

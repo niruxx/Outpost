@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { cs2LaunchArgs, writeCs2Configs } from './cs2Service.js';
 import path from 'node:path';
 import { instanceDir, STEAMCMD_DIR } from '../utils/paths.js';
 import { HttpError } from '../utils/asyncHandler.js';
@@ -215,23 +216,15 @@ export const STEAM_GAME_PRESETS: SteamGamePreset[] = [
     // What Valve's cs2.sh puts on LD_LIBRARY_PATH: the engine's own libraries (libv8.so, libtier0.so…)
     // live next to the binary, and libserver.so can't load without them.
     libraryPaths: ['game/bin/linuxsteamrt64', 'game/csgo/bin/linuxsteamrt64'],
-    buildLaunchArgs: (server) => [
-      '-dedicated',
-      '-console',
-      '-usercon',
-      '-port', String(server.server_port),
-      '+game_type', '0',
-      '+game_mode', '1',
-      '+map', 'de_dust2',
-      ...extraArgs(server),
-    ],
+    // Mode, map, slots, token… come from the instance's CS2 tab (services/cs2Service.ts).
+    buildLaunchArgs: (server) => [...cs2LaunchArgs(server), ...extraArgs(server)],
+    prepareInstance: (server) => writeCs2Configs(server),
     readyRegex: /Host activate: Loading|Connection to Steam servers successful|GC Connection established/i,
     stopStrategy: { kind: 'stdin', commands: ['quit'], delayMs: 0 },
     needsExecuteBit: true,
     notes:
-      'About 35 GB to download. Casual is the default — change mode with extra args, e.g. "+game_mode 1 +game_type 0" (competitive) or ' +
-      '"+game_mode 2 +game_type 0" (wingman). To show up in the public server browser, add a Game Server Login Token: ' +
-      '"+sv_setsteamaccount YOUR_TOKEN" (make one at steamcommunity.com/dev/managegameservers, app 730). Players connect on UDP 27015.',
+      'About 35 GB to download. Game mode, maps (official or Workshop), presets like surf and bhop, bots and the ' +
+      'server-browser token are all in the instance’s CS2 tab. Players connect on UDP 27015.',
   },
   {
     id: 'csgo',

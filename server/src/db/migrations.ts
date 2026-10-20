@@ -29,7 +29,7 @@ export function runMigrations(db: DatabaseSync): void {
 }
 
 function addRconAndAutoUpdateColumns(db: DatabaseSync): void {
-  for (const col of ['rcon_config', 'auto_update', 'status_page', 'modpack', 'limits']) {
+  for (const col of ['rcon_config', 'auto_update', 'status_page', 'modpack', 'limits', 'game_settings']) {
     if (db.prepare(`SELECT 1 FROM pragma_table_info('servers') WHERE name = '${col}'`).get()) continue;
     logger.info(`Migrating database: adding servers.${col} column`);
     db.exec(`ALTER TABLE servers ADD COLUMN ${col} TEXT`);

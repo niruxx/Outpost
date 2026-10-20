@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS servers (
   status_page TEXT, -- JSON StatusPageConfig: public status page
   modpack TEXT, -- JSON ModpackRef: the Modrinth modpack it was made from
   limits TEXT, -- JSON Limits: CPU / memory / process / disk caps
+  game_settings TEXT, -- JSON per-game settings (CS2 tab: mode, map, presets, cvars)
   steam_login TEXT NOT NULL DEFAULT 'anonymous', -- raw value passed after "+login" (e.g. "anonymous" or "user pass")
   steam_extra_flags TEXT NOT NULL DEFAULT '', -- extra steamcmd CLI flags spliced into the install/update invocation
   launch_config TEXT,
