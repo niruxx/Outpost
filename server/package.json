@@ -12,7 +12,7 @@
     "start": "node dist/index.js"
   },
   "dependencies": {
-    "adm-zip": "^0.5.16",
+    "adm-zip": "^0.6.1",
     "express": "^4.21.2",
     "mcbe-leveldb-reader": "^5.0.1",
     "multer": "^2.0.1",
