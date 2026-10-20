@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { containerLimitArgs } from './limitsService.js';
 import { envVar } from '../utils/env.js';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
@@ -259,13 +260,14 @@ export function buildContainerLaunch(server: ServerRecord): { cmd: string; args:
       fs.mkdirSync(host, { recursive: true });
       return ['-v', `${host}:${v.containerPath}${selinuxEnforcing() ? ':Z' : ''}`];
     }),
-    '--memory', `${server.max_memory_mb}m`,
-    '--pids-limit', '4096',
+    '--memory', `${containerLimitArgs(server).memoryMb ?? server.max_memory_mb}m`,
+    '--pids-limit', String(containerLimitArgs(server).pids ?? 4096),
     '--security-opt', 'no-new-privileges',
   ];
   for (const p of config.ports) args.push('-p', `${p.host}:${p.container}/${p.protocol}`);
   for (const e of config.env) args.push('-e', `${e.key}=${expandVariables(e.value, vars)}`);
-  if (config.cpus) args.push('--cpus', String(config.cpus));
+  const cpus = containerLimitArgs(server).cpus ?? config.cpus;
+  if (cpus) args.push('--cpus', String(cpus));
   if (config.mountEngineSocket) {
     const socket = engineSocket();
     if (!socket.path) throw new HttpError(400, socket.hint ?? 'Container engine socket not found');

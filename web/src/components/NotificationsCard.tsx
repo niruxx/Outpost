@@ -13,9 +13,13 @@ const EVENT_LABEL: Record<NotifyEvent, string> = {
   'server.restart_gave_up': 'Auto-restart gave up',
   'backup.failed': 'Scheduled snapshot failed',
   'task.failed': 'Scheduled task failed',
+  'update.available': 'Update available',
+  'update.applied': 'Updated automatically',
+  'update.failed': 'Automatic update failed',
+  'quota.exceeded': 'Disk limit reached',
 };
 const ALL_EVENTS = Object.keys(EVENT_LABEL) as NotifyEvent[];
-const DEFAULT_EVENTS: NotifyEvent[] = ['server.crashed', 'server.restart_gave_up', 'backup.failed', 'task.failed'];
+const DEFAULT_EVENTS: NotifyEvent[] = ['server.crashed', 'server.restart_gave_up', 'backup.failed', 'task.failed', 'update.failed'];
 
 const isDiscord = (url: string) => /^https:\/\/(\w+\.)?discord(app)?\.com\/api\/webhooks\//.test(url.trim());
 

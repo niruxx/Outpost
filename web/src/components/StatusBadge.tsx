@@ -1,4 +1,5 @@
 import { Badge } from './ui.js';
+import { t } from '../i18n/index.js';
 import type { ServerStatus } from '../api/types.js';
 
 const TONE: Record<ServerStatus, 'neutral' | 'green' | 'red' | 'yellow' | 'blue'> = {
@@ -47,7 +48,7 @@ const DOT: Record<'neutral' | 'green' | 'red' | 'yellow' | 'blue', string> = {
 
 /** Compact status indicator for tight spots like the navigation drawer. */
 export function StatusDot({ status, suspended = false }: { status: ServerStatus; suspended?: boolean }) {
-  const label = suspended ? 'Suspended' : LABEL[status];
+  const label = t(suspended ? 'Suspended' : LABEL[status]);
   return (
     <span
       className={`inline-block h-2 w-2 shrink-0 rounded-full ${suspended ? DOT.red : DOT[TONE[status]]} ${!suspended && PULSE[status] ? 'animate-pulse-soft' : ''}`}
@@ -60,7 +61,7 @@ export function StatusDot({ status, suspended = false }: { status: ServerStatus;
 export function StatusBadge({ status }: { status: ServerStatus }) {
   return (
     <Badge tone={TONE[status]} pulse={PULSE[status]}>
-      {LABEL[status]}
+      {t(LABEL[status])}
     </Badge>
   );
 }

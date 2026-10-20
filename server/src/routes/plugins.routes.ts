@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import type { CfTarget } from '../services/curseforgeService.js';
 import multer from 'multer';
 import { asyncHandler, HttpError } from '../utils/asyncHandler.js';
 import { requireAuth, requirePermission, requireServerAccess } from '../auth/middleware.js';
@@ -70,7 +71,7 @@ pluginsRouter.post(
       const modId = Number(req.body?.modId);
       if (!Number.isInteger(modId) || modId <= 0) throw new HttpError(400, 'modId is required');
       const javaVersion = profile.kind === 'bedrock' ? null : server.version;
-      const file = await curseforge.resolveFile(modId, javaVersion);
+      const file = await curseforge.resolveFile(modId, javaVersion, profile.catalog as CfTarget);
       if (file.versionMismatchWarning) {
         appendLine(server.id, `[Outpost] No CurseForge file is tagged for Minecraft ${server.version} — installing the newest one (${file.versionLabel}). Check it's compatible.`);
       }

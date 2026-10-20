@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { prep, db } from '../db/db.js';
 import { hashPassword, verifyPassword } from '../auth/password.js';
+import { requestContext } from '../utils/requestContext.js';
 import type { PublicUser, Role, User } from '../types/index.js';
 
 function toPublic(user: User): PublicUser {
@@ -82,6 +83,7 @@ export function deleteUser(id: string) {
   // servers.created_by references users without ON DELETE — release ownership first (the
   // instances stay; admins can hand them to someone else) or the delete hits the foreign key.
   prep('UPDATE servers SET created_by = NULL WHERE created_by = ?').run(id);
+  prep('DELETE FROM api_keys WHERE user_id = ?').run(id);
   prep('DELETE FROM users WHERE id = ?').run(id);
 }
 
@@ -170,10 +172,12 @@ export function userHasServerAccess(userId: string, serverId: string): boolean {
   return !!row;
 }
 
+/** Records an action. The client's address and browser are added from the current request, if any. */
 export function logAudit(userId: string | null, username: string | null, action: string, target?: string, detail?: string) {
+  const ctx = requestContext();
   prep(
-    'INSERT INTO audit_log (user_id, username, action, target, detail) VALUES (?, ?, ?, ?, ?)'
-  ).run(userId, username, action, target ?? null, detail ?? null);
+    'INSERT INTO audit_log (user_id, username, action, target, detail, ip, user_agent) VALUES (?, ?, ?, ?, ?, ?, ?)'
+  ).run(userId, username, action, target ?? null, detail?.slice(0, 2000) ?? null, ctx?.ip ?? null, ctx?.userAgent ?? null);
 }
 
 // ---------------------------------------------------------------------------

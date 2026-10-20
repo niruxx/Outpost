@@ -1,4 +1,12 @@
 import { useEffect, useState } from 'react';
+import { DbHostsCard } from '../components/DbHostsCard.js';
+import { ApiKeysCard } from '../components/ApiKeysCard.js';
+import { OffsiteCard } from '../components/OffsiteCard.js';
+import { SftpCard } from '../components/SftpCard.js';
+import { TemplatesCard } from '../components/TemplatesCard.js';
+import { LanguageSelect } from '../i18n/index.js';
+import { ConsoleLogRetentionCard } from '../components/ConsoleLogRetentionCard.js';
+import { JavaRuntimesCard } from '../components/JavaRuntimesCard.js';
 import { Layout, PageHeader } from '../components/Layout.js';
 import { Badge, Button, Card, CardTitle, ErrorText, Field, Input, Modal, Notice, Spinner } from '../components/ui.js';
 import { Icon } from '../components/icons.js';
@@ -11,8 +19,9 @@ import { TwoFactorCard } from '../components/TwoFactorCard.js';
 import { NotificationsCard } from '../components/NotificationsCard.js';
 import { CurseForgeCard } from '../components/CurseForgeCard.js';
 import { UserThemesPanel } from '../components/UserThemesPanel.js';
+import { AuditRetentionCard } from '../components/AuditRetentionCard.js';
 import { api, ApiError } from '../api/client.js';
-import type { NodeInfo, PanelNode, SandboxStatus, SystemInfo } from '../api/types.js';
+import type { NodeInfo, PanelNode, SandboxStatus, SystemInfo, WineStatus } from '../api/types.js';
 import { useAuth } from '../state/AuthContext.js';
 import { THEMES, saveTheme, saveWallpaper, storedTheme, storedWallpaper, type ThemeOption } from '../lib/theme.js';
 
@@ -103,7 +112,7 @@ function AppearanceCard({ isAdmin }: { isAdmin: boolean }) {
   }
   return (
     <Card className="p-5">
-      <CardTitle>Appearance</CardTitle>
+      <CardTitle action={<LanguageSelect className="!w-auto !py-1 text-xs" />}>Appearance</CardTitle>
       <p className="mb-4 text-sm text-ink-400">
         Changes the look of the whole panel for you. Saved in this browser{isAdmin ? '.' : ' — an admin can also give your account a theme.'}
       </p>
@@ -140,6 +149,31 @@ function AppearanceCard({ isAdmin }: { isAdmin: boolean }) {
         </span>
       </label>
       {isAdmin && <UserThemesPanel />}
+    </Card>
+  );
+}
+
+function WineCard() {
+  const [wine, setWine] = useState<WineStatus | null>(null);
+  useEffect(() => {
+    api.get<WineStatus>('/servers/wine/status').then(setWine).catch(() => setWine(null));
+  }, []);
+  if (!wine) return null;
+  const tone = (!wine.supported ? 'neutral' : wine.available ? 'green' : 'yellow') as 'neutral' | 'green' | 'yellow';
+  return (
+    <Card className="p-5">
+      <CardTitle action={<Badge tone={tone}>{!wine.supported ? 'Not needed' : wine.available ? 'Installed' : 'Not installed'}</Badge>}>Wine</CardTitle>
+      <div className="space-y-2 text-sm text-ink-300">
+        <p>Runs Windows-only dedicated servers (Call of Duty: Black Ops III and others) on Linux. Each instance gets its own Wine prefix, and its launch settings choose whether Wine is used automatically, always or never.</p>
+        {wine.available && (
+          <ul className="space-y-1 text-xs">
+            <li>Version: <span className="font-mono text-ink-100">{wine.version ?? 'unknown'}</span></li>
+            <li>Binary: <span className="font-mono text-ink-100">{wine.path}</span></li>
+            <li>Virtual screen (xvfb-run): {wine.xvfb ? 'available' : 'not installed'}</li>
+          </ul>
+        )}
+        {wine.hint && <Notice tone={wine.supported ? 'warning' : 'info'}>{wine.hint}</Notice>}
+      </div>
     </Card>
   );
 }
@@ -421,11 +455,20 @@ export function ConfigurationPage() {
         <PageHeader title="Configuration" subtitle="Panel-wide settings for this Outpost host." />
         <AppearanceCard isAdmin={isAdmin} />
         <TwoFactorCard />
+        <SftpCard isAdmin={isAdmin} />
+        <ApiKeysCard isAdmin={isAdmin} />
         <HostCard />
         {isAdmin ? (
           <>
             <SecurityCard />
+            <WineCard />
+            <JavaRuntimesCard />
             <NotificationsCard />
+            <AuditRetentionCard />
+            <ConsoleLogRetentionCard />
+            <TemplatesCard isAdmin />
+            <OffsiteCard />
+            <DbHostsCard />
             <NodesCard />
             <EnvironmentBackupCard />
             <CurseForgeCard />

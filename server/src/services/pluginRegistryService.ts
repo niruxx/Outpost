@@ -32,13 +32,21 @@ interface ModrinthSearchHit {
 
 function loadersFor(catalog: AddonCatalog): string[] {
   if (catalog === 'bedrock') throw new Error('Modrinth has no Bedrock packs — use CurseForge');
+  if (catalog.startsWith('mod:')) {
+    const loader = catalog.slice(4);
+    return loader === 'quilt' ? ['quilt', 'fabric'] : [loader];
+  }
   return catalog === 'datapack' ? ['datapack'] : BUKKIT_LOADERS;
 }
 
 /** Searches Modrinth for Bukkit-family plugins, or vanilla data packs. */
 export async function searchPlugins(query: string, limit = 24, catalog: AddonCatalog = 'plugin'): Promise<PluginSearchResult[]> {
   const facets = JSON.stringify(
-    catalog === 'datapack' ? [['project_type:datapack']] : [BUKKIT_LOADERS.map((l) => `categories:${l}`)]
+    catalog === 'datapack'
+      ? [['project_type:datapack']]
+      : catalog.startsWith('mod:')
+        ? [['project_type:mod'], loadersFor(catalog).map((l) => `categories:${l}`), ['server_side:required', 'server_side:optional']]
+        : [BUKKIT_LOADERS.map((l) => `categories:${l}`)]
   );
   const params = new URLSearchParams({
     query,

@@ -33,6 +33,8 @@ export async function createBackup(serverId: string, label?: string): Promise<Ba
 
   const stat = fs.statSync(destPath);
   logger.info(`Created backup for server ${serverId}: ${fileName} (${stat.size} bytes)`);
+  // Copy it off-site (in the background) when destinations are set up.
+  void import('./offsiteService.js').then((o) => o.enqueueCopy(serverId, fileName)).catch(() => {});
   return { fileName, sizeBytes: stat.size, createdAt: new Date().toISOString() };
 }
 

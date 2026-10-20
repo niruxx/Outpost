@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { DatabasesCard } from './DatabasesCard.js';
 import { useServerDetail } from './ServerContext.js';
 import { api, ApiError } from '../../api/client.js';
 import type { PropertyEntry, RestartPolicy } from '../../api/types.js';
@@ -7,6 +8,10 @@ import { InstanceAdminCards } from './AdminCards.js';
 import { LaunchCard } from './LaunchCard.js';
 import { DockerCard } from './DockerCard.js';
 import { IsolationCard } from './IsolationCard.js';
+import { RconCard } from './RconCard.js';
+import { TemplateCard } from './TemplateCard.js';
+import { StatusPageCard } from './StatusPageCard.js';
+import { LimitsCard } from './LimitsCard.js';
 import { isMinecraftPlatform } from '../../api/types.js';
 
 export function SettingsTab() {
@@ -212,6 +217,11 @@ export function SettingsTab() {
 
       {server.platform === 'docker' ? <DockerCard /> : <LaunchCard />}
       <IsolationCard />
+      <LimitsCard />
+      {server.platform !== 'docker' && <DatabasesCard />}
+      {server.platform !== 'docker' && server.platform !== 'bedrock' && <RconCard />}
+      <StatusPageCard />
+      <TemplateCard />
 
       {!isMinecraftPlatform(server.platform) ? (
         <Card className="p-5">

@@ -3,7 +3,9 @@ import { Link } from 'react-router-dom';
 import { Layout, PageHeader } from '../components/Layout.js';
 import { Badge, Button, Card, Input, Select, Spinner } from '../components/ui.js';
 import { useToast } from '../components/Toast.js';
-import { api, ApiError } from '../api/client.js';
+import { api, ApiError, downloadUrl } from '../api/client.js';
+import { SystemLogsPanel } from '../components/SystemLogsPanel.js';
+import { Icon } from '../components/icons.js';
 import type { AuditEntry, ServerRecord } from '../api/types.js';
 
 const PAGE = 100;
@@ -20,6 +22,7 @@ function actionTone(action: string): 'neutral' | 'green' | 'red' | 'yellow' | 'b
 const FAMILIES = [
   { id: '', label: 'All actions' },
   { id: 'auth', label: 'Sign-ins & 2FA' },
+  { id: 'access', label: 'Denied access' },
   { id: 'server', label: 'Instances' },
   { id: 'backup', label: 'Snapshots' },
   { id: 'task', label: 'Scheduled tasks' },
@@ -31,6 +34,8 @@ const FAMILIES = [
   { id: 'webhook', label: 'Notifications' },
   { id: 'node', label: 'Nodes' },
   { id: 'environment', label: 'Environment backups' },
+  { id: 'firewall', label: 'Firewall' },
+  { id: 'audit', label: 'Audit log & system logs' },
 ];
 
 function formatTime(iso: string) {
@@ -50,6 +55,9 @@ export function AuditPage() {
   const [server, setServer] = useState('');
   const [search, setSearch] = useState('');
   const [query, setQuery] = useState('');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [tab, setTab] = useState<'activity' | 'system'>('activity');
 
   // Search applies after a short pause in typing.
   useEffect(() => {
@@ -64,10 +72,12 @@ export function AuditPage() {
       if (family) p.set('action', family);
       if (server) p.set('server', server);
       if (query) p.set('search', query);
+      if (from) p.set('from', from);
+      if (to) p.set('to', to);
       if (before) p.set('before', String(before));
       return p.toString();
     },
-    [user, family, server, query]
+    [user, family, server, query, from, to]
   );
 
   useEffect(() => {
@@ -106,13 +116,46 @@ export function AuditPage() {
     }
   }
 
-  const filtered = !!(user || family || server || query);
+  const filtered = !!(user || family || server || query || from || to);
+  const exportHref = () => {
+    const p = new URLSearchParams(params());
+    p.delete('limit');
+    return downloadUrl(`/audit/export?${p}`);
+  };
 
   return (
     <Layout>
       <div className="mx-auto max-w-6xl px-4 py-8 sm:px-8">
-        <PageHeader title="Audit Log" subtitle="Who did what on this panel — sign-ins, instance changes, snapshots, files and settings." />
+        <PageHeader
+          title="Audit Log"
+          subtitle="Who did what on this panel, from where — and the host's own system logs."
+          action={
+            tab === 'activity' && (
+              <a href={exportHref()} className="ui-btn ui-btn-default state-layer inline-flex items-center gap-2 rounded-full bg-secondary-container px-4 py-2 text-sm font-medium text-secondary-on-container">
+                <Icon name="update" className="h-4 w-4" /> Export CSV
+              </a>
+            )
+          }
+        />
 
+        <div className="mb-4 flex w-fit rounded-full border border-surface-500 p-0.5" role="tablist" aria-label="Log">
+          {(['activity', 'system'] as const).map((t) => (
+            <button
+              key={t}
+              role="tab"
+              aria-selected={tab === t}
+              onClick={() => setTab(t)}
+              className={`state-layer rounded-full px-4 py-1.5 text-sm font-medium ${tab === t ? 'bg-secondary-container text-secondary-on-container' : 'text-ink-300'}`}
+            >
+              {t === 'activity' ? 'Panel activity' : 'System logs'}
+            </button>
+          ))}
+        </div>
+
+        {tab === 'system' ? (
+          <SystemLogsPanel />
+        ) : (
+        <>
         <Card className="mb-4 p-4">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search details, names…" aria-label="Search" />
@@ -140,6 +183,16 @@ export function AuditPage() {
               ))}
             </Select>
           </div>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <label className="flex items-center gap-2 text-xs text-ink-400">
+              From
+              <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} aria-label="From date" />
+            </label>
+            <label className="flex items-center gap-2 text-xs text-ink-400">
+              To
+              <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} aria-label="To date" />
+            </label>
+          </div>
           {filtered && (
             <div className="mt-3 flex justify-end">
               <Button
@@ -149,6 +202,8 @@ export function AuditPage() {
                   setFamily('');
                   setServer('');
                   setSearch('');
+                  setFrom('');
+                  setTo('');
                 }}
               >
                 Clear filters
@@ -192,6 +247,11 @@ export function AuditPage() {
                     )}
                   </p>
                   {e.detail && <p className="break-words text-xs text-ink-400">{e.detail}</p>}
+                  {(e.ip || e.agent) && (
+                    <p className="text-[11px] text-ink-500" title={e.userAgent ?? undefined}>
+                      {[e.ip, e.agent].filter(Boolean).join(' · ')}
+                    </p>
+                  )}
                 </li>
               ))}
             </ul>
@@ -204,6 +264,7 @@ export function AuditPage() {
                     <th className="px-4 py-3 font-medium">Action</th>
                     <th className="px-4 py-3 font-medium">Target</th>
                     <th className="px-4 py-3 font-medium">Details</th>
+                    <th className="px-4 py-3 font-medium">From</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-surface-800">
@@ -232,6 +293,10 @@ export function AuditPage() {
                         )}
                       </td>
                       <td className="max-w-[24rem] break-words px-4 py-2.5 text-xs text-ink-300">{e.detail ?? ''}</td>
+                      <td className="whitespace-nowrap px-4 py-2.5 text-xs text-ink-400" title={e.userAgent ?? undefined}>
+                        {e.ip ?? '—'}
+                        {e.agent && <span className="block text-[11px] text-ink-500">{e.agent}</span>}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -247,6 +312,8 @@ export function AuditPage() {
               {loadingMore ? 'Loading…' : 'Load older entries'}
             </Button>
           </div>
+        )}
+        </>
         )}
       </div>
     </Layout>

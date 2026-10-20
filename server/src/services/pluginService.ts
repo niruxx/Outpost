@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { isModded } from './moddedService.js';
 import path from 'node:path';
 import AdmZip from 'adm-zip';
 import { instanceDir, safeJoin, safeJoinReal } from '../utils/paths.js';
@@ -19,8 +20,8 @@ import { PLUGIN_CAPABLE_LOADERS } from '../types/index.js';
  *   bepinex  — Valheim BepInEx plugins in BepInEx/plugins
  *   pak      — Palworld .pak mods in Pal/Content/Paks/~mods
  */
-export type AddonKind = 'bukkit' | 'datapack' | 'bedrock' | 'bepinex' | 'pak';
-export type AddonCatalog = 'plugin' | 'datapack' | 'bedrock';
+export type AddonKind = 'bukkit' | 'datapack' | 'bedrock' | 'bepinex' | 'pak' | 'mod';
+export type AddonCatalog = 'plugin' | 'datapack' | 'bedrock' | `mod:${'fabric' | 'quilt' | 'forge' | 'neoforge'}`;
 
 export interface AddonProfile {
   kind: AddonKind;
@@ -72,6 +73,26 @@ function bepinexInstalled(server: ServerRecord): boolean {
 }
 
 export function getAddonSupport(server: ServerRecord): AddonSupport {
+  if (isModded(server.loader)) {
+    const ecosystem = server.loader === 'mohist' || server.loader === 'spongeforge' ? 'forge' : server.loader;
+    const notes = ['Restart the server after adding, removing or toggling a mod.', 'Players need the same client-side mods to join (server-only mods excepted).'];
+    if (server.loader === 'mohist') notes.push('Mohist also runs Bukkit plugins — put those in plugins/ (File Management).');
+    if (server.loader === 'spongeforge') notes.push('Sponge plugins are jars in mods/ too.');
+    if (server.loader === 'quilt') notes.push('Quilt also loads most Fabric mods — search results include them.');
+    return {
+      supported: true,
+      profile: {
+        kind: 'mod',
+        label: 'Mods',
+        singular: 'mod',
+        folder: 'mods',
+        extensions: ['.jar'],
+        catalog: `mod:${ecosystem}` as AddonCatalog,
+        notes,
+        warning: null,
+      },
+    };
+  }
   if (PLUGIN_CAPABLE_LOADERS.includes(server.loader)) {
     return {
       supported: true,
@@ -170,7 +191,7 @@ export function getAddonSupport(server: ServerRecord): AddonSupport {
       return {
         supported: false,
         reason:
-          'Project Zomboid loads mods from Steam Workshop IDs listed in the server’s .ini (WorkshopItems= and Mods=), which Outpost keeps in this instance’s Zomboid/Server folder. Edit that file in File Management, then restart the server.',
+          'Project Zomboid mods come from the Steam Workshop — add them on the Workshop tab, and Outpost writes them into the server’s settings for you.',
       };
     }
     if (preset?.id === 'terraria') {
@@ -203,6 +224,8 @@ function addonDir(server: ServerRecord, profile: AddonProfile): string {
   switch (profile.kind) {
     case 'bukkit':
       return inInstance(server, 'plugins');
+    case 'mod':
+      return inInstance(server, 'mods');
     case 'datapack':
       return inInstance(server, `${levelName(server)}/datapacks`);
     case 'bepinex':

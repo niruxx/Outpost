@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { authenticateApiKey, KEY_PREFIX } from '../services/apiKeyService.js';
 import type { AuthTokenPayload, Role } from '../types/index.js';
 import { SESSION_SECRET } from './secret.js';
 
@@ -25,6 +26,12 @@ export function createToken(userId: string, username: string, role: Role): strin
   const body = base64url(JSON.stringify(payload));
   const sig = sign(body);
   return `${body}.${sig}`;
+}
+
+/** A sign-in token or a personal API key (opk_…) → who's calling. */
+export function authenticate(token: string): AuthTokenPayload | null {
+  if (token.startsWith(KEY_PREFIX)) return authenticateApiKey(token);
+  return verifyToken(token);
 }
 
 export function verifyToken(token: string): AuthTokenPayload | null {

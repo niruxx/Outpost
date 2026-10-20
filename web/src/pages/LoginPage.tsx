@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react';
+import { LanguageSelect, t } from '../i18n/index.js';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useAuth } from '../state/AuthContext.js';
@@ -63,10 +64,11 @@ export function LoginPage() {
         <div className="mb-6 text-center">
           <Logo className="mx-auto mb-3.5 h-11 w-11 rounded-xl" />
           <div className="flex items-center justify-center gap-2">
-            <h1 className="text-xl font-bold text-ink-50">Sign in to Outpost</h1>
+            <h1 className="text-xl font-bold text-ink-50">{t('Sign in to Outpost')}</h1>
             <Badge tone="neutral">v{APP_VERSION}</Badge>
           </div>
-          <p className="mt-1 text-sm text-ink-400">Manage your servers, apps and games.</p>
+          <p className="mt-1 text-sm text-ink-400">{t('Manage your servers, apps and games.')}</p>
+          <LanguageSelect className="mt-3 !py-1 text-xs" />
         </div>
         <form onSubmit={onSubmit} className="space-y-4">
           {needsCode ? (
@@ -100,7 +102,7 @@ export function LoginPage() {
           )}
           <ErrorText>{error}</ErrorText>
           <Button type="submit" variant="primary" className="w-full py-2" disabled={submitting}>
-            {submitting ? 'Signing in…' : needsCode ? 'Verify' : 'Sign in'}
+            {t(submitting ? 'Signing in…' : needsCode ? 'Verify' : 'Sign in')}
           </Button>
           {needsCode && (
             <Button

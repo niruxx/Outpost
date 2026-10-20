@@ -1,7 +1,8 @@
 import type { NextFunction, Request, Response } from 'express';
-import { verifyToken } from './tokens.js';
+import { authenticate } from './tokens.js';
+import { requestContext } from '../utils/requestContext.js';
 import type { AuthTokenPayload, Role } from '../types/index.js';
-import { getServerPermissions, userHasServerAccess, type ServerPermission } from '../services/userService.js';
+import { getServerPermissions, logAudit, userHasServerAccess, type ServerPermission } from '../services/userService.js';
 import { HttpError } from '../utils/asyncHandler.js';
 import { getServer } from '../services/serverService.js';
 
@@ -24,8 +25,15 @@ function extractToken(req: Request): string | null {
 export function requireAuth(req: Request, res: Response, next: NextFunction) {
   const token = extractToken(req);
   if (!token) return res.status(401).json({ error: 'Authentication required' });
-  const payload = verifyToken(token);
-  if (!payload) return res.status(401).json({ error: 'Invalid or expired session' });
+  const payload = authenticate(token);
+  if (!payload) return res.status(401).json({ error: token.startsWith('opk_') ? 'Invalid, revoked or expired API key' : 'Invalid or expired session' });
+  if (payload.apiKey) {
+    // Keys can't manage keys or sign-in settings (password, 2FA, SFTP logins) — that needs a real sign-in.
+    if (/^\/api\/(keys|auth|sftp\/me)(\/|$|\?)/.test(req.originalUrl)) return res.status(403).json({ error: 'API keys can’t change API keys or sign-in settings — sign in to the panel for that' });
+    if (payload.apiKey.readOnly && !['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return res.status(403).json({ error: `The API key “${payload.apiKey.name}” is read-only` });
+    const ctx = requestContext();
+    if (ctx) ctx.userAgent = `API key “${payload.apiKey.name}”${ctx.userAgent ? ` · ${ctx.userAgent}` : ''}`.slice(0, 300);
+  }
   req.auth = payload;
   next();
 }
@@ -34,6 +42,7 @@ export function requireRole(...roles: Role[]) {
   return (req: Request, res: Response, next: NextFunction) => {
     if (!req.auth) return res.status(401).json({ error: 'Authentication required' });
     if (!roles.includes(req.auth.role)) {
+      logAudit(req.auth.sub, req.auth.username, 'access.denied', undefined, `${req.method} ${req.originalUrl.split('?')[0]} needs ${roles.join('/')}`);
       return res.status(403).json({ error: 'Insufficient permissions' });
     }
     next();
@@ -47,6 +56,7 @@ export function requireServerAccess(paramName = 'serverId') {
     const serverId = req.params[paramName];
     if (req.auth.role === 'admin') return next();
     if (!userHasServerAccess(req.auth.sub, serverId)) {
+      logAudit(req.auth.sub, req.auth.username, 'access.denied', serverId, `${req.method} ${req.originalUrl.split('?')[0]} (no access to this instance)`);
       return res.status(403).json({ error: 'You do not have access to this server' });
     }
     // Suspended instances are locked to everyone but admins — files, console, backups, plugins,
@@ -82,6 +92,7 @@ const PERMISSION_LABEL: Record<ServerPermission, string> = {
 export function requirePermission(req: Request, permission: ServerPermission, serverId: string = req.params.serverId) {
   const perms = getServerPermissions(req.auth!.sub, req.auth!.role, serverId);
   if (!perms?.includes(permission)) {
+    logAudit(req.auth!.sub, req.auth!.username, 'access.denied', serverId, `${req.method} ${req.originalUrl.split('?')[0]} needs "${PERMISSION_LABEL[permission]}"`);
     throw new HttpError(403, `You don't have the "${PERMISSION_LABEL[permission]}" permission on this instance`);
   }
 }

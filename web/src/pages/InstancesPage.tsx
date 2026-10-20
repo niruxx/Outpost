@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { t } from '../i18n/index.js';
 import { Link } from 'react-router-dom';
 import { AnimatePresence, LayoutGroup, motion } from 'framer-motion';
 import { Layout, PageHeader } from '../components/Layout.js';
@@ -73,7 +74,7 @@ function ViewSwitcher({ mode, onChange }: { mode: ViewMode; onChange: (m: ViewMo
           )}
           <span className="relative z-10 flex items-center gap-1.5">
             <Icon name={v.icon} className="h-4 w-4" />
-            <span className="hidden sm:inline">{v.label}</span>
+            <span className="hidden sm:inline">{t(v.label)}</span>
           </span>
         </button>
       ))}
@@ -100,8 +101,8 @@ export function IconAction({
       whileTap={{ scale: 0.9 }}
       onClick={onClick}
       disabled={disabled}
-      title={label}
-      aria-label={label}
+      title={t(label)}
+      aria-label={t(label)}
       className={`state-layer flex h-9 w-9 items-center justify-center rounded-full disabled:opacity-[0.38] ${
         danger ? 'bg-error-container text-error-on-container' : 'bg-secondary-container text-secondary-on-container'
       }`}
@@ -169,7 +170,7 @@ function subtitle(server: ServerRecord) {
 
 function Metric({ icon, value, title }: { icon: IconName; value: string; title: string }) {
   return (
-    <span className="inline-flex items-center gap-1 tabular-nums" title={title}>
+    <span className="inline-flex items-center gap-1 tabular-nums" title={t(title)}>
       <Icon name={icon} className="h-3.5 w-3.5 text-ink-500" />
       {value}
     </span>
@@ -232,7 +233,7 @@ function GridCard(props: RowProps) {
               <Metric icon="clock" title="Uptime" value={f.uptime ?? '…'} />
             </>
           ) : (
-            <span className="text-ink-500">Not running</span>
+            <span className="text-ink-500">{t('Not running')}</span>
           )}
         </div>
     </Card>
@@ -421,7 +422,7 @@ export function InstancesPage() {
                   <motion.span layoutId="instance-filter" className="absolute inset-0 rounded-lg bg-secondary-container" transition={{ type: 'spring', stiffness: 500, damping: 38 }} />
                 )}
                 <span className="relative z-10">
-                  {f.label} <span className="opacity-70">{f.id === 'all' ? servers?.length ?? 0 : counts[f.id]}</span>
+                  {t(f.label)} <span className="opacity-70">{f.id === 'all' ? servers?.length ?? 0 : counts[f.id]}</span>
                 </span>
               </button>
             ))}
@@ -450,8 +451,8 @@ export function InstancesPage() {
                 </motion.div>
               ))}
             </div>
-            <p className="mb-1 text-base font-medium text-ink-100">No instances yet</p>
-            <p className="mb-5 text-sm text-ink-400">Run a game server, a web app, a database, Portainer or any container — in a couple of clicks.</p>
+            <p className="mb-1 text-base font-medium text-ink-100">{t('No instances yet')}</p>
+            <p className="mb-5 text-sm text-ink-400">{t('Run a game server, a web app, a database, Portainer or any container — in a couple of clicks.')}</p>
             {canCreate && !atQuota && (
               <Button variant="primary" onClick={() => setCreateOpen(true)}>
                 Create your first instance

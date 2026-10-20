@@ -1,5 +1,7 @@
+import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import type { LaunchConfig, Platform, RestartConfig, StopConfig, StopSignal } from '../api/types.js';
+import { api } from '../api/client.js';
+import type { LaunchConfig, Platform, RestartConfig, StopConfig, StopSignal, WineConfig, WineStatus } from '../api/types.js';
 import { Field, Input, Select } from './ui.js';
 import { Icon } from './icons.js';
 import { EMPHASIZED } from './motion.js';
@@ -29,6 +31,47 @@ function Collapse({ open, children }: { open: boolean; children: React.ReactNode
         </motion.div>
       )}
     </AnimatePresence>
+  );
+}
+
+/** Which Java major a Java instance runs with — automatic (by Minecraft version) or one that's installed. */
+function JavaVersionField({ value, onChange }: { value: number | undefined; onChange: (v: number | undefined) => void }) {
+  const [majors, setMajors] = useState<number[]>([]);
+  useEffect(() => {
+    api
+      .get<{ runtimes: { major: number }[] }>('/java')
+      .then((r) => setMajors([...new Set(r.runtimes.map((x) => x.major))].sort((a, b) => b - a)))
+      .catch(() => setMajors([]));
+  }, []);
+  const options = value && !majors.includes(value) ? [value, ...majors] : majors;
+  return (
+    <Field label="Java version">
+      <Select value={value ?? ''} onChange={(e) => onChange(e.target.value ? Number(e.target.value) : undefined)}>
+        <option value="">Automatic — what this Minecraft version needs</option>
+        {options.map((m) => (
+          <option key={m} value={m}>
+            Java {m}
+            {majors.includes(m) ? '' : ' (not installed)'}
+          </option>
+        ))}
+      </Select>
+    </Field>
+  );
+}
+
+/** The Wine tab owns these settings; the launch editor only says what's set and keeps them as they are. */
+function WineSummary({ value }: { value: WineConfig | undefined }) {
+  const [status, setStatus] = useState<WineStatus | null>(null);
+  useEffect(() => {
+    api.get<WineStatus>('/servers/wine/status').then(setStatus).catch(() => setStatus(null));
+  }, []);
+  if (status && !status.supported) return null;
+  const mode = value?.mode ?? 'auto';
+  return (
+    <p className="text-xs text-ink-500">
+      Wine: <span className="text-ink-300">{mode === 'auto' ? 'automatic (for .exe / Windows-only games)' : mode}</span>
+      {status && !status.available && <span className="text-yellow-400"> — not installed on this host</span>}. Windows version, DLL overrides, dependencies and more are in the instance’s Wine tab.
+    </p>
   );
 }
 
@@ -91,6 +134,7 @@ export function LaunchEditor({
               className="font-mono"
             />
           </Field>
+          {platform === 'java' && <JavaVersionField value={value.javaVersion} onChange={(javaVersion) => set({ javaVersion })} />}
           {platform === 'java' && isAdmin && (
             <Field label="Java binary">
               <Input value={value.javaPath ?? ''} onChange={(e) => set({ javaPath: e.target.value })} placeholder="Default: auto-detected java" className="font-mono" />
@@ -136,6 +180,8 @@ export function LaunchEditor({
           {platform === 'java' && ' Memory flags and extra JVM args from General are always applied.'}
         </p>
       </div>
+
+      {(platform === 'steam' || custom) && <WineSummary value={value.wine} />}
 
       <div>
         <div className="mb-2 flex items-center justify-between">
@@ -318,6 +364,7 @@ export function cleanLaunchConfig(c: LaunchConfig): LaunchConfig {
     if (c[key]?.trim()) out[key] = c[key]!.trim();
   }
   if (c.useShell) out.useShell = true;
+  if (c.javaVersion) out.javaVersion = c.javaVersion;
   if (c.protocol) out.protocol = c.protocol;
   const env = (c.env ?? []).filter((e) => e.key.trim());
   if (env.length) out.env = env;
@@ -329,5 +376,6 @@ export function cleanLaunchConfig(c: LaunchConfig): LaunchConfig {
   }
   if (c.stopTimeoutSec) out.stopTimeoutSec = c.stopTimeoutSec;
   if (c.webUi?.port) out.webUi = c.webUi;
+  if (c.wine) out.wine = c.wine; // edited in the Wine tab; passed through untouched
   return out;
 }

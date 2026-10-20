@@ -42,6 +42,13 @@ CREATE TABLE IF NOT EXISTS servers (
   created_by TEXT REFERENCES users(id),
   steam_app_id TEXT, -- Steam App ID actually installed, for platform = 'steam' servers
   steam_preset TEXT, -- curated preset id (several presets can share an App ID, e.g. CS 1.6 / Condition Zero)
+  workshop TEXT, -- JSON WorkshopState: Steam Workshop items, active mod/map, download login
+  rewind_config TEXT, -- JSON RewindConfig: automatic Minecraft world restore points
+  rcon_config TEXT, -- JSON RconConfig: RCON console settings (password included — never sent to browsers)
+  auto_update TEXT, -- JSON AutoUpdateConfig: scheduled update checks
+  status_page TEXT, -- JSON StatusPageConfig: public status page
+  modpack TEXT, -- JSON ModpackRef: the Modrinth modpack it was made from
+  limits TEXT, -- JSON Limits: CPU / memory / process / disk caps
   steam_login TEXT NOT NULL DEFAULT 'anonymous', -- raw value passed after "+login" (e.g. "anonymous" or "user pass")
   steam_extra_flags TEXT NOT NULL DEFAULT '', -- extra steamcmd CLI flags spliced into the install/update invocation
   launch_config TEXT,
@@ -59,6 +66,79 @@ CREATE TABLE IF NOT EXISTS servers (
 
 -- Other Outpost panels this one can transfer instances to. api_key is the remote panel's
 -- node key (shown on its Configuration page) and has to be stored as-is to call that panel.
+CREATE TABLE IF NOT EXISTS db_hosts (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  host TEXT NOT NULL,
+  port INTEGER NOT NULL,
+  username TEXT NOT NULL,
+  password TEXT NOT NULL, -- never sent to browsers
+  public_host TEXT,
+  max_databases INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS server_databases (
+  id TEXT PRIMARY KEY,
+  server_id TEXT NOT NULL,
+  host_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  username TEXT NOT NULL,
+  password TEXT NOT NULL,
+  remote TEXT NOT NULL DEFAULT '%',
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS api_keys (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  hint TEXT NOT NULL, -- first characters, to recognise it
+  hash TEXT NOT NULL UNIQUE, -- sha256 of the key; the key itself is never stored
+  read_only INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  last_used_at TEXT,
+  expires_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS offsite_destinations (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  type TEXT NOT NULL, -- s3 | sftp
+  enabled INTEGER NOT NULL DEFAULT 1,
+  keep INTEGER NOT NULL DEFAULT 7, -- copies kept per instance (0 = all)
+  config TEXT NOT NULL, -- JSON; holds credentials, never sent to browsers
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS offsite_copies (
+  server_id TEXT NOT NULL,
+  file_name TEXT NOT NULL,
+  destination_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  error TEXT,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (server_id, file_name, destination_id)
+);
+
+CREATE TABLE IF NOT EXISTS sftp_credentials (
+  user_id TEXT PRIMARY KEY,
+  password_hash TEXT, -- separate from the panel password, so SFTP can't sidestep 2FA
+  password_salt TEXT,
+  public_keys TEXT NOT NULL DEFAULT '[]',
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS templates (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  platform TEXT NOT NULL,
+  data TEXT NOT NULL, -- the full OutpostTemplate JSON
+  created_by TEXT,
+  created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS nodes (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
@@ -116,6 +196,9 @@ CREATE TABLE IF NOT EXISTS audit_log (
   action TEXT NOT NULL,
   target TEXT,
   detail TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  ip TEXT, -- the client's address (and X-Forwarded-For, when a proxy sent one)
+  user_agent TEXT -- the client's browser / tool
 );
+CREATE INDEX IF NOT EXISTS audit_log_created_at ON audit_log (created_at);
 `;

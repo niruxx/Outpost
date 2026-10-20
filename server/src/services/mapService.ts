@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { isModded } from './moddedService.js';
 import path from 'node:path';
 import { PNG } from 'pngjs';
 import { Anvil } from 'prismarine-provider-anvil';
@@ -25,7 +26,7 @@ export type { MapMeta } from './mapShared.js';
 /** Java worlds render via the Anvil/NBT format; Bedrock worlds via their LevelDB store
  *  (see bedrockMapService.ts). Both are pure-JS, no native dependencies required. */
 export function isMapCapable(loader: Loader): boolean {
-  return loader === 'vanilla' || loader === 'paper' || loader === 'purpur' || loader === 'spigot' || loader === 'bedrock';
+  return loader === 'vanilla' || loader === 'paper' || loader === 'purpur' || loader === 'spigot' || loader === 'bedrock' || isModded(loader);
 }
 
 // The exact Minecraft version string barely matters for parsing: the on-disk chunk NBT layout

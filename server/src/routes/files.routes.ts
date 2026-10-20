@@ -1,4 +1,5 @@
 import { Router, type Request } from 'express';
+import { assertDiskRoom } from '../services/limitsService.js';
 import multer from 'multer';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -46,6 +47,7 @@ filesRouter.put(
   '/content',
   asyncHandler(async (req, res) => {
     requirePermission(req, 'files.write');
+    assertDiskRoom(req.params.serverId, 'write');
     const { path: filePath, content } = req.body ?? {};
     if (typeof filePath !== 'string' || typeof content !== 'string') {
       throw new HttpError(400, 'path and content are required');
@@ -96,6 +98,7 @@ filesRouter.get(
     requirePermission(req, 'files.read');
     const filePath = typeof req.query.path === 'string' ? req.query.path : '';
     const target = resolveForDownload(req.params.serverId, filePath);
+    logAudit(req.auth!.sub, req.auth!.username, 'file.download', req.params.serverId, filePath);
     res.download(target, path.basename(target));
   })
 );
@@ -105,6 +108,7 @@ filesRouter.post(
   upload.array('files'),
   asyncHandler(async (req, res) => {
     requirePermission(req, 'files.write');
+    assertDiskRoom(req.params.serverId, 'write');
     const dirPath = typeof req.body?.path === 'string' ? req.body.path : '';
     const targetDir = resolveForUpload(req.params.serverId, dirPath);
     const files = (req.files as Express.Multer.File[] | undefined) ?? [];

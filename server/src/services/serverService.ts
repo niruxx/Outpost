@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { prep } from '../db/db.js';
-import { instanceDir, backupDir } from '../utils/paths.js';
+import { instanceDir, backupDir, rewindDir } from '../utils/paths.js';
 import type { Loader, Platform, RestartPolicy, ServerRecord, ServerStatus } from '../types/index.js';
 
 export interface CreateServerInput {
@@ -94,6 +94,14 @@ export interface UpdateServerInput {
   restartMaxAttempts?: number;
 }
 
+/** Browsers only ever see the username part of a "user password" Steam login; saving that back keeps the stored password. */
+function keepSteamPassword(next: string | undefined, current: string): string {
+  if (next === undefined) return current;
+  const [user, ...rest] = (current ?? '').trim().split(/\s+/);
+  if (rest.length && next.trim() === user) return current;
+  return next;
+}
+
 export function updateServerRecord(id: string, input: UpdateServerInput) {
   const current = getServer(id);
   if (!current) throw new Error('Server not found');
@@ -111,7 +119,7 @@ export function updateServerRecord(id: string, input: UpdateServerInput) {
     input.extraJavaArgs ?? current.extra_java_args,
     input.extraArgs ?? current.extra_args,
     input.autoStart === undefined ? current.auto_start : input.autoStart ? 1 : 0,
-    input.steamLogin ?? current.steam_login,
+    keepSteamPassword(input.steamLogin, current.steam_login),
     input.steamExtraFlags ?? current.steam_extra_flags,
     input.restartPolicy ?? current.restart_policy,
     input.restartDelaySec ?? current.restart_delay_sec,
@@ -124,6 +132,27 @@ export function deleteServerRecord(id: string) {
   prep('DELETE FROM servers WHERE id = ?').run(id);
   fs.rmSync(instanceDir(id), { recursive: true, force: true });
   fs.rmSync(backupDir(id), { recursive: true, force: true });
+  fs.rmSync(rewindDir(id), { recursive: true, force: true });
+}
+
+export function setRewindConfig(id: string, config: string | null) {
+  prep('UPDATE servers SET rewind_config = ? WHERE id = ?').run(config, id);
+}
+
+export function setModpack(id: string, modpack: string | null) {
+  prep('UPDATE servers SET modpack = ? WHERE id = ?').run(modpack, id);
+}
+
+export function setRconConfig(id: string, config: string | null) {
+  prep('UPDATE servers SET rcon_config = ? WHERE id = ?').run(config, id);
+}
+
+export function setAutoUpdate(id: string, config: string | null) {
+  prep('UPDATE servers SET auto_update = ? WHERE id = ?').run(config, id);
+}
+
+export function setWorkshopState(id: string, state: string | null) {
+  prep('UPDATE servers SET workshop = ? WHERE id = ?').run(state, id);
 }
 
 export function setServerSuspension(id: string, suspended: boolean, reason: string | null, by: string | null) {

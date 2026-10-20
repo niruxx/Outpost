@@ -11,6 +11,13 @@ const LOADERS_BY_PLATFORM: Record<Platform, { value: Loader; label: string }[]> 
     { value: 'paper', label: 'Paper' },
     { value: 'purpur', label: 'Purpur' },
     { value: 'spigot', label: 'Spigot (built from source)' },
+    { value: 'fabric', label: 'Fabric (mods)' },
+    { value: 'quilt', label: 'Quilt (mods)' },
+    { value: 'forge', label: 'Forge (mods)' },
+    { value: 'neoforge', label: 'NeoForge (mods)' },
+    { value: 'mohist', label: 'Mohist (Forge mods + Bukkit plugins)' },
+    { value: 'spongeforge', label: 'SpongeForge (Forge + Sponge plugins)' },
+    { value: 'modpack' as Loader, label: 'Modpack from Modrinth…' },
   ],
   bedrock: [{ value: 'bedrock', label: 'Bedrock Dedicated Server' }],
   steam: [{ value: 'steam', label: 'Steam Dedicated Server' }],
@@ -19,6 +26,15 @@ const LOADERS_BY_PLATFORM: Record<Platform, { value: Loader; label: string }[]> 
 };
 
 const CUSTOM_STEAM_GAME = '__custom__';
+
+interface ModpackHit {
+  projectId: string;
+  slug: string;
+  title: string;
+  description: string;
+  iconUrl: string | null;
+  downloads: number;
+}
 
 /** Creates a game server (`mode="game"`) or a custom process (`mode="custom"`, admin-only). */
 export function CreateServerModal({
@@ -40,6 +56,11 @@ export function CreateServerModal({
   const [name, setName] = useState('');
   const [platform, setPlatform] = useState<Platform>('java');
   const [loader, setLoader] = useState<Loader>('vanilla');
+  const isModpack = (loader as string) === 'modpack';
+  const [packQuery, setPackQuery] = useState('');
+  const [packs, setPacks] = useState<ModpackHit[]>([]);
+  const [pack, setPack] = useState<ModpackHit | null>(null);
+  const [packLoading, setPackLoading] = useState(false);
   const [versions, setVersions] = useState<VersionOption[]>([]);
   const [version, setVersion] = useState('');
   const [loadingVersions, setLoadingVersions] = useState(false);
@@ -50,6 +71,7 @@ export function CreateServerModal({
   const [steamGames, setSteamGames] = useState<SteamGameOption[]>([]);
   const [steamGameChoice, setSteamGameChoice] = useState<string>(CUSTOM_STEAM_GAME);
   const [customAppId, setCustomAppId] = useState('');
+  const [windowsBuild, setWindowsBuild] = useState(false);
   const [customExecutable, setCustomExecutable] = useState('');
   const [steamLogin, setSteamLogin] = useState('anonymous');
   const [steamExtraFlags, setSteamExtraFlags] = useState('');
@@ -58,7 +80,7 @@ export function CreateServerModal({
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    if (!open || platform === 'custom') return;
+    if (!open || platform === 'custom' || isModpack) return;
     setLoadingVersions(true);
     setVersion('');
     api
@@ -70,7 +92,21 @@ export function CreateServerModal({
       })
       .catch(() => setVersions([]))
       .finally(() => setLoadingVersions(false));
-  }, [loader, open, platform]);
+  }, [loader, open, platform, isModpack]);
+
+  // Modrinth modpack search
+  useEffect(() => {
+    if (!open || !isModpack) return;
+    const handle = setTimeout(() => {
+      setPackLoading(true);
+      api
+        .get<{ modpacks: ModpackHit[] }>(`/servers/catalog/modpacks?q=${encodeURIComponent(packQuery)}`)
+        .then((r) => setPacks(r.modpacks))
+        .catch(() => setPacks([]))
+        .finally(() => setPackLoading(false));
+    }, 300);
+    return () => clearTimeout(handle);
+  }, [open, isModpack, packQuery]);
 
   useEffect(() => {
     if (!open || platform !== 'steam') return;
@@ -116,7 +152,8 @@ export function CreateServerModal({
     setError('');
     if (!name.trim()) return setError('Instance name is required');
     if (platform === 'custom' && !launch.executable?.trim()) return setError('Enter the executable, script or command to launch');
-    if (platform !== 'custom' && !version) return setError('Choose a version');
+    if (isModpack && !pack) return setError('Pick a modpack');
+    if (platform !== 'custom' && !isModpack && !version) return setError('Choose a version');
     if (platform === 'java' && !acceptEula) return setError("You must accept Mojang's EULA");
     if (memoryCap && maxMemoryMb > memoryCap) return setError(`Max memory is limited to ${memoryCap} MB per instance for your account`);
     if (platform === 'steam' && steamGameChoice === CUSTOM_STEAM_GAME) {
@@ -140,6 +177,8 @@ export function CreateServerModal({
         steamLogin: platform === 'steam' ? steamLogin.trim() || 'anonymous' : undefined,
         steamExtraFlags: platform === 'steam' ? steamExtraFlags.trim() : undefined,
         launch: platform === 'custom' ? cleanLaunchConfig(launch) : undefined,
+        modpack: isModpack && pack ? { projectId: pack.projectId } : undefined,
+        wine: platform === 'steam' && !selectedSteamGame && windowsBuild ? true : undefined,
       });
       onCreated(server);
       onClose();
@@ -206,6 +245,15 @@ export function CreateServerModal({
             </Field>
           </div>
         )}
+        {platform === 'steam' && steamGameChoice === CUSTOM_STEAM_GAME && (
+          <label className="flex items-start gap-2 text-sm text-ink-300">
+            <input type="checkbox" className="mt-0.5" checked={windowsBuild} onChange={(e) => setWindowsBuild(e.target.checked)} />
+            <span>
+              Windows-only server — download the Windows build and run it with Wine
+              <span className="block text-xs text-ink-400">For games without a Linux dedicated server. Needs Wine on the host (install.sh --wine).</span>
+            </span>
+          </label>
+        )}
 
         {platform === 'steam' && selectedSteamGame?.notes && (
           <p className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-3 py-2 text-xs text-yellow-400">
@@ -268,7 +316,7 @@ export function CreateServerModal({
           </div>
         )}
 
-        {(platform === 'java' || platform === 'bedrock') && (
+        {(platform === 'java' || platform === 'bedrock') && !isModpack && (
           <Field label="Version">
             {loadingVersions ? (
               <div className="flex items-center gap-2 text-sm text-ink-400">
@@ -285,6 +333,42 @@ export function CreateServerModal({
               </Select>
             )}
           </Field>
+        )}
+
+        {isModpack && (
+          <div className="space-y-2">
+            <Input value={packQuery} onChange={(e) => setPackQuery(e.target.value)} placeholder="Search Modrinth modpacks (Fabric, Quilt, Forge, NeoForge)…" />
+            <div className="max-h-60 space-y-1 overflow-y-auto rounded-2xl bg-surface-900 p-1.5">
+              {packLoading && packs.length === 0 ? (
+                <Spinner />
+              ) : (
+                packs.map((p) => (
+                  <button
+                    key={p.projectId}
+                    type="button"
+                    onClick={() => setPack(p)}
+                    className={`state-layer flex w-full items-center gap-3 rounded-xl px-2 py-1.5 text-left ${pack?.projectId === p.projectId ? 'bg-secondary-container' : ''}`}
+                  >
+                    {p.iconUrl ? <img src={p.iconUrl} alt="" className="h-9 w-9 shrink-0 rounded-lg object-cover" loading="lazy" /> : <span className="h-9 w-9 shrink-0 rounded-lg bg-surface-700" />}
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-medium text-ink-100">{p.title}</span>
+                      <span className="block truncate text-xs text-ink-400">{p.description}</span>
+                    </span>
+                    <span className="ml-auto shrink-0 text-[11px] text-ink-500">{p.downloads.toLocaleString()}↓</span>
+                  </button>
+                ))
+              )}
+            </div>
+            <p className="text-xs text-ink-500">
+              Outpost installs the newest release of the pack: its server-side mods and configs, then the loader version it was built for. Players install the same pack in their launcher.
+            </p>
+          </div>
+        )}
+
+        {(loader === 'forge' || loader === 'neoforge' || loader === 'spongeforge' || loader === 'quilt') && (
+          <p className="rounded-lg border border-surface-600 px-3 py-2 text-xs text-ink-400">
+            The {loader === 'quilt' ? 'Quilt' : 'Forge'} installer runs on this machine with the Java this Minecraft version needs (Configuration → Java runtimes). It downloads Minecraft and libraries, so the first install takes a few minutes.
+          </p>
         )}
 
         {loader === 'spigot' && (

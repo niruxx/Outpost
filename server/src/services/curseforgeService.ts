@@ -14,7 +14,10 @@ import { clearSetting, getSetting, setSetting } from './systemSettingsService.js
 export const SETTING_CURSEFORGE_KEY = 'curseforge_api_key';
 const API = 'https://api.curseforge.com';
 
-export type CfTarget = 'bedrock' | 'plugin' | 'datapack';
+export type CfTarget = 'bedrock' | 'plugin' | 'datapack' | 'mod:fabric' | 'mod:quilt' | 'mod:forge' | 'mod:neoforge';
+
+/** CurseForge's modLoaderType numbers. */
+const MOD_LOADER_TYPE: Record<string, number> = { 'mod:forge': 1, 'mod:fabric': 4, 'mod:quilt': 5, 'mod:neoforge': 6 };
 
 export interface CfClass {
   id: number;
@@ -79,6 +82,10 @@ const TARGETS: Record<CfTarget, { gameSlug: string; fallbackGameId: number; clas
   bedrock: { gameSlug: 'minecraft-bedrock', fallbackGameId: 78022, classes: ['addons', 'texture packs', 'scripts'] },
   plugin: { gameSlug: 'minecraft', fallbackGameId: 432, classes: ['bukkit plugins'] },
   datapack: { gameSlug: 'minecraft', fallbackGameId: 432, classes: ['data packs'] },
+  'mod:fabric': { gameSlug: 'minecraft', fallbackGameId: 432, classes: ['mods'] },
+  'mod:quilt': { gameSlug: 'minecraft', fallbackGameId: 432, classes: ['mods'] },
+  'mod:forge': { gameSlug: 'minecraft', fallbackGameId: 432, classes: ['mods'] },
+  'mod:neoforge': { gameSlug: 'minecraft', fallbackGameId: 432, classes: ['mods'] },
 };
 
 export function createCurseForge(deps: { fetch: FetchFn; getKey: () => string | null }) {
@@ -139,6 +146,7 @@ export function createCurseForge(deps: { fetch: FetchFn; getKey: () => string | 
       pageSize: String(Math.min(Math.max(opts.limit ?? 24, 1), 50)),
     });
     if (query) params.set('searchFilter', query);
+    if (MOD_LOADER_TYPE[target]) params.set('modLoaderType', String(MOD_LOADER_TYPE[target]));
     const { data } = await cf<{ data: CfMod[] }>(`/v1/mods/search?${params}`);
     return data.map((m) => ({
       id: m.id,
@@ -156,12 +164,13 @@ export function createCurseForge(deps: { fetch: FetchFn; getKey: () => string | 
   }
 
   /** The newest downloadable file, preferring releases and (for Java) the server's Minecraft version. */
-  async function resolveFile(modId: number, gameVersion: string | null): Promise<CfResolvedFile> {
+  async function resolveFile(modId: number, gameVersion: string | null, target?: CfTarget): Promise<CfResolvedFile> {
     const { data: mod } = await cf<{ data: CfMod }>(`/v1/mods/${modId}`);
     if (mod.allowModDistribution === false) {
       throw new HttpError(409, `“${mod.name}”’s author only allows downloads from the CurseForge website — download it there and upload it here`);
     }
-    const { data: files } = await cf<{ data: CfFile[] }>(`/v1/mods/${modId}/files?pageSize=50`);
+    const loaderType = target ? MOD_LOADER_TYPE[target] : undefined;
+    const { data: files } = await cf<{ data: CfFile[] }>(`/v1/mods/${modId}/files?pageSize=50${loaderType ? `&modLoaderType=${loaderType}` : ''}`);
     const usable = files
       .filter((f) => f.downloadUrl && f.isAvailable !== false)
       .sort((a, b) => a.releaseType - b.releaseType || Date.parse(b.fileDate) - Date.parse(a.fileDate));

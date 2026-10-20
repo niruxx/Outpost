@@ -22,6 +22,38 @@ export function runMigrations(db: DatabaseSync): void {
   addFirewallColumn(db);
   addSteamPresetColumn(db);
   addUserThemeColumn(db);
+  addWorkshopColumn(db);
+  addAuditClientColumns(db);
+  addRewindColumn(db);
+  addRconAndAutoUpdateColumns(db);
+}
+
+function addRconAndAutoUpdateColumns(db: DatabaseSync): void {
+  for (const col of ['rcon_config', 'auto_update', 'status_page', 'modpack', 'limits']) {
+    if (db.prepare(`SELECT 1 FROM pragma_table_info('servers') WHERE name = '${col}'`).get()) continue;
+    logger.info(`Migrating database: adding servers.${col} column`);
+    db.exec(`ALTER TABLE servers ADD COLUMN ${col} TEXT`);
+  }
+}
+
+function addRewindColumn(db: DatabaseSync): void {
+  if (db.prepare("SELECT 1 FROM pragma_table_info('servers') WHERE name = 'rewind_config'").get()) return;
+  logger.info('Migrating database: adding servers.rewind_config column');
+  db.exec('ALTER TABLE servers ADD COLUMN rewind_config TEXT');
+}
+
+function addAuditClientColumns(db: DatabaseSync): void {
+  if (db.prepare("SELECT 1 FROM pragma_table_info('audit_log') WHERE name = 'ip'").get()) return;
+  logger.info('Migrating database: adding ip and user_agent to audit_log');
+  db.exec('ALTER TABLE audit_log ADD COLUMN ip TEXT');
+  db.exec('ALTER TABLE audit_log ADD COLUMN user_agent TEXT');
+  db.exec('CREATE INDEX IF NOT EXISTS audit_log_created_at ON audit_log (created_at)');
+}
+
+function addWorkshopColumn(db: DatabaseSync): void {
+  if (db.prepare("SELECT 1 FROM pragma_table_info('servers') WHERE name = 'workshop'").get()) return;
+  logger.info('Migrating database: adding servers.workshop column');
+  db.exec('ALTER TABLE servers ADD COLUMN workshop TEXT');
 }
 
 function addUserThemeColumn(db: DatabaseSync): void {

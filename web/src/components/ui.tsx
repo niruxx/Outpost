@@ -1,4 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion';
+import { t, tc } from '../i18n/index.js';
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from 'react';
 
 const springy = { type: 'spring' as const, stiffness: 420, damping: 32 };
@@ -31,7 +32,7 @@ export function Button({
   };
   return (
     <button className={`ui-btn ui-btn-${variant} ${base} ${variants[variant]} ${className}`} {...props}>
-      {children}
+      {tc(children)}
     </button>
   );
 }
@@ -75,7 +76,7 @@ export function Card({
 export function CardTitle({ children, action }: { children: ReactNode; action?: ReactNode }) {
   return (
     <div className="mb-4 flex items-center justify-between gap-3">
-      <h2 className="ui-card-title text-base font-medium text-ink-100">{children}</h2>
+      <h2 className="ui-card-title text-base font-medium text-ink-100">{tc(children)}</h2>
       {action}
     </div>
   );
@@ -115,7 +116,7 @@ export function Badge({
           <span className={`relative inline-flex h-1.5 w-1.5 rounded-full ${dotColor[tone]}`} />
         </span>
       )}
-      {children}
+      {tc(children)}
     </span>
   );
 }
@@ -172,7 +173,7 @@ export function Modal({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="ui-modal-header flex shrink-0 items-center justify-between px-6 pb-2 pt-6">
-              <h3 className="ui-modal-title text-xl font-normal text-ink-50">{title}</h3>
+              <h3 className="ui-modal-title text-xl font-normal text-ink-50">{t(title)}</h3>
               <button onClick={onClose} aria-label="Close" className="ui-modal-close state-layer rounded-full p-2 text-ink-300">
                 <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                   <path d="M18 6L6 18M6 6l12 12" />
@@ -190,7 +191,7 @@ export function Modal({
 export function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <label className="block space-y-1">
-      <span className="text-xs font-medium text-ink-300">{label}</span>
+      <span className="text-xs font-medium text-ink-300">{t(label)}</span>
       {children}
     </label>
   );

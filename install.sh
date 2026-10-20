@@ -34,16 +34,19 @@ heading() { printf '\n%s%s%s\n' "$BOLD" "$*" "$NC"; }
 NONINTERACTIVE=0
 ENGINE=""        # docker | podman | "" (ask; default docker)
 CONTAINERS=1
+WINE=0
 for arg in "$@"; do
   case "$arg" in
     -y|--yes) NONINTERACTIVE=1 ;;
     --engine=docker|--engine=podman) ENGINE="${arg#--engine=}" ;;
     --no-containers) CONTAINERS=0 ;;
+    --wine) WINE=1 ;;
     -h|--help)
-      echo "Usage: $0 [-y|--yes] [--engine=docker|podman] [--no-containers]"
+      echo "Usage: $0 [-y|--yes] [--engine=docker|podman] [--no-containers] [--wine]"
       echo "  -y, --yes            Non-interactive: accept every default (Java, sandbox, Docker; skips systemd)."
       echo "  --engine=ENGINE      Container engine for Docker/Portainer/app instances: docker (default) or podman."
       echo "  --no-containers      Don't install a container engine."
+      echo "  --wine               Install Wine (for Windows-only game servers like Black Ops III) without asking."
       exit 0
       ;;
     *) die "Unknown option: $arg (see --help)" ;;
@@ -203,6 +206,51 @@ install_steamcmd_deps() {
   esac
 }
 
+# Wine runs Windows-only dedicated servers (Black Ops III and others) on Linux. Xvfb gives the few
+# that open a window a virtual screen. Both 64- and 32-bit Wine are installed where the distro splits
+# them, since some servers still ship 32-bit helpers.
+install_wine() {
+  case "$DISTRO_FAMILY" in
+    debian)
+      $SUDO dpkg --add-architecture i386
+      $SUDO apt-get update -y
+      $SUDO apt-get install -y wine wine64 xvfb xauth cabextract || return 1
+      # 32-bit Wine is a separate package on Debian/Ubuntu; nice to have, not required.
+      $SUDO apt-get install -y wine32:i386 || warn "32-bit Wine (wine32:i386) didn't install — only 64-bit Windows servers will run."
+      ;;
+    fedora)
+      $SUDO dnf install -y wine xorg-x11-server-Xvfb xauth cabextract || {
+        warn "On RHEL/Rocky/Alma, Wine comes from EPEL: sudo dnf install -y epel-release, then re-run."
+        return 1
+      }
+      ;;
+    opensuse)
+      $SUDO zypper --non-interactive install wine xvfb-run cabextract
+      ;;
+    arch)
+      if ! grep -q '^\[multilib\]' /etc/pacman.conf; then
+        warn "Wine needs the [multilib] repo enabled in /etc/pacman.conf, which this installer won't edit automatically."
+        warn "Uncomment [multilib] and its Include line, run 'sudo pacman -Sy', then: sudo pacman -S wine xorg-server-xvfb"
+        return 1
+      fi
+      $SUDO pacman -Sy --needed --noconfirm wine xorg-server-xvfb xorg-xauth cabextract
+      ;;
+    *)
+      warn "Don't know how to install Wine on this distro — install wine (and xvfb) yourself to run Windows-only servers."
+      return 1
+      ;;
+  esac
+  # winetricks installs runtimes (VC++, .NET, DirectX…) from each instance's Wine tab. It lives in
+  # Debian's contrib / Ubuntu's universe, so it may be missing — Outpost downloads it itself then.
+  case "$DISTRO_FAMILY" in
+    debian)   $SUDO apt-get install -y winetricks unzip p7zip-full ;;
+    fedora)   $SUDO dnf install -y winetricks unzip p7zip ;;
+    opensuse) $SUDO zypper --non-interactive install winetricks unzip p7zip ;;
+    arch)     $SUDO pacman -S --needed --noconfirm winetricks unzip p7zip ;;
+  esac || warn "winetricks didn't install from the package manager — Outpost will download it the first time an instance needs it."
+  return 0
+}
+
 # ---------------------------------------------------------------------------
 # Sandbox + container engine (Docker / Podman) for app, container and Portainer instances
 # ---------------------------------------------------------------------------
@@ -341,6 +389,18 @@ if confirm "Install 32-bit runtime libraries needed by steamcmd (for Palworld/Zo
   fi
 else
   info "Skipping steamcmd dependencies. Install them later if you want to run Steam-based game servers — see the README."
+fi
+
+if command -v wine64 >/dev/null 2>&1 || command -v wine >/dev/null 2>&1; then
+  ok "Wine already installed ($( (wine64 --version 2>/dev/null || wine --version) | head -1))"
+elif [[ "${WINE:-0}" == "1" ]] || confirm "Install Wine, to run Windows-only game servers (Call of Duty: Black Ops III and others) on Linux?" n; then
+  if install_wine; then
+    ok "Wine installed ($( (wine64 --version 2>/dev/null || wine --version) | head -1))"
+  else
+    warn "Wine didn't install completely — see the messages above. Windows-only servers will tell you what's missing when you start them."
+  fi
+else
+  info "Skipping Wine. Install it later (re-run with --wine) if you want Windows-only game servers."
 fi
 
 # ---------------------------------------------------------------------------

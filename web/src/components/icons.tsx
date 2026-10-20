@@ -131,6 +131,9 @@ const PATHS: Record<string, ReactNode> = {
     </>
   ),
   close: <path d="M18 6L6 18M6 6l12 12" />,
+  wine: <path d="M8 2h8l-.6 6.5a3.4 3.4 0 0 1-6.8 0L8 2zM12 12v8M8 22h8" />,
+  chevronUp: <path d="M18 15l-6-6-6 6" />,
+  chevronDown: <path d="M6 9l6 6 6-6" />,
   more: <path d="M12 5h.01M12 12h.01M12 19h.01" />,
   list: <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />,
   container: (

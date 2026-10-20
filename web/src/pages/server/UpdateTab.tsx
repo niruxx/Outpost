@@ -6,6 +6,7 @@ import { api, ApiError } from '../../api/client.js';
 import type { UpdateCheckResult } from '../../api/types.js';
 import { useToast } from '../../components/Toast.js';
 import { Badge, Button, Card, ErrorText, Spinner } from '../../components/ui.js';
+import { AutoUpdateCard } from './AutoUpdateCard.js';
 
 const PRESERVED_BY_PLATFORM: Record<string, string[]> = {
   bedrock: ['worlds/', 'server.properties', 'allowlist.json', 'permissions.json'],
@@ -158,6 +159,8 @@ export function UpdateTab() {
           <p className="mt-2 text-xs text-ink-500">Full output is streaming on the Console tab.</p>
         </Card>
       )}
+
+      <AutoUpdateCard />
     </div>
   );
 }

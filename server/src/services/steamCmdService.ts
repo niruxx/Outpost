@@ -31,9 +31,12 @@ function isUrl(value: string): boolean {
  *  habit of self-updating mid-command and exiting non-zero afterward even when the actual
  *  command already succeeded — checked by scanning the captured output for steamcmd's own
  *  success line rather than trusting the exit code alone. */
-function runSteamCmd(exePath: string, args: string[], cwd: string, onLog?: LogFn): Promise<void> {
+/** Runs steamcmd and resolves with everything it printed. Its input is closed, so a prompt it can't
+ *  answer (a Steam Guard code, a password) fails instead of hanging forever. */
+function runSteamCmd(exePath: string, args: string[], cwd: string, onLog?: LogFn): Promise<string> {
   return new Promise((resolve, reject) => {
     const child = spawn(exePath, args, { cwd, windowsHide: true });
+    child.stdin.end();
     let captured = '';
     child.stdout.setEncoding('utf8');
     child.stderr.setEncoding('utf8');
@@ -47,14 +50,16 @@ function runSteamCmd(exePath: string, args: string[], cwd: string, onLog?: LogFn
     });
     child.on('error', (err) => reject(err));
     child.on('exit', (code) => {
-      if (code === 0) return resolve();
+      if (code === 0) return resolve(captured);
       if (STEAMCMD_SUCCESS_MARKER.test(captured)) {
         onLog?.(
           `  (steamcmd exited with code ${code} after reporting success — it likely self-updated itself mid-command; treating this as OK)`
         );
-        return resolve();
+        return resolve(captured);
       }
-      reject(new Error(`steamcmd exited with code ${code}`));
+      const err = new Error(`steamcmd exited with code ${code}`) as Error & { output?: string };
+      err.output = captured;
+      reject(err);
     });
   });
 }
@@ -210,4 +215,91 @@ export async function steamAppUpdate(
     onLog?.(`==> ${commandLog}`);
     await runSteamCmd(steamCmdPath, args, instanceDir, onLog);
   }
+}
+
+/** Turns steamcmd's login complaints into something a person can act on. */
+function explainLoginFailure(output: string): string | null {
+  if (/Two-factor code mismatch|Invalid Login Auth Code|Steam Guard code/i.test(output)) {
+    return 'Steam Guard needs a code for this account — enter the current code from the Steam app (or the emailed one) and try again.';
+  }
+  if (/Invalid Password|password.*incorrect|FAILED \(Invalid/i.test(output)) return 'Steam rejected the username or password.';
+  if (/Rate Limit|RateLimitExceeded/i.test(output)) return 'Steam is rate-limiting logins from this host — wait a few minutes and try again.';
+  if (/No subscription|Access Denied|Failure \(.*\)|ERROR! Download item \d+ failed \(Access/i.test(output)) {
+    return 'This Steam account can’t download this item — Workshop content for this game needs an account that owns the game.';
+  }
+  return null;
+}
+
+/**
+ * Downloads one Workshop item with steamcmd into `<workDir>/steamapps/workshop/content/<appId>/<itemId>`
+ * and returns that folder. `login` is "anonymous" or "user password"; a one-time Steam Guard code
+ * can be added for the first login (steamcmd remembers the session afterwards).
+ */
+export async function steamWorkshopDownload(
+  appId: string,
+  itemId: string,
+  workDir: string,
+  opts: { login: string; guardCode?: string; onLog?: LogFn }
+): Promise<string> {
+  const steamCmdPath = await ensureSteamCmd(opts.onLog);
+  fs.mkdirSync(workDir, { recursive: true });
+  const loginArgs = opts.login.trim() ? opts.login.trim().split(/\s+/) : ['anonymous'];
+  if (opts.guardCode && loginArgs[0] !== 'anonymous') loginArgs.push(opts.guardCode.trim());
+  const who = loginArgs[0] === 'anonymous' ? 'anonymous' : `${loginArgs[0]} ***`;
+  opts.onLog?.(`==> steamcmd +login ${who} +workshop_download_item ${appId} ${itemId} validate`);
+  let output: string;
+  try {
+    output = await runSteamCmd(
+      steamCmdPath,
+      ['+force_install_dir', workDir, '+login', ...loginArgs, '+workshop_download_item', appId, itemId, 'validate', '+quit'],
+      workDir,
+      opts.onLog
+    );
+  } catch (err) {
+    const why = explainLoginFailure((err as { output?: string }).output ?? '');
+    throw new Error(why ?? (err instanceof Error ? err.message : String(err)));
+  }
+  // steamcmd can exit 0 after a failed download — trust only its success line.
+  if (!new RegExp(`Success\\. Downloaded item ${itemId}\\b`).test(output)) {
+    throw new Error(explainLoginFailure(output) ?? `steamcmd didn’t download item ${itemId} — see the log above`);
+  }
+  const folder = path.join(workDir, 'steamapps', 'workshop', 'content', appId, itemId);
+  if (!fs.existsSync(folder)) throw new Error(`steamcmd reported success but ${folder} is missing`);
+  return folder;
+}
+
+/** The build an instance has installed, from steamcmd's own manifest (steamapps/appmanifest_<id>.acf). */
+export function installedBuildId(instanceDir: string, appId: string): string | null {
+  try {
+    const acf = fs.readFileSync(path.join(instanceDir, 'steamapps', `appmanifest_${appId}.acf`), 'utf8');
+    return acf.match(/"buildid"\s+"(\d+)"/)?.[1] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Pulls the "public" branch's buildid out of `app_info_print` output (Valve's VDF text). */
+export function parsePublicBuildId(output: string): string | null {
+  const branches = output.indexOf('"branches"');
+  if (branches < 0) return null;
+  const pub = output.indexOf('"public"', branches);
+  if (pub < 0) return null;
+  return output.slice(pub, pub + 400).match(/"buildid"\s+"(\d+)"/)?.[1] ?? null;
+}
+
+const latestCache = new Map<string, { at: number; id: string | null }>();
+
+/** The newest public build of an app, asked of Steam through steamcmd (anonymous). Cached 10 minutes. */
+export async function latestBuildId(appId: string, onLog?: LogFn): Promise<string | null> {
+  const hit = latestCache.get(appId);
+  if (hit && Date.now() - hit.at < 10 * 60_000) return hit.id;
+  const exe = await ensureSteamCmd(onLog);
+  let id: string | null = null;
+  // The first app_info_print after a fresh login is sometimes empty; asking twice is the usual cure.
+  const output = await runSteamCmd(exe, ['+login', 'anonymous', '+app_info_update', '1', '+app_info_print', appId, '+app_info_print', appId, '+quit'], STEAMCMD_DIR).catch(
+    (err: { output?: string }) => err.output ?? ''
+  );
+  id = parsePublicBuildId(output);
+  latestCache.set(appId, { at: Date.now(), id });
+  return id;
 }

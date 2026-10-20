@@ -208,6 +208,7 @@ type TransferMeta = Pick<
   | 'extra_args'
   | 'steam_app_id'
   | 'steam_preset'
+  | 'workshop'
   | 'steam_login'
   | 'steam_extra_flags'
   | 'launch_config'
@@ -261,6 +262,7 @@ export function startTransfer(serverId: string, nodeId: string, deleteSource: bo
     extra_args: server.extra_args,
     steam_app_id: server.steam_app_id,
     steam_preset: server.steam_preset,
+    workshop: server.workshop,
     steam_login: server.steam_login,
     steam_extra_flags: server.steam_extra_flags,
     launch_config: server.launch_config,

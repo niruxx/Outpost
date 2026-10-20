@@ -1,4 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import { PanelUpdateBanner } from './PanelUpdateBanner.js';
+import { t, tc } from '../i18n/index.js';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { LayoutGroup, motion } from 'framer-motion';
 import { useAuth } from '../state/AuthContext.js';
@@ -44,7 +46,7 @@ export function NavItem({
           <span className="relative z-10 transition-transform duration-200 group-hover:translate-x-0.5">
             <Icon name={icon} className="h-5 w-5" />
           </span>
-          <span className="relative z-10 truncate">{label}</span>
+          <span className="relative z-10 truncate">{t(label)}</span>
         </span>
       )}
     </NavLink>
@@ -52,7 +54,7 @@ export function NavItem({
 }
 
 export function NavSectionLabel({ children }: { children: ReactNode }) {
-  return <p className="px-4 pb-1 pt-4 text-xs font-medium text-ink-400">{children}</p>;
+  return <p className="px-4 pb-1 pt-4 text-xs font-medium text-ink-400">{tc(children)}</p>;
 }
 
 /** The instances this user can open (all of them for admins), polled so status dots stay current. */
@@ -132,7 +134,7 @@ function DrawerFooter({ system }: { system: SystemInfo | null }) {
             navigate('/login');
           }}
           title="Sign out"
-          aria-label="Sign out"
+          aria-label={t('Sign out')}
           className="state-layer rounded-full p-2 text-ink-300"
         >
           <Icon name="logout" />
@@ -143,6 +145,15 @@ function DrawerFooter({ system }: { system: SystemInfo | null }) {
           <span className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-accent-400 align-middle" />
           {system.hostname} · {system.platformLabel} {system.arch}
           {system.java.available ? ' · Java' : ''}
+        </p>
+      )}
+      {system?.panel && (
+        <p
+          className="truncate px-3 pt-0.5 text-[11px] text-ink-500"
+          title={system.panel.commitDate ? `Commit ${system.panel.commit} from ${new Date(system.panel.commitDate).toLocaleString()}` : undefined}
+        >
+          Outpost v{system.panel.version}
+          {system.panel.commit ? <span className="font-mono"> · {system.panel.commit}</span> : null}
         </p>
       )}
     </div>
@@ -248,6 +259,7 @@ export function Layout({
           <Logo className="h-6 w-6 rounded-md" />
           <span className="font-medium text-ink-50">Outpost</span>
         </div>
+        <PanelUpdateBanner />
         <main className="ui-main min-h-0 flex-1 overflow-y-auto">
           <motion.div
             key={pageKey}
@@ -269,8 +281,8 @@ export function PageHeader({ title, subtitle, action }: { title: string; subtitl
   return (
     <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} className="mb-6 flex flex-wrap items-end justify-between gap-4">
       <div>
-        <h1 className="ui-page-title text-[28px] font-normal leading-9 text-ink-50">{title}</h1>
-        {subtitle && <p className="mt-1 text-sm text-ink-400">{subtitle}</p>}
+        <h1 className="ui-page-title text-[28px] font-normal leading-9 text-ink-50">{t(title)}</h1>
+        {subtitle && <p className="mt-1 text-sm text-ink-400">{t(subtitle)}</p>}
       </div>
       {action}
     </motion.div>

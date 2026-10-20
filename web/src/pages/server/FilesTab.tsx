@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { SftpConnectInfo } from '../../components/SftpCard.js';
 import { useServerDetail } from './ServerContext.js';
 import { api, ApiError, downloadUrl } from '../../api/client.js';
 import type { FileEntry } from '../../api/types.js';
@@ -180,6 +181,7 @@ export function FilesTab() {
 
   return (
     <div className="space-y-3">
+      <SftpConnectInfo serverId={serverId} />
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
           <button className="text-sm text-accent-500 hover:underline" onClick={() => setPath('')}>

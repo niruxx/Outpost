@@ -7,7 +7,8 @@ import { curseforge, curseforgeStatus, type CfTarget } from '../services/cursefo
 export const pluginRegistryRouter = Router();
 pluginRegistryRouter.use(requireAuth);
 
-const cfTarget = (v: unknown): CfTarget => (v === 'bedrock' ? 'bedrock' : v === 'datapack' ? 'datapack' : 'plugin');
+const cfTarget = (v: unknown): CfTarget =>
+  v === 'bedrock' || v === 'datapack' || v === 'mod:fabric' || v === 'mod:quilt' || v === 'mod:forge' || v === 'mod:neoforge' ? v : 'plugin';
 
 /** Whether CurseForge search is available, and its categories for a catalog. */
 pluginRegistryRouter.get(
@@ -31,7 +32,9 @@ pluginRegistryRouter.get(
       return res.json({ results });
     }
     if (req.query.catalog === 'bedrock') throw new HttpError(400, 'Bedrock packs are on CurseForge, not Modrinth');
-    const catalog = req.query.catalog === 'datapack' ? 'datapack' : 'plugin';
+    const MOD_CATALOGS = ['mod:fabric', 'mod:quilt', 'mod:forge', 'mod:neoforge'] as const;
+    const catalog =
+      req.query.catalog === 'datapack' ? 'datapack' : MOD_CATALOGS.find((c) => c === req.query.catalog) ?? 'plugin';
     try {
       const results = await searchPlugins(query, limit, catalog);
       res.json({ results });

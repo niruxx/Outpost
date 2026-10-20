@@ -1,14 +1,17 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { t } from '../i18n/index.js';
 import { motion } from 'framer-motion';
 import type { ServerRecord } from '../api/types.js';
 import { Modal } from './ui.js';
 import { GameTile, type GameKind } from './GameArt.js';
 import { CreateServerModal } from './CreateServerModal.js';
 import { CreateContainerModal } from './CreateContainerModal.js';
+import { CreateFromTemplateModal } from './CreateFromTemplateModal.js';
+import { api } from '../api/client.js';
 import { EMPHASIZED } from './motion.js';
 import { useAuth } from '../state/AuthContext.js';
 
-type Choice = 'game' | 'app' | 'portainer' | 'container' | 'custom';
+type Choice = 'game' | 'app' | 'portainer' | 'container' | 'custom' | 'template';
 
 const CHOICES: { id: Choice; title: string; description: string; kind: GameKind }[] = [
   {
@@ -36,6 +39,12 @@ const CHOICES: { id: Choice; title: string; description: string; kind: GameKind 
     kind: 'minecraft-java',
   },
   {
+    id: 'template',
+    title: 'From a template',
+    description: 'A saved or imported setup — game, settings and config files ready to go.',
+    kind: 'app:template',
+  },
+  {
     id: 'custom',
     title: 'Custom process',
     description: 'Any Linux binary or shell script, with your own start, stop and restart commands.',
@@ -60,6 +69,14 @@ export function NewInstanceModal({
   const isAdmin = user?.role === 'admin';
   const [choice, setChoice] = useState<Choice | null>(null);
   const canGame = !!creation?.allowedPlatforms.some((p) => p === 'java' || p === 'bedrock' || p === 'steam');
+  const [templateCount, setTemplateCount] = useState(0);
+  useEffect(() => {
+    if (!open) return;
+    api
+      .get<{ templates: unknown[] }>('/templates')
+      .then((r) => setTemplateCount(r.templates.length))
+      .catch(() => setTemplateCount(0));
+  }, [open]);
 
   const containers = isAdmin ? 'any' : creation?.canCreate ? creation.containers : 'none';
   const available: Record<Choice, boolean> = {
@@ -68,6 +85,7 @@ export function NewInstanceModal({
     portainer: containers !== 'none' && (isAdmin || !!creation?.engineSocket),
     container: containers === 'any',
     custom: isAdmin,
+    template: templateCount > 0 && (isAdmin || !!creation?.canCreate),
   };
   const reason: Record<Choice, string> = {
     game: 'Your account can’t create game servers',
@@ -75,8 +93,9 @@ export function NewInstanceModal({
     portainer: 'Needs Portainer (container engine) access — ask an admin',
     container: containers === 'catalog' ? 'Your account runs catalog apps only' : 'Ask an admin for container access',
     custom: 'Admins only — it runs code directly on the host',
+    template: templateCount === 0 ? 'No templates yet — import one under Configuration' : 'Your account can’t create instances',
   };
-  const options = CHOICES.filter((c) => !only || only.includes(c.id)).map((c) => ({ ...c, available: available[c.id] }));
+  const options = CHOICES.filter((c) => (!only || only.includes(c.id)) && (c.id !== 'template' || templateCount > 0 || isAdmin)).map((c) => ({ ...c, available: available[c.id] }));
 
   // A single available option skips the picker.
   const usable = options.filter((o) => o.available);
@@ -105,8 +124,8 @@ export function NewInstanceModal({
             >
               <GameTile kind={o.kind} className="h-11 w-11" />
               <span className="min-w-0">
-                <span className="block text-sm font-medium text-ink-50">{o.title}</span>
-                <span className="mt-0.5 block text-xs text-ink-400">{o.description}</span>
+                <span className="block text-sm font-medium text-ink-50">{t(o.title)}</span>
+                <span className="mt-0.5 block text-xs text-ink-400">{t(o.description)}</span>
                 {!o.available && (
                   <span className="mt-1.5 block text-[11px] font-medium text-yellow-400">
                     {reason[o.id]}
@@ -119,6 +138,7 @@ export function NewInstanceModal({
       </Modal>
 
       <CreateServerModal open={open && (effective === 'game' || effective === 'custom')} mode={effective === 'custom' ? 'custom' : 'game'} onClose={close} onCreated={onCreated} />
+      <CreateFromTemplateModal open={open && effective === 'template'} onClose={close} onCreated={onCreated} />
       <CreateContainerModal
         open={open && (effective === 'app' || effective === 'portainer' || effective === 'container')}
         initialTemplate={effective === 'portainer' ? 'portainer' : effective === 'container' ? 'blank' : undefined}

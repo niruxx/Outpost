@@ -1,7 +1,8 @@
 import os from 'node:os';
+import { checkForPanelUpdate, panelVersion } from '../services/panelVersionService.js';
 import { Router } from 'express';
 import { asyncHandler } from '../utils/asyncHandler.js';
-import { requireAuth } from '../auth/middleware.js';
+import { requireAuth, requireRole } from '../auth/middleware.js';
 import { findJava, getJavaVersion } from '../services/javaService.js';
 import { getPrimaryAddress, listHostAddresses } from '../services/networkService.js';
 import { getHostMetrics } from '../services/hostMetricsService.js';
@@ -30,7 +31,25 @@ systemRouter.get(
       cpuCores: os.cpus().length,
       totalMemMb: Math.round(os.totalmem() / 1024 / 1024),
       uptimeSec: Math.round(os.uptime()),
+      panel: { version: panelVersion().version, commit: panelVersion().commit, commitDate: panelVersion().commitDate },
     });
+  })
+);
+
+/** The commit this panel runs and whether its Git remote has newer ones (admins). */
+systemRouter.get(
+  '/panel-version',
+  requireRole('admin'),
+  asyncHandler(async (_req, res) => {
+    res.json(panelVersion());
+  })
+);
+
+systemRouter.post(
+  '/panel-version/check',
+  requireRole('admin'),
+  asyncHandler(async (_req, res) => {
+    res.json(await checkForPanelUpdate());
   })
 );
 

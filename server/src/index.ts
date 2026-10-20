@@ -1,4 +1,10 @@
 import express from 'express';
+import { initPanelVersion } from './services/panelVersionService.js';
+import { DATA_DIR } from './utils/paths.js';
+import { notify } from './services/notificationService.js';
+import { stopServer as stopServerForQuota } from './services/processManager.js';
+import { appendLine } from './services/consoleLogService.js';
+import { initDiskQuotas } from './services/limitsService.js';
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -11,6 +17,7 @@ import { serversRouter } from './routes/servers.routes.js';
 import { filesRouter } from './routes/files.routes.js';
 import { backupsRouter } from './routes/backups.routes.js';
 import { systemRouter } from './routes/system.routes.js';
+import { javaRouter } from './routes/java.routes.js';
 import { whitelistRouter } from './routes/whitelist.routes.js';
 import { pluginsRouter } from './routes/plugins.routes.js';
 import { pluginRegistryRouter } from './routes/pluginRegistry.routes.js';
@@ -26,8 +33,26 @@ import { tasksRouter } from './routes/tasks.routes.js';
 import { notificationsRouter } from './routes/notifications.routes.js';
 import { auditRouter } from './routes/audit.routes.js';
 import { firewallRouter } from './routes/firewall.routes.js';
+import { workshopRouter } from './routes/workshop.routes.js';
+import { rewindRouter } from './routes/rewind.routes.js';
+import { wineRouter } from './routes/wine.routes.js';
+import { initAutoUpdates } from './services/autoUpdateService.js';
+import { initConsoleHistory } from './services/consoleHistoryService.js';
+import { instanceTemplateRouter, templatesRouter } from './routes/templates.routes.js';
+import { publicStatusRouter, statusPageSettingsRouter } from './routes/statusPage.routes.js';
+import { instanceSftpRouter, sftpRouter } from './routes/sftp.routes.js';
+import { instanceOffsiteRouter, offsiteRouter } from './routes/offsite.routes.js';
+import { limitsRouter } from './routes/limits.routes.js';
+import { keysRouter } from './routes/keys.routes.js';
+import { dbHostsRouter, serverDatabasesRouter } from './routes/databases.routes.js';
+import { startSftp, stopSftp } from './services/sftpService.js';
+import { consoleLogsRouter, consoleLogSettingsRouter } from './routes/consoleLogs.routes.js';
+import { rconRouter } from './routes/rcon.routes.js';
+import { initRewind } from './services/rewindService.js';
+import { requestContextMiddleware } from './utils/requestContext.js';
+import { startAuditPruning } from './services/auditService.js';
 import { recoverInterruptedTransfers } from './services/nodeService.js';
-import { verifyToken } from './auth/tokens.js';
+import { authenticate } from './auth/tokens.js';
 import { userHasServerAccess } from './services/userService.js';
 import { getServer, listServers } from './services/serverService.js';
 import { getLogBuffer, getRuntimeInfo, isRunning, startServer, stopAllForShutdown } from './services/processManager.js';
@@ -39,6 +64,23 @@ const PORT = Number(process.env.PORT ?? 8642);
 
 const app = express();
 app.use(express.json({ limit: '5mb' }));
+// Secrets stored on server records never leave the panel, whichever route sends the record.
+app.set('json replacer', (key: string, value: unknown) => {
+  if (key === 'rcon_config') return undefined;
+  if (key === 'steam_login' && typeof value === 'string') return value.trim().split(/\s+/)[0] ?? '';
+  if (key === 'workshop' && typeof value === 'string') {
+    try {
+      const ws = JSON.parse(value) as { login?: string | null };
+      if (ws.login) ws.login = ws.login.split(/\s+/)[0];
+      return JSON.stringify(ws);
+    } catch {
+      return null;
+    }
+  }
+  return value;
+});
+// Lets the audit log record each request's address and browser.
+app.use(requestContextMiddleware);
 
 app.use((req, res, next) => {
   // Minimal request log; skip noisy polling endpoints.
@@ -55,9 +97,27 @@ app.use('/api/servers/:serverId/plugins', pluginsRouter);
 app.use('/api/servers/:serverId/map', mapRouter);
 app.use('/api/servers/:serverId/upnp', upnpRouter);
 app.use('/api/servers/:serverId/tasks', tasksRouter);
+app.use('/api/servers/:serverId/workshop', workshopRouter);
+app.use('/api/servers/:serverId/rewind', rewindRouter);
+app.use('/api/servers/:serverId/wine', wineRouter);
+app.use('/api/servers/:serverId/rcon', rconRouter);
+app.use('/api/servers/:serverId/console-logs', consoleLogsRouter);
+app.use('/api/console-logs', consoleLogSettingsRouter);
+app.use('/api/templates', templatesRouter);
+app.use('/api/servers/:serverId/template', instanceTemplateRouter);
+app.use('/api/servers/:serverId/status-page', statusPageSettingsRouter);
+app.use('/api/sftp', sftpRouter);
+app.use('/api/offsite', offsiteRouter);
+app.use('/api/servers/:serverId/offsite', instanceOffsiteRouter);
+app.use('/api/servers/:serverId/limits', limitsRouter);
+app.use('/api/keys', keysRouter);
+app.use('/api/database-hosts', dbHostsRouter);
+app.use('/api/servers/:serverId/databases', serverDatabasesRouter);
+app.use('/api/servers/:serverId/sftp', instanceSftpRouter);
 app.use('/api/servers', serversRouter);
 app.use('/api/plugins', pluginRegistryRouter);
 app.use('/api/system', systemRouter);
+app.use('/api/java', javaRouter);
 app.use('/api/environment', environmentRouter);
 app.use('/api/settings', settingsRouter);
 app.use('/api/nodes', nodesRouter);
@@ -69,6 +129,7 @@ app.use('/api/audit', auditRouter);
 app.use('/api/firewall', firewallRouter);
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
+app.use('/api/public/status', publicStatusRouter);
 
 // Serve the built frontend, if present (production mode). In dev, Vite serves the UI separately.
 if (fs.existsSync(WEB_DIST_DIR)) {
@@ -98,7 +159,7 @@ httpServer.on('upgrade', (req, socket, head) => {
   }
   const serverId = match[1];
   const token = url.searchParams.get('token') ?? '';
-  const payload = verifyToken(token);
+  const payload = authenticate(token);
   if (!payload) {
     socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
     socket.destroy();
@@ -132,6 +193,29 @@ httpServer.on('upgrade', (req, socket, head) => {
 
 async function bootstrap() {
   initScheduler();
+  initAutoUpdates();
+  initConsoleHistory();
+  void startSftp();
+  initPanelVersion();
+  initDiskQuotas({
+    log: (id, line) => appendLine(id, line, 'system'),
+    stop: (id) => {
+      try {
+        stopServerForQuota(id);
+      } catch {
+        // already stopping
+      }
+    },
+    isRunning,
+    notify: (server, message) => notify('quota.exceeded', { id: server.id, name: server.name }, message),
+  });
+  if (process.platform === 'win32' && DATA_DIR.length > 90) {
+    logger.warn(
+      `The data folder path is ${DATA_DIR.length} characters long. Modded Minecraft (Forge, Mohist, Sponge) keeps libraries deep inside each instance and can hit Windows' 260-character path limit — use a shorter OUTPOST_DATA_DIR (e.g. C:\\Outpost\\data) or enable long paths in Windows.`
+    );
+  }
+  startAuditPruning();
+  initRewind();
   recoverInterruptedTransfers();
 
   for (const server of listServers()) {
@@ -151,6 +235,7 @@ bootstrap();
 function shutdown(signal: string) {
   logger.info(`Received ${signal}, shutting down`);
   stopAllForShutdown();
+  void stopSftp();
   httpServer.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 5000).unref();
 }

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { t } from '../i18n/index.js';
 import { AnimatePresence, motion } from 'framer-motion';
 import { api } from '../api/client.js';
 import type { SystemInfo, SystemMetrics } from '../api/types.js';
@@ -43,7 +44,7 @@ function GaugeCard({ icon, label, percent, color, primary, secondary }: { icon: 
       <div className="min-w-0 flex-1">
         <p className="mb-1 flex items-center gap-1.5 text-sm font-medium text-ink-300">
           <Icon name={icon} className="h-4 w-4" style={{ color }} />
-          {label}
+          {t(label)}
         </p>
         <p className="truncate text-base text-ink-50">{primary}</p>
         <p className="truncate text-xs text-ink-400">{secondary}</p>
@@ -57,13 +58,13 @@ function RateCard({ icon, label, a, b, series }: { icon: IconName; label: string
     <Card hover className="flex h-full flex-col p-4">
       <p className="mb-3 flex items-center gap-1.5 text-sm font-medium text-ink-300">
         <Icon name={icon} className="h-4 w-4" />
-        {label}
+        {t(label)}
       </p>
       <div className="mb-2 grid grid-cols-2 gap-3">
         {[a, b].map((x) => (
           <div key={x.label}>
             <p className="text-[11px] font-medium uppercase tracking-wide" style={{ color: x.color }}>
-              {x.label}
+              {t(x.label)}
             </p>
             <p className="text-lg text-ink-50">
               <AnimatedNumber value={x.value} format={formatRate} />
@@ -72,8 +73,8 @@ function RateCard({ icon, label, a, b, series }: { icon: IconName; label: string
         ))}
       </div>
       <div className="mt-auto grid grid-cols-2 gap-3">
-        <Sparkline data={series[0]} color={a.color} formatValue={formatRate} emptyLabel="Sampling…" height={32} />
-        <Sparkline data={series[1]} color={b.color} formatValue={formatRate} emptyLabel="Sampling…" height={32} />
+        <Sparkline data={series[0]} color={a.color} formatValue={formatRate} emptyLabel={t('Sampling…')} height={32} />
+        <Sparkline data={series[1]} color={b.color} formatValue={formatRate} emptyLabel={t('Sampling…')} height={32} />
       </div>
     </Card>
   );
@@ -85,7 +86,7 @@ function StatusPill({ label, value, tone }: { label: string; value: number; tone
       <p className="text-xl text-ink-50">
         <AnimatedNumber value={value} />
       </p>
-      <p className={`text-[11px] font-medium ${tone}`}>{label}</p>
+      <p className={`text-[11px] font-medium ${tone}`}>{t(label)}</p>
     </div>
   );
 }
@@ -175,9 +176,9 @@ export function HostOverview() {
   return (
     <section className="mb-8 space-y-3" aria-label="Host metrics">
       <div className="flex items-center justify-between">
-        <h2 className="text-base font-medium text-ink-100">This host</h2>
+        <h2 className="text-base font-medium text-ink-100">{t('This host')}</h2>
         <button onClick={toggleDetails} className="state-layer rounded-full px-3 py-1.5 text-xs font-medium text-accent-400">
-          {showDetails ? 'Hide details' : 'Show details'}
+          {t(showDetails ? 'Hide details' : 'Show details')}
         </button>
       </div>
 
@@ -194,8 +195,8 @@ export function HostOverview() {
             label="CPU"
             percent={host.cpu.percent}
             color={COLORS.cpu}
-            primary={`${host.cpu.cores} threads`}
-            secondary={host.cpu.loadAvg ? `load ${host.cpu.loadAvg[0]} · instances ${instances.cpuPercent}%` : `instances ${instances.cpuPercent}%`}
+            primary={t('{n} threads', { n: host.cpu.cores })}
+            secondary={host.cpu.loadAvg ? t('load {load} · instances {pct}%', { load: host.cpu.loadAvg[0], pct: instances.cpuPercent }) : t('instances {pct}%', { pct: instances.cpuPercent })}
           />,
           <GaugeCard
             key="mem"
@@ -203,8 +204,8 @@ export function HostOverview() {
             label="Memory"
             percent={memPct}
             color={COLORS.memory}
-            primary={`${formatBytes(host.memory.usedMb * 1048576)} of ${formatBytes(host.memory.totalMb * 1048576)}`}
-            secondary={`instances use ${formatBytes(instances.memoryMb * 1048576)}`}
+            primary={t('{used} of {total}', { used: formatBytes(host.memory.usedMb * 1048576), total: formatBytes(host.memory.totalMb * 1048576) })}
+            secondary={t('instances use {mem}', { mem: formatBytes(instances.memoryMb * 1048576) })}
           />,
           <GaugeCard
             key="disk"
@@ -212,8 +213,8 @@ export function HostOverview() {
             label="Storage"
             percent={diskPct}
             color={COLORS.disk}
-            primary={host.disk.usedBytes !== null ? `${formatBytes(host.disk.usedBytes)} of ${formatBytes(host.disk.totalBytes ?? 0)}` : 'n/a'}
-            secondary={host.disk.freeBytes !== null ? `${formatBytes(host.disk.freeBytes)} free` : ''}
+            primary={host.disk.usedBytes !== null ? t('{used} of {total}', { used: formatBytes(host.disk.usedBytes), total: formatBytes(host.disk.totalBytes ?? 0) }) : 'n/a'}
+            secondary={host.disk.freeBytes !== null ? t('{free} free', { free: formatBytes(host.disk.freeBytes) }) : ''}
           />,
           <RateCard
             key="net"
@@ -234,7 +235,7 @@ export function HostOverview() {
           <Card key="inst" hover className="flex h-full flex-col p-4">
             <p className="mb-3 flex items-center gap-1.5 text-sm font-medium text-ink-300">
               <Icon name="instances" className="h-4 w-4" />
-              Instances
+              {t('Instances')}
             </p>
             <div className="mt-auto grid grid-cols-3 gap-2">
               <StatusPill label="Running" value={instances.running} tone="text-success-400" />
@@ -275,7 +276,7 @@ export function HostOverview() {
               </dl>
               {host.cpu.perCore.length > 1 && (
                 <div className="mt-5">
-                  <p className="mb-2 text-xs text-ink-400">Per-thread CPU</p>
+                  <p className="mb-2 text-xs text-ink-400">{t('Per-thread CPU')}</p>
                   <div className="flex h-12 items-end gap-1">
                     {host.cpu.perCore.map((p, i) => (
                       <motion.div

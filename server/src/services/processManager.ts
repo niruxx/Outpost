@@ -1,9 +1,11 @@
 import fs from 'node:fs';
+import { assertDiskRoom, wrapWithLimits } from './limitsService.js';
 import path from 'node:path';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { getServer, setServerStatus } from './serverService.js';
 import { instanceDir } from '../utils/paths.js';
-import { findJava } from './javaService.js';
+import { pickRuntime } from './javaRuntimeService.js';
+import { activeRcon, rconLaunchArgs, rconSend } from './rconService.js';
 import { readProcessStats, clearStatsSample, emptyStats, type ProcessStats } from './statsService.js';
 import { addonLaunchEnv } from './pluginService.js';
 import { upnpOnStart, upnpOnStop } from './upnpService.js';
@@ -16,6 +18,7 @@ import { logger } from '../utils/logger.js';
 import { HttpError } from '../utils/asyncHandler.js';
 import { findPresetFor, type StopStrategy } from './steamGames.js';
 import { notify } from './notificationService.js';
+import { ensurePrefix, findWine, findXvfbRun, INSTALL_HINT, prefixNeedsWork, usesWine, wineBusy, wineEnv, wineSettingsOf, withWineJob } from './wineService.js';
 import type { ServerRecord } from '../types/index.js';
 import {
   ensureExecutable,
@@ -62,6 +65,7 @@ interface RunningInstance {
 }
 
 const running = new Map<string, RunningInstance>();
+
 
 // ---------------------------------------------------------------------------
 // Auto-restart (per-instance restart_policy)
@@ -157,6 +161,8 @@ function appendLog(serverId: string, line: string, stream: 'stdout' | 'stderr' |
 export interface LaunchPlan {
   cmd: string;
   args: string[];
+  /** Set when the server runs under Wine — the prefix may need setting up before the first start. */
+  wine?: { bin: string };
   useShell: boolean;
   /** Spawn detached so signals can target the whole process group. */
   detached: boolean;
@@ -164,6 +170,8 @@ export interface LaunchPlan {
   env: Record<string, string>;
   /** Human-readable command line (env values omitted). */
   display: string;
+  /** Things worth saying in the console before launching (e.g. a Java fallback). */
+  notes?: string[];
 }
 
 /** Whether a launch would be sandboxed — for the UI preview. */
@@ -175,6 +183,34 @@ const splitPlain = (value: string) => (value ? value.split(' ').filter(Boolean) 
 
 function requireFile(filePath: string, what: string) {
   if (!fs.existsSync(filePath)) throw new HttpError(400, `${what} not found at ${filePath}`);
+}
+
+/**
+ * Wraps a Windows program for Wine (and Xvfb, when the instance asks for a virtual screen).
+ * Returns null when the launch doesn't use Wine.
+ */
+function wineCommand(
+  label: string,
+  config: LaunchConfig,
+  exe: string,
+  gameArgs: string[],
+  windowsOnly: boolean,
+  dir: string
+): { cmd: string; args: string[]; env: Record<string, string>; wine: string } | null {
+  if (!usesWine(config, exe, windowsOnly)) return null;
+  const settings = wineSettingsOf(config);
+  const wine = findWine(settings.binary);
+  if (!wine) {
+    if (settings.binary) throw new HttpError(400, `This instance is set to use Wine from ${settings.binary}, which isn’t there (Wine tab).`);
+    throw new HttpError(400, `${label} is a Windows program and Wine isn’t installed. ${INSTALL_HINT}`);
+  }
+  const env = wineEnv(dir, settings);
+  if (settings.virtualDisplay) {
+    const xvfb = findXvfbRun();
+    if (!xvfb) throw new HttpError(400, 'This instance wants a virtual screen, but xvfb-run isn’t installed (e.g. "sudo apt install xvfb").');
+    return { cmd: xvfb, args: ['-a', '-s', `-screen 0 ${settings.resolution}`, wine, exe, ...gameArgs], env, wine };
+  }
+  return { cmd: wine, args: [exe, ...gameArgs], env, wine };
 }
 
 /** Runs a script file through /bin/sh when it has no shebang (an uploaded start.sh often doesn't). */
@@ -196,14 +232,17 @@ export async function buildLaunch(server: ServerRecord): Promise<LaunchPlan> {
   const vars = launchVariables(server);
   const expand = (v: string) => expandVariables(v, vars);
   const customArgs = config.args ? splitArgs(expand(config.args)) : null;
-  const cwd = config.workingDir ? resolveExecutable(server, config.workingDir) : dir;
-  const env = launchEnv(server, config);
+  const preset = server.platform === 'steam' ? findPresetFor(server) : undefined;
+  const cwd = config.workingDir ? resolveExecutable(server, config.workingDir) : preset?.workingDir ? path.join(dir, preset.workingDir) : dir;
+  let env = launchEnv(server, config);
   // In shell mode `executable` is a command line, not a file.
   const executable = config.executable && !config.useShell ? resolveExecutable(server, expand(config.executable)) : null;
 
   let cmd: string;
   let args: string[];
   let useShell = false;
+  let wine: LaunchPlan['wine'];
+  const notes: string[] = [];
 
   if (server.platform === 'docker') {
     ({ cmd, args } = buildContainerLaunch(server));
@@ -211,23 +250,31 @@ export async function buildLaunch(server: ServerRecord): Promise<LaunchPlan> {
   }
 
   if (server.platform === 'java') {
-    const javaPath = config.javaPath ? expand(config.javaPath) : await findJava();
+    let javaPath: string | null;
+    if (config.javaPath) javaPath = expand(config.javaPath);
+    else {
+      const pick = await pickRuntime(server.version || null, config.javaVersion);
+      javaPath = pick.path;
+      if (pick.note) notes.push(pick.note);
+      else if (pick.major) notes.push(`Using Java ${pick.major}${config.javaVersion ? ' (chosen in launch settings)' : ` (what Minecraft ${server.version} needs)`}`);
+    }
     if (!javaPath) {
       throw new HttpError(
         400,
-        'No Java runtime was found on this machine. Install a Java Runtime Environment (Java 21+ recommended) and ensure `java` is on PATH or JAVA_HOME is set.'
+        'No Java runtime was found on this machine. Install one under Configuration → Java runtimes (one click), or install a Java Runtime Environment and put `java` on PATH.'
       );
     }
-    const jar = executable ?? (server.jar_file ? path.join(dir, server.jar_file) : null);
+    // Forge/NeoForge 1.17+ launch from an argument file (`@libraries/…/unix_args.txt`), not a jar.
+    const argsFile = !executable && server.jar_file?.startsWith('@') ? server.jar_file.slice(1).replace(/unix_args\.txt$/, process.platform === 'win32' ? 'win_args.txt' : 'unix_args.txt') : null;
+    const jar = argsFile ? path.join(dir, argsFile) : executable ?? (server.jar_file ? path.join(dir, server.jar_file) : null);
     if (!jar) throw new HttpError(400, 'Server has not finished installing yet');
-    requireFile(jar, 'Server jar');
+    requireFile(jar, argsFile ? 'Forge launch arguments' : 'Server jar');
     cmd = javaPath;
     args = [
       `-Xms${server.min_memory_mb}M`,
       `-Xmx${server.max_memory_mb}M`,
       ...splitPlain(server.extra_java_args),
-      '-jar',
-      jar,
+      ...(argsFile ? [`@${argsFile}`] : ['-jar', jar]),
       ...(customArgs ?? ['nogui', ...splitPlain(server.extra_args)]),
     ];
   } else if (server.platform === 'bedrock') {
@@ -235,13 +282,20 @@ export async function buildLaunch(server: ServerRecord): Promise<LaunchPlan> {
     requireFile(exe, 'Bedrock server executable');
     ({ cmd, args } = scriptCommand(exe, customArgs ?? splitPlain(server.extra_args)));
   } else if (server.platform === 'steam') {
-    const preset = findPresetFor(server);
     const defaultExe = preset ? (process.platform === 'win32' ? preset.executable.win32 : preset.executable.linux) : server.jar_file;
     const exe = executable ?? (defaultExe ? path.join(dir, defaultExe) : null);
     if (!exe) throw new HttpError(400, 'No launch executable is configured for this server');
     requireFile(exe, 'Server executable');
-    ({ cmd, args } = scriptCommand(exe, customArgs ?? (preset ? preset.buildLaunchArgs(server) : splitPlain(server.extra_args))));
-    useShell = process.platform === 'win32' && exe.toLowerCase().endsWith('.bat');
+    const gameArgs = [...(customArgs ?? (preset ? preset.buildLaunchArgs(server) : splitPlain(server.extra_args))), ...rconLaunchArgs(server)];
+    const viaWine = wineCommand(preset?.label ?? 'This server', config, exe, gameArgs, !!preset?.windowsOnly, dir);
+    if (viaWine) {
+      ({ cmd, args } = viaWine);
+      env = { ...viaWine.env, ...env };
+      wine = { bin: viaWine.wine };
+    } else {
+      ({ cmd, args } = scriptCommand(exe, gameArgs));
+    }
+    useShell = !viaWine && process.platform === 'win32' && exe.toLowerCase().endsWith('.bat');
   } else {
     // custom: whatever the user configured
     if (!config.executable) throw new HttpError(400, 'This custom instance has no executable configured — set one in Configuration → Launch');
@@ -260,13 +314,22 @@ export async function buildLaunch(server: ServerRecord): Promise<LaunchPlan> {
     }
     const exe = executable!;
     requireFile(exe, 'Executable');
-    if (exe.startsWith(dir)) ensureExecutable(exe);
-    ({ cmd, args } = scriptCommand(exe, argList));
+    const viaWine = wineCommand('This executable', config, exe, argList, false, dir);
+    if (viaWine) {
+      ({ cmd, args } = viaWine);
+      env = { ...viaWine.env, ...env };
+      wine = { bin: viaWine.wine };
+    } else {
+      if (exe.startsWith(dir)) ensureExecutable(exe);
+      ({ cmd, args } = scriptCommand(exe, argList));
+    }
   }
 
   return {
     cmd,
     args,
+    wine,
+    notes,
     useShell,
     detached: server.platform === 'custom' && process.platform !== 'win32',
     cwd,
@@ -358,8 +421,21 @@ function runScript(serverId: string, instance: Pick<RunningInstance, 'server' | 
 function issueStop(serverId: string, instance: RunningInstance) {
   const strategy = instance.stopStrategy;
   if (strategy.kind === 'stdin') {
+    const server = getServer(serverId);
+    const rcon = server ? activeRcon(server) : null;
     void (async () => {
       for (const command of strategy.commands) {
+        // Games whose stdin is unreliable get their stop command over RCON (stdin as a fallback).
+        if (rcon?.useForConsole) {
+          const viaRcon = await rconSend(rcon, command).then(
+            () => true,
+            () => false
+          );
+          if (viaRcon) {
+            if (strategy.delayMs) await new Promise((resolve) => setTimeout(resolve, strategy.delayMs));
+            continue;
+          }
+        }
         try {
           instance.child.stdin.write(command + '\n');
         } catch {
@@ -400,13 +476,33 @@ export async function startServer(serverId: string, options: { auto?: boolean } 
 
   const dir = instanceDir(serverId);
   const config = launchConfigOf(server);
+  assertDiskRoom(serverId, 'start');
+  if (wineBusy(serverId)) throw new HttpError(409, `Wine is busy (${wineBusy(serverId)}) — wait for it to finish`);
   if (server.platform === 'steam') {
     const note = findPresetFor(server)?.prepareInstance?.(server);
     if (note) appendLog(serverId, `[Outpost] ${note}`, 'system');
   }
   const plan = await buildLaunch(server);
 
+  // First start under Wine: set up the instance's prefix in the background (it can take a minute),
+  // then start for real. The request returns straight away; progress shows in the console.
+  const wineSettings = wineSettingsOf(config);
+  if (plan.wine && prefixNeedsWork(dir, wineSettings)) {
+    setServerStatus(serverId, 'starting');
+    publish(consoleTopic(serverId), { type: 'status', status: 'starting' });
+    void withWineJob(serverId, 'setting up the prefix', () => ensurePrefix(server, wineSettings, (line) => appendLog(serverId, line, 'system')))
+      .then(() => startServer(serverId, options))
+      .catch((err) => {
+        appendLog(serverId, `[Outpost] Couldn’t start under Wine: ${err instanceof Error ? err.message : String(err)}`, 'system');
+        setServerStatus(serverId, 'crashed');
+        publish(consoleTopic(serverId), { type: 'status', status: 'crashed' });
+      });
+    return;
+  }
+  if (plan.wine) appendLog(serverId, '[Outpost] Running under Wine', 'system');
+
   appendLog(serverId, `[Outpost] Host environment: ${process.platform} (${process.arch})`, 'system');
+  for (const note of plan.notes ?? []) appendLog(serverId, `[Outpost] ${note}`, 'system');
   appendLog(serverId, `[Outpost] Launching: ${plan.display}`, 'system');
   if (config.env?.length) appendLog(serverId, `[Outpost] Extra environment: ${config.env.map((e) => e.key).join(', ')}`, 'system');
 
@@ -419,7 +515,11 @@ export async function startServer(serverId: string, options: { auto?: boolean } 
   const baseEnv = server.platform === 'docker' ? ({ ...process.env } as Record<string, string>) : minimalEnv();
   const env = { ...buildLaunchEnv(server, dir, baseEnv), ...plan.env } as Record<string, string>;
   const sandboxed = sandboxApplies(server);
-  const target = sandboxed ? wrapInSandbox(server, { cmd: plan.cmd, args: plan.args, cwd: plan.cwd, env }) : { cmd: plan.cmd, args: plan.args };
+  const sandboxTarget = sandboxed ? wrapInSandbox(server, { cmd: plan.cmd, args: plan.args, cwd: plan.cwd, env }) : { cmd: plan.cmd, args: plan.args };
+  // CPU / memory / process caps: a systemd scope around everything (the sandbox included).
+  const limited = wrapWithLimits(server, sandboxTarget);
+  const target = { cmd: limited.cmd, args: limited.args };
+  for (const note of limited.notes) appendLog(serverId, `[Outpost] ${note}`, 'system');
   if (sandboxed) {
     appendLog(serverId, `[Outpost] Sandboxed (bubblewrap): only ${dir} is writable; the rest of the host's files are read-only system folders or hidden`, 'system');
   }
@@ -470,6 +570,9 @@ export async function startServer(serverId: string, options: { auto?: boolean } 
     });
   }
 
+  // Writing a command just as the game exits fails with EPIPE; without a listener that error would
+  // crash the whole panel. The exit itself is reported by the 'exit' handler.
+  child.stdin.on('error', () => {});
   child.stdout.setEncoding('utf8');
   child.stderr.setEncoding('utf8');
   child.stdout.on('data', (chunk: string) => {
@@ -594,6 +697,17 @@ export async function restartServer(serverId: string): Promise<void> {
 export function sendCommand(serverId: string, command: string): void {
   const instance = running.get(serverId);
   if (!instance) throw new HttpError(409, 'Server is not running');
+  const server = getServer(serverId);
+  const rcon = server ? activeRcon(server) : null;
+  if (rcon?.useForConsole) {
+    appendLog(serverId, `> ${command} (RCON)`, 'system');
+    rconSend(rcon, command.trim())
+      .then((reply) => {
+        for (const line of reply.split(/\r?\n/)) if (line.trim()) appendLog(serverId, line, 'stdout');
+      })
+      .catch((err) => appendLog(serverId, `[Outpost] RCON: ${err instanceof Error ? err.message : String(err)}`, 'system'));
+    return;
+  }
   appendLog(serverId, `> ${command}`, 'system');
   instance.child.stdin.write(command.trim() + '\n');
 }

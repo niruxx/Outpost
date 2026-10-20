@@ -11,17 +11,36 @@ const LOADER_ICON: Record<string, string> = { paper: '📄', purpur: '🟣', spi
 
 type Source = 'modrinth' | 'curseforge';
 
-const NOUN: Record<AddonCatalog, string> = { plugin: 'plugins', datapack: 'data packs', bedrock: 'add-ons & packs' };
+const NOUN: Record<AddonCatalog, string> = {
+  plugin: 'plugins',
+  datapack: 'data packs',
+  bedrock: 'add-ons & packs',
+  'mod:fabric': 'mods',
+  'mod:quilt': 'mods',
+  'mod:forge': 'mods',
+  'mod:neoforge': 'mods',
+};
 const PLACEHOLDER: Record<AddonCatalog, string> = {
   plugin: 'Search plugins (EssentialsX, LuckPerms, WorldEdit…)',
   datapack: 'Search data packs (Terralith, Vanilla Tweaks…)',
   bedrock: 'Search add-ons and texture packs…',
+  'mod:fabric': 'Search Fabric mods (Lithium, Fabric API, Chunky…)',
+  'mod:quilt': 'Search Quilt & Fabric mods…',
+  'mod:forge': 'Search Forge mods…',
+  'mod:neoforge': 'Search NeoForge mods…',
 };
+
+/** The mod ecosystem an instance's mods come from (Mohist and SpongeForge run Forge mods). */
+function modEcosystem(s: ServerRecord): string | null {
+  if (s.loader === 'mohist' || s.loader === 'spongeforge') return 'forge';
+  return ['fabric', 'quilt', 'forge', 'neoforge'].includes(s.loader) ? s.loader : null;
+}
 
 /** Which instances a result can go to. */
 function eligible(catalog: AddonCatalog, s: ServerRecord): boolean {
   if (catalog === 'bedrock') return s.platform === 'bedrock';
   if (catalog === 'datapack') return s.loader === 'vanilla';
+  if (catalog.startsWith('mod:')) return modEcosystem(s) === catalog.slice(4);
   return PLUGIN_CAPABLE_LOADERS.includes(s.loader);
 }
 
@@ -293,7 +312,7 @@ function InstallTargetModal({
   }
 
   const none =
-    catalog === 'bedrock' ? 'No Bedrock instances found.' : catalog === 'datapack' ? 'No Vanilla Java instances found.' : 'No Paper, Purpur, or Spigot instances found. Create one first.';
+    catalog === 'bedrock' ? 'No Bedrock instances found.' : catalog === 'datapack' ? 'No Vanilla Java instances found.' : catalog.startsWith('mod:') ? 'No modded instances for these mods yet.' : 'No Paper, Purpur, or Spigot instances found. Create one first.';
 
   return (
     <Modal open onClose={onClose} title={`Install ${plugin.title}`}>

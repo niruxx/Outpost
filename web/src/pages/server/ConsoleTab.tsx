@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { t } from '../../i18n/index.js';
 import { motion } from 'framer-motion';
 import { useServerDetail } from './ServerContext.js';
 import { useConsoleSocket } from '../../hooks/useConsoleSocket.js';
 import { api } from '../../api/client.js';
 import { Button, Card, Input, Spinner } from '../../components/ui.js';
+import { ConsoleHistory } from './ConsoleHistory.js';
 
 // Terminal palette: status hues follow the MD3 scheme; plain output stays a neutral light gray.
 function lineColor(stream: string, line: string): string {
@@ -23,6 +25,7 @@ export function ConsoleTab() {
   const [historyIdx, setHistoryIdx] = useState(-1);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
+  const [showHistory, setShowHistory] = useState(false);
 
   useEffect(() => {
     if (autoScroll && scrollRef.current) {
@@ -71,6 +74,11 @@ export function ConsoleTab() {
     <div className="flex h-full min-h-[420px] flex-col gap-3">
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex w-full items-center justify-end gap-4 text-xs text-ink-400">
+          {canWrite && (
+            <button type="button" onClick={() => setShowHistory(true)} className="state-layer mr-auto rounded-full px-3 py-1 font-medium text-accent-400">
+              {t('Log history')}
+            </button>
+          )}
           <span className="inline-flex items-center gap-1.5">
             <span className="relative flex h-2 w-2">
               {connected && (
@@ -78,7 +86,7 @@ export function ConsoleTab() {
               )}
               <span className={`relative inline-flex h-2 w-2 rounded-full ${connected ? 'bg-success-400' : 'bg-red-400'}`} />
             </span>
-            <span className={connected ? 'text-success-500' : 'text-red-400'}>{connected ? 'live' : 'reconnecting'}</span>
+            <span className={connected ? 'text-success-500' : 'text-red-400'}>{t(connected ? 'live' : 'reconnecting')}</span>
           </span>
           {stats.memoryMb !== null && <span>RAM {stats.memoryMb} MB</span>}
           {stats.cpuPercent !== null && <span>CPU {stats.cpuPercent}%</span>}
@@ -114,7 +122,7 @@ export function ConsoleTab() {
           className="console-view h-full overflow-y-auto px-4 py-3 text-[13px] leading-relaxed"
         >
           {lines.length === 0 ? (
-            <p className="text-slate-500">No console output yet.</p>
+            <p className="text-slate-500">{t('No console output yet.')}</p>
           ) : (
             lines.map((l) => (
               <div key={l.id} className={`animate-fade-in whitespace-pre-wrap break-all ${lineColor(l.stream, l.line)}`}>
@@ -125,13 +133,15 @@ export function ConsoleTab() {
         </div>
       </Card>
 
+      <ConsoleHistory serverId={serverId} open={showHistory} onClose={() => setShowHistory(false)} canDelete={can('settings')} />
+
       {canWrite && (
         <form onSubmit={submitCommand} className="flex gap-2">
           <Input
             value={command}
             onChange={(e) => setCommand(e.target.value)}
             onKeyDown={onKeyDown}
-            placeholder={isRunningLike ? 'Type a command…' : 'Server is not running'}
+            placeholder={t(isRunningLike ? 'Type a command…' : 'Server is not running')}
             disabled={!isRunningLike}
             className="console-view"
           />

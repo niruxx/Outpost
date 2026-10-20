@@ -16,6 +16,10 @@ export const NOTIFY_EVENTS = [
   'server.restart_gave_up',
   'backup.failed',
   'task.failed',
+  'update.available',
+  'update.applied',
+  'update.failed',
+  'quota.exceeded',
 ] as const;
 export type NotifyEvent = (typeof NOTIFY_EVENTS)[number];
 
@@ -26,6 +30,10 @@ const EVENT_STYLE: Record<NotifyEvent, { title: string; color: number }> = {
   'server.restart_gave_up': { title: 'Auto-restart gave up', color: 0xed4245 },
   'backup.failed': { title: 'Scheduled snapshot failed', color: 0xfaa61a },
   'task.failed': { title: 'Scheduled task failed', color: 0xfaa61a },
+  'update.available': { title: 'Update available', color: 0x5865f2 },
+  'update.applied': { title: 'Updated automatically', color: 0x3ba55d },
+  'update.failed': { title: 'Automatic update failed', color: 0xed4245 },
+  'quota.exceeded': { title: 'Disk limit reached', color: 0xfaa61a },
 };
 
 interface WebhookRow {

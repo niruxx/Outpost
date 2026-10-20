@@ -20,7 +20,14 @@ import {
 import { getPrimaryAddress, listHostAddresses } from '../services/networkService.js';
 import { getTransferState, startTransfer } from '../services/nodeService.js';
 import { installServer, listAvailableVersions } from '../services/downloadService.js';
-import { checkForUpdate, performUpdate } from '../services/updateService.js';
+import { checkForUpdate, runUpdate } from '../services/updateService.js';
+import { forgetHistory } from '../services/consoleHistoryService.js';
+import { dropAllForServer } from '../services/databaseService.js';
+import { getTemplate, instantiate, resolveVariables, writeTemplateFiles, type OutpostTemplate, type TemplateInstance } from '../services/templateService.js';
+import { saveRcon } from '../services/rconService.js';
+import { resolveModpack, searchModpacks, type ModpackRef } from '../services/moddedService.js';
+import { setModpack } from '../services/serverService.js';
+import { autoUpdateBusy, autoUpdateOf, autoUpdateSupport, forgetAutoUpdate, runAutoUpdate, saveAutoUpdate, SCHEDULES } from '../services/autoUpdateService.js';
 import { writeEula, readServerProperties, writeServerProperties } from '../services/propertiesService.js';
 import {
   getRuntimeInfo,
@@ -52,6 +59,7 @@ import { findJava, getJavaVersion } from '../services/javaService.js';
 import { getDiskUsage } from '../services/diskUsageService.js';
 import { instanceDir, safeJoin } from '../utils/paths.js';
 import { forgetServerSchedules } from '../services/schedulerService.js';
+import { wantsWindowsBuild, wineStatus } from '../services/wineService.js';
 import { instancePortProtocol } from '../services/portProtocol.js';
 import { STEAM_GAME_PRESETS, findPreset, findPresetById, findPresetFor } from '../services/steamGames.js';
 import { isMinecraftPlatform, type Loader, type Platform, type ServerRecord } from '../types/index.js';
@@ -73,7 +81,7 @@ serversRouter.use(requireAuth);
  * executable path *before* this runs (set at creation time) — installServer's steam branch has
  * no way to know it, so this only verifies the file actually exists afterward.
  */
-async function runServerInstall(server: ServerRecord): Promise<void> {
+async function runServerInstall(server: ServerRecord, afterInstall?: () => void): Promise<void> {
   if (server.platform === 'docker') {
     // "Installing" a Docker instance = pulling its image.
     try {
@@ -101,7 +109,9 @@ async function runServerInstall(server: ServerRecord): Promise<void> {
       server.platform === 'steam' ? server.steam_app_id ?? undefined : undefined,
       server.steam_login,
       server.steam_extra_flags,
-      server.steam_preset
+      server.steam_preset,
+      wantsWindowsBuild(server, launchConfigOf(server), !!findPresetFor(server)?.windowsOnly),
+      { modpack: server.modpack ? (JSON.parse(server.modpack) as ModpackRef) : null }
     );
 
     const preset = server.platform === 'steam' ? findPresetFor(server) : undefined;
@@ -124,6 +134,13 @@ async function runServerInstall(server: ServerRecord): Promise<void> {
       setServerJar(server.id, result.executable, result.build);
     }
 
+    if (afterInstall) {
+      try {
+        afterInstall();
+      } catch (err) {
+        appendLine(server.id, `[Outpost] Couldn’t apply the template’s files: ${err instanceof Error ? err.message : String(err)}`, 'stderr');
+      }
+    }
     appendLine(server.id, '[Outpost] Installation finished — server is ready to start');
     setServerStatus(server.id, 'stopped');
     publish(consoleTopic(server.id), { type: 'status', status: 'stopped' });
@@ -158,8 +175,8 @@ serversRouter.get(
   '/catalog/versions',
   asyncHandler(async (req, res) => {
     const loader = req.query.loader as Loader;
-    if (!['vanilla', 'paper', 'purpur', 'spigot', 'bedrock', 'steam'].includes(loader)) {
-      throw new HttpError(400, 'loader must be one of vanilla, paper, purpur, spigot, bedrock, steam');
+    if (!['vanilla', 'paper', 'purpur', 'spigot', 'fabric', 'quilt', 'forge', 'neoforge', 'mohist', 'spongeforge', 'bedrock', 'steam'].includes(loader)) {
+      throw new HttpError(400, 'Unknown server type');
     }
     const versions = await listAvailableVersions(loader);
     res.json({ versions });
@@ -183,6 +200,27 @@ serversRouter.get(
   })
 );
 
+/** Modrinth modpacks, for New instance → Modpack. */
+serversRouter.get(
+  '/catalog/modpacks',
+  asyncHandler(async (req, res) => {
+    const q = typeof req.query.q === 'string' ? req.query.q.slice(0, 100) : '';
+    try {
+      res.json({ modpacks: await searchModpacks(q) });
+    } catch (err) {
+      throw new HttpError(502, err instanceof Error ? err.message : 'Modrinth search failed');
+    }
+  })
+);
+
+/** Whether Wine (and Xvfb) are available on this host — for the launch settings and Configuration. */
+serversRouter.get(
+  '/wine/status',
+  asyncHandler(async (_req, res) => {
+    res.json(wineStatus());
+  })
+);
+
 serversRouter.get(
   '/catalog/java',
   asyncHandler(async (_req, res) => {
@@ -195,6 +233,47 @@ serversRouter.get(
 serversRouter.post(
   '/',
   asyncHandler(async (req, res) => {
+    // Creating from a template: its settings (variables filled in) are the defaults; what the
+    // person typed (name, port, memory, EULA, Steam login) wins. Everything below still applies.
+    let fromTemplate: { tpl: OutpostTemplate; vars: Record<string, string>; inst: TemplateInstance } | null = null;
+    if (typeof req.body?.templateId === 'string') {
+      const tpl = getTemplate(req.body.templateId);
+      if (!tpl) throw new HttpError(404, 'Template not found');
+      const vars = resolveVariables(tpl, req.body.variables);
+      const inst = instantiate(tpl, vars);
+      const given = Object.fromEntries(
+        ['name', 'serverPort', 'minMemoryMb', 'maxMemoryMb', 'acceptEula', 'steamLogin'].filter((k) => req.body[k] !== undefined && req.body[k] !== '').map((k) => [k, req.body[k]])
+      );
+      req.body = {
+        platform: inst.platform,
+        loader: inst.loader,
+        version: inst.version,
+        minMemoryMb: inst.minMemoryMb,
+        maxMemoryMb: inst.maxMemoryMb,
+        serverPort: inst.defaultPort,
+        extraArgs: inst.extraArgs,
+        extraJavaArgs: inst.extraJavaArgs,
+        steamAppId: inst.steamAppId ?? undefined,
+        steamPreset: inst.steamPreset ?? undefined,
+        steamExtraFlags: inst.steamExtraFlags,
+        customExecutable: inst.customExecutable ?? undefined,
+        launch: inst.launch,
+        docker: inst.docker ?? undefined,
+        ...given,
+      };
+      fromTemplate = { tpl, vars, inst };
+    }
+    let modpackRef: ModpackRef | null = null;
+    if (req.body?.modpack && typeof req.body.modpack === 'object') {
+      let pack: Awaited<ReturnType<typeof resolveModpack>>;
+      try {
+        pack = await resolveModpack(String(req.body.modpack.projectId ?? ''), req.body.modpack.versionId ? String(req.body.modpack.versionId) : undefined);
+      } catch (err) {
+        throw new HttpError(400, err instanceof Error ? err.message : 'Couldn’t read that modpack');
+      }
+      modpackRef = pack.ref;
+      req.body = { ...req.body, platform: 'java', loader: pack.loader, version: pack.mc };
+    }
     const {
       name,
       platform,
@@ -242,7 +321,7 @@ serversRouter.post(
       throw new HttpError(400, `Max memory is limited to ${creation.maxMemoryMb} MB per instance for your account`);
     }
     if (!['java', 'bedrock', 'steam', 'custom', 'docker'].includes(platform)) throw new HttpError(400, 'Invalid platform');
-    if (!['vanilla', 'paper', 'purpur', 'spigot', 'bedrock', 'steam', 'custom', 'docker'].includes(loader)) {
+    if (!['vanilla', 'paper', 'purpur', 'spigot', 'fabric', 'quilt', 'forge', 'neoforge', 'mohist', 'spongeforge', 'bedrock', 'steam', 'custom', 'docker'].includes(loader)) {
       throw new HttpError(400, 'Invalid loader');
     }
     if (platform !== 'docker' && (typeof version !== 'string' || !version)) throw new HttpError(400, 'Version is required');
@@ -289,6 +368,14 @@ serversRouter.post(
       }
     }
 
+    if (platform === 'steam' && req.body?.wine === true) {
+      launchConfig = JSON.stringify({ wine: { mode: 'always' } });
+    }
+    if (fromTemplate?.inst.launch && platform !== 'custom' && platform !== 'docker') {
+      const cfg = sanitizeLaunchConfig(fromTemplate.inst.launch, { isAdmin: req.auth!.role === 'admin', platform: platform as Platform });
+      launchConfig = Object.keys(cfg).length ? JSON.stringify(cfg) : null;
+    }
+
     const record = createServerRecord({
       name: name.trim(),
       platform: platform as Platform,
@@ -309,6 +396,12 @@ serversRouter.post(
       dockerConfig,
     });
 
+    if (modpackRef) {
+      setModpack(record.id, JSON.stringify(modpackRef));
+      record.modpack = JSON.stringify(modpackRef);
+      appendLine(record.id, `[Outpost] Modpack: ${modpackRef.title} ${modpackRef.versionNumber} (Modrinth)`);
+    }
+
     if (platform === 'steam' && !preset && typeof customExecutable === 'string') {
       // Custom (non-preset) App ID: installServer has no way to know the intended launch
       // executable itself, so persist the user-supplied relative path now — before install even
@@ -325,17 +418,46 @@ serversRouter.post(
 
     // Tie the instance to its creator: non-admins can only see instances they're assigned to.
     if (req.auth!.role !== 'admin') grantOwnerAccess(req.auth!.sub, record.id);
-    logAudit(req.auth!.sub, req.auth!.username, 'server.create', record.id, `${loader} ${version}`);
+    logAudit(req.auth!.sub, req.auth!.username, 'server.create', record.id, `${loader} ${version}${fromTemplate ? ` from template “${fromTemplate.tpl.name}”` : ''}`);
+
+    let afterInstall: (() => void) | undefined;
+    if (fromTemplate) {
+      const { tpl, vars, inst } = fromTemplate;
+      appendLine(record.id, `[Outpost] Using template “${tpl.name}”${tpl.author ? ` by ${tpl.author}` : ''}`);
+      if (inst.autoUpdate) {
+        try {
+          saveAutoUpdate(record, inst.autoUpdate as Record<string, unknown>);
+        } catch (err) {
+          appendLine(record.id, `[Outpost] Template’s automatic updates skipped: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+      if (inst.rcon?.enabled) {
+        try {
+          saveRcon(getServer(record.id)!, { ...inst.rcon, generatePassword: true });
+          appendLine(record.id, '[Outpost] RCON turned on with a new password (Configuration → RCON console)');
+        } catch (err) {
+          appendLine(record.id, `[Outpost] Template’s RCON settings skipped: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+      if (tpl.files.length) {
+        // After the install, so the game's own files don't overwrite the template's configs.
+        afterInstall = () => {
+          writeTemplateFiles(record.id, tpl, vars);
+          appendLine(record.id, `[Outpost] Wrote ${tpl.files.length} file(s) from the template: ${tpl.files.map((f) => f.path).join(', ')}`);
+        };
+      }
+    }
 
     if (platform === 'custom') {
       // Nothing to download: the user brings the files (File Management) or points at a host binary.
+      afterInstall?.();
       setServerStatus(record.id, 'stopped');
       appendLine(record.id, '[Outpost] Custom instance created — upload your server files in File Management, then start it.');
       return res.status(201).json({ server: getServer(record.id) });
     }
 
-    res.status(201).json({ server: record });
-    void runServerInstall(record);
+    res.status(201).json({ server: getServer(record.id) ?? record });
+    void runServerInstall(getServer(record.id) ?? record, afterInstall);
   })
 );
 
@@ -617,6 +739,9 @@ serversRouter.delete(
     if (isRunning(server.id)) throw new HttpError(409, 'Stop the server before deleting it');
     cancelAutoRestart(server.id);
     forgetServerSchedules(server.id);
+    forgetAutoUpdate(server.id);
+    forgetHistory(server.id);
+    void dropAllForServer(server.id);
     deleteServerRecord(server.id);
     logAudit(req.auth!.sub, req.auth!.username, 'server.delete', server.id);
     res.status(204).end();
@@ -665,6 +790,7 @@ serversRouter.post(
     const { command } = req.body ?? {};
     if (typeof command !== 'string' || !command.trim()) throw new HttpError(400, 'Command is required');
     sendCommand(req.params.serverId, command);
+    logAudit(req.auth!.sub, req.auth!.username, 'server.command', req.params.serverId, command.trim().slice(0, 500));
     res.status(202).json({ ok: true });
   })
 );
@@ -764,6 +890,48 @@ serversRouter.get(
   })
 );
 
+function autoUpdateView(server: ServerRecord) {
+  return { config: autoUpdateOf(server), support: autoUpdateSupport(server), schedules: SCHEDULES, busy: autoUpdateBusy(server.id) };
+}
+
+serversRouter.get(
+  '/:serverId/auto-update',
+  requireServerAccess(),
+  asyncHandler(async (req, res) => {
+    const server = getServer(req.params.serverId);
+    if (!server) throw new HttpError(404, 'Server not found');
+    res.json(autoUpdateView(server));
+  })
+);
+
+serversRouter.put(
+  '/:serverId/auto-update',
+  requireServerAccess(),
+  asyncHandler(async (req, res) => {
+    requirePermission(req, 'update');
+    const server = getServer(req.params.serverId);
+    if (!server) throw new HttpError(404, 'Server not found');
+    const cfg = saveAutoUpdate(server, (req.body ?? {}) as Record<string, unknown>);
+    logAudit(req.auth!.sub, req.auth!.username, 'server.auto_update', server.id, JSON.stringify({ enabled: cfg.enabled, schedule: cfg.schedule, notifyOnly: cfg.notifyOnly }));
+    res.json(autoUpdateView(getServer(server.id)!));
+  })
+);
+
+/** Checks now and, if there's an update, applies it the same way the schedule would. Runs in the background. */
+serversRouter.post(
+  '/:serverId/auto-update/run',
+  requireServerAccess(),
+  asyncHandler(async (req, res) => {
+    requirePermission(req, 'update');
+    const server = getServer(req.params.serverId);
+    if (!server) throw new HttpError(404, 'Server not found');
+    if (autoUpdateBusy(server.id)) throw new HttpError(409, 'Already checking or updating');
+    logAudit(req.auth!.sub, req.auth!.username, 'server.auto_update.run', server.id);
+    void runAutoUpdate(server.id, 'manual', req.auth!.username).catch(() => {});
+    res.status(202).json(autoUpdateView(server));
+  })
+);
+
 serversRouter.get(
   '/:serverId/update/check',
   requireServerAccess(),
@@ -792,30 +960,8 @@ serversRouter.post(
     }
 
     const targetVersion = typeof req.body?.targetVersion === 'string' ? req.body.targetVersion : undefined;
-    setServerStatus(server.id, 'updating');
-    publish(consoleTopic(server.id), { type: 'status', status: 'updating' });
-    appendLine(server.id, `[Outpost] Update requested by ${req.auth!.username}`);
     logAudit(req.auth!.sub, req.auth!.username, 'server.update', server.id, targetVersion ?? server.version);
+    void runUpdate(server, targetVersion, req.auth!.username).catch(() => {});
     res.status(202).json({ ok: true });
-
-    void (async () => {
-      try {
-        const result = await performUpdate(
-          server,
-          targetVersion,
-          (pct, message) => publish(consoleTopic(server.id), { type: 'install_progress', pct, message }),
-          (line) => appendLine(server.id, line)
-        );
-        setServerVersion(server.id, result.version, result.jarFile, result.build);
-        appendLine(server.id, '[Outpost] Update finished — server is ready to start');
-        setServerStatus(server.id, 'stopped');
-        publish(consoleTopic(server.id), { type: 'status', status: 'stopped' });
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        appendLine(server.id, `[Outpost] Update failed: ${message}`, 'stderr');
-        setServerStatus(server.id, 'stopped');
-        publish(consoleTopic(server.id), { type: 'status', status: 'stopped', error: message });
-      }
-    })();
   })
 );

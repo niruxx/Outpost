@@ -3,6 +3,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import AdmZip from 'adm-zip';
 import { instanceDir } from '../utils/paths.js';
+import { wantsWindowsBuild } from './wineService.js';
+import { launchConfigOf } from './launchConfig.js';
+import { findPresetFor } from './steamGames.js';
 import { downloadFile, type LogFn } from '../utils/download.js';
 import {
   getLatestBedrockDownload,
@@ -13,6 +16,11 @@ import {
   type ProgressFn,
 } from './downloadService.js';
 import { logger } from '../utils/logger.js';
+import { installedBuildId, latestBuildId } from './steamCmdService.js';
+import { isModded, latestLoaderVersion } from './moddedService.js';
+import { setServerStatus, setServerVersion } from './serverService.js';
+import { appendLine } from './consoleLogService.js';
+import { publish, consoleTopic } from './wsHub.js';
 import type { ServerRecord } from '../types/index.js';
 
 export interface UpdateCheckResult {
@@ -47,9 +55,25 @@ export async function checkForUpdate(server: ServerRecord): Promise<UpdateCheckR
     };
   }
 
+  if (server.platform === 'steam' && server.steam_app_id && findPresetFor(server)?.install === undefined) {
+    // Compare the installed build (steamcmd's appmanifest) with the public branch's newest build.
+    const installed = installedBuildId(instanceDir(server.id), server.steam_app_id);
+    const latest = await latestBuildId(server.steam_app_id).catch(() => null);
+    if (installed && latest) {
+      return {
+        currentVersion: server.version,
+        currentBuild: installed,
+        latestVersion: server.version,
+        latestBuild: latest,
+        updateAvailable: installed !== latest,
+        note: installed !== latest ? `Steam has build ${latest}; this server has ${installed}.` : undefined,
+      };
+    }
+  }
+
   if (server.platform === 'steam') {
-    // steamcmd has no cheap "is a newer build available" query short of a full app_update run —
-    // always offer to re-run it, same precedent as Spigot's no-version-tracked-builds case.
+    // No build ids to compare (beta branch, non-steamcmd installer, or Steam unreachable) —
+    // offer to re-run the install, same precedent as Spigot's no-version-tracked-builds case.
     return {
       currentVersion: server.version,
       currentBuild: null,
@@ -102,6 +126,28 @@ export async function checkForUpdate(server: ServerRecord): Promise<UpdateCheckR
       latestVersion: server.version,
       latestBuild,
       updateAvailable: !!latestBuild && latestBuild !== server.build,
+    };
+  }
+
+  if (isModded(server.loader)) {
+    if (server.modpack) {
+      return {
+        currentVersion: server.version,
+        currentBuild: server.build,
+        latestVersion: server.version,
+        latestBuild: server.build,
+        updateAvailable: false,
+        note: 'Made from a modpack — its mods are pinned to the pack. Create a new instance from a newer pack version to update.',
+      };
+    }
+    const latestBuild = await latestLoaderVersion(server.loader, server.version);
+    return {
+      currentVersion: server.version,
+      currentBuild: server.build,
+      latestVersion: server.version,
+      latestBuild,
+      updateAvailable: !!latestBuild && latestBuild !== server.build,
+      note: latestBuild !== server.build ? `${server.loader} ${latestBuild} is out (this server has ${server.build ?? 'an unknown build'}). Mods stay as they are.` : undefined,
     };
   }
 
@@ -181,7 +227,8 @@ export async function performUpdate(
       server.steam_app_id,
       server.steam_login,
       server.steam_extra_flags,
-      server.steam_preset
+      server.steam_preset,
+      wantsWindowsBuild(server, launchConfigOf(server), !!findPresetFor(server)?.windowsOnly)
     );
     return { version: server.version, build: null, jarFile: result.jarFile ?? server.jar_file };
   }
@@ -239,4 +286,34 @@ export async function performUpdate(
   }
 
   return { version, build: result.build, jarFile: result.jarFile };
+}
+
+/**
+ * Runs an update in the background-friendly way the Update tab and automatic updates share:
+ * marks the instance "updating", streams progress to its console, records the new version.
+ * Resolves when done; rejects (after logging) on failure.
+ */
+export async function runUpdate(server: ServerRecord, targetVersion: string | undefined, startedBy: string): Promise<UpdateResult> {
+  setServerStatus(server.id, 'updating');
+  publish(consoleTopic(server.id), { type: 'status', status: 'updating' });
+  appendLine(server.id, `[Outpost] Update requested by ${startedBy}`);
+  try {
+    const result = await performUpdate(
+      server,
+      targetVersion,
+      (pct, message) => publish(consoleTopic(server.id), { type: 'install_progress', pct, message }),
+      (line) => appendLine(server.id, line)
+    );
+    setServerVersion(server.id, result.version, result.jarFile, result.build);
+    appendLine(server.id, '[Outpost] Update finished — server is ready to start');
+    setServerStatus(server.id, 'stopped');
+    publish(consoleTopic(server.id), { type: 'status', status: 'stopped' });
+    return result;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    appendLine(server.id, `[Outpost] Update failed: ${message}`, 'stderr');
+    setServerStatus(server.id, 'stopped');
+    publish(consoleTopic(server.id), { type: 'status', status: 'stopped', error: message });
+    throw err;
+  }
 }

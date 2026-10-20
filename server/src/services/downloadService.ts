@@ -7,6 +7,7 @@ import { downloadFile, fetchJson, formatBytes, type LogFn } from '../utils/downl
 import { findJava, findJavac } from './javaService.js';
 import { steamAppUpdate } from './steamCmdService.js';
 import { findPresetFor } from './steamGames.js';
+import { installModded, installModpack, isModded, listModdedVersions, type ModpackRef } from './moddedService.js';
 import type { Loader, Platform } from '../types/index.js';
 
 const MOJANG_MANIFEST = 'https://launchermeta.mojang.com/mc/game/version_manifest_v2.json';
@@ -96,6 +97,7 @@ export async function listAvailableVersions(loader: Loader): Promise<VersionOpti
     const data = await fetchJson<{ versions: string[] }>(PURPUR_API);
     return newestFirst(data.versions);
   }
+  if (isModded(loader)) return listModdedVersions(loader);
   if (loader === 'bedrock') {
     // Bedrock dedicated server only ships the latest build; expose it as a single "latest" option.
     return [{ version: 'latest', recommended: true }];
@@ -175,11 +177,28 @@ export async function installServer(
   steamAppId?: string,
   steamLogin?: string,
   steamExtraFlags?: string,
-  steamPreset?: string | null
+  steamPreset?: string | null,
+  windowsBuild = false,
+  modded: { modpack?: ModpackRef | null; loaderVersion?: string } = {}
 ): Promise<InstallResult> {
   fs.mkdirSync(instanceDir, { recursive: true });
   onLog?.(`==> Installing ${loader} ${version} (${platform}) into ${instanceDir}`);
   onLog?.(`==> Host environment detected: ${describeHost()}`);
+
+  if (isModded(loader)) {
+    const progress = (pct: number, msg: string) => onProgress?.(pct, msg);
+    let loaderVersion = modded.loaderVersion;
+    if (modded.modpack) {
+      // Mods and configs first, then the loader version the pack was built for.
+      const pack = await installModpack(modded.modpack, instanceDir, (p, m) => progress(Math.round(p * 0.5), m), onLog);
+      loaderVersion = pack.loaderVersion;
+    }
+    const base = modded.modpack ? 50 : 0;
+    const result = await installModded(loader, version, instanceDir, (p, m) => progress(base + Math.round(p * (modded.modpack ? 0.5 : 1)), m), onLog, loaderVersion);
+    onLog?.('==> Install complete');
+    onProgress?.(100, 'Installed');
+    return { jarFile: result.jarFile, build: result.build, executable: null };
+  }
 
   if (platform === 'steam') {
     if (!steamAppId) throw new Error('steamAppId is required to install a Steam-platform server');
@@ -199,7 +218,10 @@ export async function installServer(
         await target.install(instanceDir, onLog);
       } else {
         const extraFlags = steamExtraFlags ? steamExtraFlags.split(' ').filter(Boolean) : [];
-        await steamAppUpdate(steamAppId, instanceDir, onLog, true, steamLogin ?? 'anonymous', extraFlags, target?.installFlags ?? []);
+        const flags = [...(target?.installFlags ?? [])];
+        // Running under Wine: fetch the Windows build even on a Linux host.
+        if (windowsBuild && !flags.includes('+@sSteamCmdForcePlatformType')) flags.push('+@sSteamCmdForcePlatformType', 'windows');
+        await steamAppUpdate(steamAppId, instanceDir, onLog, true, steamLogin ?? 'anonymous', extraFlags, flags);
       }
     }
     const preset = findPresetFor({ steam_app_id: steamAppId, steam_preset: steamPreset });

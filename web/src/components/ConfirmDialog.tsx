@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useState, type ReactNode } from 'react';
+import { t } from '../i18n/index.js';
 import { Button, Modal } from './ui.js';
 
 export interface ConfirmOptions {
@@ -46,10 +47,10 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
           <div className="text-sm leading-relaxed text-ink-300">{request?.message}</div>
           <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={() => settle(false)}>
-              {request?.cancelLabel ?? 'Cancel'}
+              {request?.cancelLabel ?? t('Cancel')}
             </Button>
             <Button variant={request?.tone === 'danger' ? 'danger' : 'primary'} onClick={() => settle(true)}>
-              {request?.confirmLabel ?? 'Confirm'}
+              {request?.confirmLabel ?? t('Confirm')}
             </Button>
           </div>
         </div>

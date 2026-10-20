@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { sanitizeWineConfig, type WineConfig } from './wineService.js';
 import path from 'node:path';
 import { HttpError } from '../utils/asyncHandler.js';
 import { instanceDir, safeJoinReal } from '../utils/paths.js';
@@ -19,6 +20,8 @@ export interface LaunchConfig {
   executable?: string;
   /** Java only: a specific java binary instead of the auto-detected one (admin-only). */
   javaPath?: string;
+  /** Java instances: the Java major to run with (default: what the Minecraft version needs). */
+  javaVersion?: number;
   /** Replaces the platform's default arguments when non-empty. Quotes group words. */
   args?: string;
   /** Run `executable args` as one /bin/sh command line (pipes, &&, $VARS…). Admin-only. */
@@ -36,6 +39,8 @@ export interface LaunchConfig {
   stopTimeoutSec?: number;
   /** Apps with a web interface: the port (usually the instance port) to link to. */
   webUi?: { port: number; scheme: 'http' | 'https'; path: string };
+  /** Windows programs on Linux: run through Wine (auto = when the executable is a Windows one). */
+  wine?: WineConfig;
 }
 
 export const STOP_SIGNALS = ['SIGINT', 'SIGTERM', 'SIGQUIT', 'SIGHUP'] as const;
@@ -97,6 +102,12 @@ export function sanitizeLaunchConfig(input: unknown, opts: { isAdmin: boolean; p
     adminOnly('A custom Java binary');
     out.javaPath = javaPath;
   }
+  if (raw.javaVersion !== undefined && raw.javaVersion !== null && raw.javaVersion !== '') {
+    const v = Number(raw.javaVersion);
+    if (opts.platform !== 'java') throw new HttpError(400, 'javaVersion only applies to Java instances');
+    if (!Number.isInteger(v) || v < 8 || v > 99) throw new HttpError(400, 'Java version must be between 8 and 99');
+    out.javaVersion = v;
+  }
   const args = str(raw.args);
   if (args !== undefined && args.trim()) out.args = args.trim();
   const workingDir = nonEmpty(str(raw.workingDir, 500));
@@ -131,6 +142,11 @@ export function sanitizeLaunchConfig(input: unknown, opts: { isAdmin: boolean; p
       scheme: web.scheme === 'https' ? 'https' : 'http',
       path: typeof web.path === 'string' && web.path.startsWith('/') ? web.path.slice(0, 200) : '/',
     };
+  }
+  const wine = sanitizeWineConfig(raw.wine, { isAdmin: opts.isAdmin });
+  if (wine) {
+    if (opts.platform !== 'steam' && opts.platform !== 'custom') throw new HttpError(400, 'Wine only applies to Steam and custom instances');
+    out.wine = wine;
   }
   const timeout = Number(raw.stopTimeoutSec);
   if (Number.isFinite(timeout) && timeout > 0) out.stopTimeoutSec = Math.min(Math.max(Math.round(timeout), 5), 900);

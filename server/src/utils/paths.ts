@@ -6,9 +6,20 @@ import { envVar } from './env.js';
 // server/src/utils -> server -> repo root/data
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const SERVER_ROOT = path.resolve(__dirname, '..', '..');
-export const DATA_DIR = envVar('DATA_DIR')
-  ? path.resolve(envVar('DATA_DIR')!)
-  : path.join(SERVER_ROOT, 'data');
+/**
+ * The real, long form of a folder (created if missing). On Windows a path containing an 8.3 short
+ * name (NAME~1) trips up some game servers' own installers (Mohist, Sponge) — they need the long one.
+ */
+function canonicalDir(p: string): string {
+  try {
+    fs.mkdirSync(p, { recursive: true });
+    return fs.realpathSync.native(p);
+  } catch {
+    return p;
+  }
+}
+
+export const DATA_DIR = canonicalDir(envVar('DATA_DIR') ? path.resolve(envVar('DATA_DIR')!) : path.join(SERVER_ROOT, 'data'));
 
 export const DB_PATH = path.join(DATA_DIR, 'outpost.db');
 /** The database's name before the rename to Outpost — migrated to DB_PATH on first start. */
@@ -17,6 +28,8 @@ export const INSTANCES_DIR = path.join(DATA_DIR, 'servers');
 export const BACKUPS_DIR = path.join(DATA_DIR, 'backups');
 export const JAVA_RUNTIMES_DIR = path.join(DATA_DIR, 'runtimes');
 export const MAP_CACHE_DIR = path.join(DATA_DIR, 'map-cache');
+/** World Rewind restore points (Minecraft worlds), one folder per instance. */
+export const REWIND_DIR = path.join(DATA_DIR, 'rewind');
 export const STEAMCMD_DIR = path.join(DATA_DIR, 'steamcmd');
 export const WEB_DIST_DIR = path.resolve(SERVER_ROOT, '..', 'web', 'dist');
 
@@ -26,6 +39,10 @@ export function instanceDir(serverId: string): string {
 
 export function pluginsDir(serverId: string): string {
   return path.join(instanceDir(serverId), 'plugins');
+}
+
+export function rewindDir(serverId: string): string {
+  return path.join(REWIND_DIR, serverId);
 }
 
 export function backupDir(serverId: string): string {

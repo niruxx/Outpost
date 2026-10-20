@@ -57,7 +57,23 @@ export interface EffectiveCreation extends CreationPolicy {
 }
 
 export type Platform = 'java' | 'bedrock' | 'steam' | 'custom' | 'docker';
-export type Loader = 'vanilla' | 'paper' | 'purpur' | 'spigot' | 'bedrock' | 'steam' | 'custom' | 'docker';
+export type Loader =
+  | 'vanilla'
+  | 'paper'
+  | 'purpur'
+  | 'spigot'
+  | 'fabric'
+  | 'quilt'
+  | 'forge'
+  | 'neoforge'
+  | 'mohist'
+  | 'spongeforge'
+  | 'bedrock'
+  | 'steam'
+  | 'custom'
+  | 'docker';
+
+export const MODDED_LOADERS: Loader[] = ['fabric', 'quilt', 'forge', 'neoforge', 'mohist', 'spongeforge'];
 
 export const PLUGIN_CAPABLE_LOADERS: Loader[] = ['paper', 'purpur', 'spigot'];
 
@@ -118,6 +134,8 @@ export interface ServerRecord {
   steam_app_id: string | null;
   /** Curated game preset id; several presets can share an App ID. */
   steam_preset?: string | null;
+  /** JSON: the Modrinth modpack it was made from (null otherwise). */
+  modpack?: string | null;
   steam_login: string;
   steam_extra_flags: string;
   /** JSON-encoded LaunchConfig; null = platform defaults. */
@@ -240,6 +258,7 @@ export interface SystemInfo {
   cpuCores: number;
   totalMemMb: number;
   uptimeSec: number;
+  panel?: { version: string; commit: string | null; commitDate: string | null };
 }
 
 export interface NodeInfo {
@@ -286,7 +305,7 @@ export interface InstalledPlugin {
   detail: string | null;
 }
 
-export type AddonCatalog = 'plugin' | 'datapack' | 'bedrock';
+export type AddonCatalog = 'plugin' | 'datapack' | 'bedrock' | 'mod:fabric' | 'mod:quilt' | 'mod:forge' | 'mod:neoforge';
 
 export interface AddonProfile {
   kind: 'bukkit' | 'datapack' | 'bedrock' | 'bepinex' | 'pak';
@@ -370,6 +389,7 @@ export type RestartConfig = { kind: 'default' } | { kind: 'stdin'; commands: str
 export interface LaunchConfig {
   executable?: string;
   javaPath?: string;
+  javaVersion?: number;
   args?: string;
   useShell?: boolean;
   workingDir?: string;
@@ -380,6 +400,30 @@ export interface LaunchConfig {
   restart?: RestartConfig;
   stopTimeoutSec?: number;
   webUi?: WebUi;
+  wine?: WineConfig;
+}
+
+export interface WineConfig {
+  mode: 'auto' | 'always' | 'never';
+  virtualDisplay?: boolean;
+  resolution?: string;
+  arch?: 'win64' | 'win32';
+  windowsVersion?: 'win11' | 'win10' | 'win81' | 'win8' | 'win7' | 'win2008r2' | 'win2008' | 'vista' | 'win2003' | 'winxp';
+  dllOverrides?: string;
+  debug?: string;
+  esync?: boolean;
+  fsync?: boolean;
+  binary?: string;
+}
+
+export interface WineStatus {
+  supported: boolean;
+  available: boolean;
+  path: string | null;
+  version: string | null;
+  xvfb: boolean;
+  winetricks: boolean;
+  hint: string | null;
 }
 
 export interface LaunchInfo {
@@ -530,7 +574,17 @@ export interface ScheduledTask {
   created_at: string;
 }
 
-export type NotifyEvent = 'server.started' | 'server.stopped' | 'server.crashed' | 'server.restart_gave_up' | 'backup.failed' | 'task.failed';
+export type NotifyEvent =
+  | 'server.started'
+  | 'server.stopped'
+  | 'server.crashed'
+  | 'server.restart_gave_up'
+  | 'backup.failed'
+  | 'task.failed'
+  | 'update.available'
+  | 'update.applied'
+  | 'update.failed'
+  | 'quota.exceeded';
 
 export interface Webhook {
   id: string;
@@ -552,6 +606,11 @@ export interface AuditEntry {
   targetLabel: string | null;
   targetKind: 'server' | 'user' | 'webhook' | null;
   detail: string | null;
+  /** The client's address (with the proxy-forwarded one, if any). */
+  ip: string | null;
+  userAgent: string | null;
+  /** "Firefox on Windows" */
+  agent: string | null;
   at: string;
 }
 

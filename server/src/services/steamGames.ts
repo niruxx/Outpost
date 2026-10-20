@@ -1,8 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { instanceDir } from '../utils/paths.js';
+import { instanceDir, STEAMCMD_DIR } from '../utils/paths.js';
 import { HttpError } from '../utils/asyncHandler.js';
 import { installQuake3 } from './directInstallers.js';
+import { workshopStateOf } from './workshopState.js';
 import type { LogFn } from '../utils/download.js';
 import type { ServerRecord } from '../types/index.js';
 
@@ -30,13 +31,73 @@ export interface SteamGamePreset {
   hosts?: NodeJS.Platform[];
   /** Extra folders (relative to the instance) the game's own libraries live in, added to LD_LIBRARY_PATH on Linux. */
   libraryPaths?: string[];
+  /** The server only ships for Windows: on Linux it's started through Wine. */
+  windowsOnly?: boolean;
+  /** Folder (relative to the instance) the server runs in, when it isn't the instance root. */
+  workingDir?: string;
+  /** Steam Workshop support (services/workshopService.ts). */
+  workshop?: WorkshopSupport;
+  /** RCON: the protocol and usual port, and how to switch it on from the command line (if the game allows). */
+  rcon?: {
+    protocol: 'source' | 'webrcon';
+    port(server: ServerRecord): number;
+    launchArgs?(cfg: { port: number; password: string }): string[];
+    /** RCON goes into the launch arguments some other way (e.g. ARK's ?options) — still automatic. */
+    automatic?: boolean;
+    note?: string;
+  };
   /** Runs before each start (never for a preview) — e.g. to move data into a new location. Returns a log line, if any. */
   prepareInstance?(server: ServerRecord): string | null;
   notes?: string;
 }
 
+export interface WorkshopSupport {
+  /** The game's App ID — the one Workshop items are published under. */
+  appId: string;
+  /**
+   * zomboid — the server downloads items itself; Outpost writes WorkshopItems=/Mods= into its .ini.
+   * bo3     — Outpost downloads items with steamcmd and installs them as usermaps/ or mods/.
+   * gmod    — Outpost downloads items and unpacks them into garrysmod/addons, plus a resource.AddWorkshop
+   *           list so joining players download the same items.
+   * ark     — the server downloads mods itself (-automanagedmods); Outpost passes ?GameModIds=.
+   * arma    — Outpost downloads mods into @<id> folders, copies their keys, and loads them with -mod=.
+   */
+  mode: 'zomboid' | 'bo3' | 'gmod' | 'ark' | 'arma';
+  /** Downloads need a Steam account that owns the game. */
+  needsLogin: boolean;
+}
+
+/** The instance's RCON settings when switched on (parsed here, not via rconService, to avoid an import cycle). */
+function rconOn(server: ServerRecord): { port: number; password: string } | null {
+  if (!server.rcon_config) return null;
+  try {
+    const c = JSON.parse(server.rcon_config) as { enabled?: boolean; port?: number; password?: string };
+    return c.enabled && typeof c.port === 'number' && c.password ? { port: c.port, password: c.password } : null;
+  } catch {
+    return null;
+  }
+}
+
 function extraArgs(server: ServerRecord): string[] {
   return server.extra_args ? server.extra_args.split(' ').filter(Boolean) : [];
+}
+
+/** Workshop items that are installed (or, for games that download them themselves, saved), in list order. */
+function activeWorkshopItems(server: ServerRecord) {
+  return workshopStateOf(server).items.filter((i) => i.status === 'installed');
+}
+
+/** ARK's -automanagedmods runs steamcmd from inside the game's folder — give it a copy of Outpost's. */
+function prepareArkMods(server: ServerRecord): string | null {
+  if (!activeWorkshopItems(server).length) return null;
+  const sub = process.platform === 'win32' ? 'Win64' : 'Linux';
+  const target = path.join(instanceDir(server.id), 'Engine', 'Binaries', 'ThirdParty', 'SteamCMD', sub);
+  const exe = process.platform === 'win32' ? 'steamcmd.exe' : 'steamcmd.sh';
+  if (fs.existsSync(path.join(target, exe))) return null;
+  if (!fs.existsSync(path.join(STEAMCMD_DIR, exe))) return 'ARK mods need steamcmd in Engine/Binaries/ThirdParty/SteamCMD — install or update the server once so Outpost downloads it';
+  fs.mkdirSync(target, { recursive: true });
+  fs.cpSync(STEAMCMD_DIR, target, { recursive: true });
+  return 'Copied steamcmd into the game folder so ARK can download its mods';
 }
 
 /** Project Zomboid keeps its saves, server .ini files and logs in ~/Zomboid by default — shared by
@@ -96,6 +157,7 @@ export const STEAM_GAME_PRESETS: SteamGamePreset[] = [
     executable: { win32: 'StartServer64.bat', linux: 'start-server.sh' },
     buildLaunchArgs: zomboidLaunchArgs,
     prepareInstance: migrateZomboidCacheDir,
+    workshop: { appId: '108600', mode: 'zomboid', needsLogin: false },
     readyRegex: /SERVER STARTED/i,
     stopStrategy: { kind: 'stdin', commands: ['save', 'quit'], delayMs: 5000 },
     needsExecuteBit: true,
@@ -364,7 +426,8 @@ export const STEAM_GAME_PRESETS: SteamGamePreset[] = [
     readyRegex: /Connection to Steam servers successful|VAC secure mode is activated/i,
     stopStrategy: { kind: 'stdin', commands: ['quit'], delayMs: 0 },
     needsExecuteBit: true,
-    notes: 'Change the gamemode with extra args (e.g. "+gamemode terrortown"); addons go in garrysmod/addons. Settings live in garrysmod/cfg/server.cfg.',
+    workshop: { appId: '4000', mode: 'gmod', needsLogin: false },
+    notes: 'Change the gamemode with extra args (e.g. "+gamemode terrortown"); addons go in garrysmod/addons, or add them from the Workshop tab. Settings live in garrysmod/cfg/server.cfg.',
   },
   {
     id: 'l4d2',
@@ -508,12 +571,22 @@ export const STEAM_GAME_PRESETS: SteamGamePreset[] = [
     defaultPort: 7777,
     portProtocol: 'udp',
     executable: { win32: 'ShooterGame/Binaries/Win64/ShooterGameServer.exe', linux: 'ShooterGame/Binaries/Linux/ShooterGameServer' },
-    buildLaunchArgs: (server) => [
-      `TheIsland?listen?SessionName=${server.name.replace(/[?\s]+/g, '_')}?Port=${server.server_port}?QueryPort=27015?MaxPlayers=20`,
-      '-server',
-      '-log',
-      ...extraArgs(server),
-    ],
+    buildLaunchArgs: (server) => {
+      const mods = activeWorkshopItems(server).map((i) => i.id);
+      const rcon = rconOn(server);
+      return [
+        `TheIsland?listen?SessionName=${server.name.replace(/[?\s]+/g, '_')}?Port=${server.server_port}?QueryPort=27015?MaxPlayers=20` +
+          (mods.length ? `?GameModIds=${mods.join(',')}` : '') +
+          (rcon ? `?RCONEnabled=True?RCONPort=${rcon.port}?ServerAdminPassword=${rcon.password}` : ''),
+        '-server',
+        '-log',
+        ...(mods.length ? ['-automanagedmods'] : []),
+        ...extraArgs(server),
+      ];
+    },
+    workshop: { appId: '346110', mode: 'ark', needsLogin: false },
+    rcon: { protocol: 'source', port: () => 27020, automatic: true, note: 'The RCON password is also ARK’s admin password (ServerAdminPassword).' },
+    prepareInstance: prepareArkMods,
     stopStrategy: { kind: 'signal', signal: 'SIGINT' },
     needsExecuteBit: true,
     notes:
@@ -572,7 +645,138 @@ export const STEAM_GAME_PRESETS: SteamGamePreset[] = [
     },
     notes: 'Settings live in Servers/outpost/Server/Commands.dat (created on first start). Players connect on UDP 27015–27016.',
   },
+  // ---- Arma ----
+  {
+    id: 'arma3',
+    label: 'Arma 3',
+    appId: '233780',
+    defaultPort: 2302,
+    portProtocol: 'udp',
+    executable: { win32: 'arma3server_x64.exe', linux: 'arma3server_x64' },
+    buildLaunchArgs: (server) => {
+      const mods = activeWorkshopItems(server).filter((i) => i.folder).map((i) => i.folder!);
+      return [
+        `-port=${server.server_port}`,
+        '-config=server.cfg',
+        '-name=server',
+        '-profiles=profiles',
+        ...(mods.length ? [`-mod=${mods.join(';')}`] : []),
+        ...extraArgs(server),
+      ];
+    },
+    readyRegex: /Host identity created|Connected to Steam servers/i,
+    stopStrategy: { kind: 'signal', signal: 'SIGINT' },
+    needsExecuteBit: true,
+    workshop: { appId: '107410', mode: 'arma', needsLogin: true },
+    prepareInstance: (server) => {
+      const cfg = path.join(instanceDir(server.id), 'server.cfg');
+      if (fs.existsSync(cfg)) return null;
+      fs.writeFileSync(
+        cfg,
+        [
+          '// Outpost starter config — edit freely (File Management → server.cfg).',
+          `hostname = "${server.name.replace(/"/g, "'")}";`,
+          'password = "";            // set to make the server private',
+          'passwordAdmin = "";       // #login <this> in chat to administer',
+          'maxPlayers = 32;',
+          'persistent = 1;',
+          'verifySignatures = 2;     // only clients with matching mod keys (keys/) may join',
+          'BattlEye = 1;',
+          '',
+        ].join('\n')
+      );
+      return 'Wrote a starter server.cfg';
+    },
+    notes:
+      'Installing needs a Steam login (any account — anonymous downloads are refused for Arma 3). Workshop mods need an account that owns ' +
+      'Arma 3. Players connect on UDP 2302–2306. Missions (.pbo) go in mpmissions/ and are picked in server.cfg.',
+  },
+  // ---- Call of Duty ----
+  {
+    id: 'bo3',
+    label: 'Call of Duty: Black Ops III',
+    appId: '545990',
+    defaultPort: 27017,
+    portProtocol: 'udp',
+    windowsOnly: true,
+    workingDir: 'UnrankedServer',
+    executable: {
+      win32: 'UnrankedServer/BlackOps3_UnrankedDedicatedServer.exe',
+      linux: 'UnrankedServer/BlackOps3_UnrankedDedicatedServer.exe',
+    },
+    // The server only ships for Windows; on Linux steamcmd has to be told to fetch that build anyway.
+    installFlags: ['+@sSteamCmdForcePlatformType', 'windows'],
+    buildLaunchArgs: (server) => {
+      const ws = workshopStateOf(server);
+      const mod = ws.items.find((i) => i.kind === 'mod' && i.id === ws.activeMod && i.status === 'installed' && i.folder);
+      const map = ws.items.find((i) => i.kind === 'map' && i.folder === ws.startMap && i.status === 'installed');
+      return [
+        '+set', 'net_port', String(server.server_port),
+        '+set', 'live_steam_server_name', server.name,
+        // Workshop maps live under usermaps/; a mod in mods/<folder> is loaded by its folder name instead.
+        '+set', 'fs_game', mod ? mod.folder! : 'usermaps',
+        '+set', 'logfile', '2',
+        '+exec', 'server.cfg',
+        ...(map ? ['+map', map.folder!] : []),
+        ...extraArgs(server),
+      ];
+    },
+    stopStrategy: { kind: 'stdin', commands: ['quit'], delayMs: 0 },
+    needsExecuteBit: false,
+    workshop: { appId: '311210', mode: 'bo3', needsLogin: true },
+    prepareInstance: (server) => {
+      const cfg = path.join(instanceDir(server.id), 'UnrankedServer', 'zone', 'server.cfg');
+      if (fs.existsSync(cfg)) return null;
+      fs.mkdirSync(path.dirname(cfg), { recursive: true });
+      fs.writeFileSync(
+        cfg,
+        [
+          '// Outpost starter config — edit freely (File Management → UnrankedServer/zone/server.cfg).',
+          `set live_steam_server_description "Hosted with Outpost"`,
+          'set com_maxclients "18"',
+          'set g_password ""              // set to make the server private',
+          'set rcon_password ""           // empty = RCON off',
+          'set sv_skip_lobby "1"          // load the map straight away (needed for custom maps)',
+          'set sv_maprotation "gametype tdm map mp_biodome map mp_spire map mp_sector map mp_apartments map mp_chinatown map mp_metro"',
+          '',
+        ].join('\n')
+      );
+      return 'Wrote a starter UnrankedServer/zone/server.cfg — edit it in File Management.';
+    },
+    notes:
+      'The official unranked server: multiplayer only (Valve’s build can’t host Zombies). It’s a Windows program — on Linux, Outpost runs it ' +
+      'with Wine, so install Wine first (e.g. "sudo apt install wine64"). Forward UDP and TCP 27017. Workshop maps and mods need a Steam ' +
+      'account that owns Black Ops III — add them from the Workshop tab.',
+  },
 ];
+
+// RCON for games that take it on the command line. Source engine games use the game port over TCP.
+const SRCDS_GAMES = new Set(['cs2', 'csgo', 'css', 'tf2', 'gmod', 'l4d2', 'hl2dm', 'dods']);
+for (const p of STEAM_GAME_PRESETS) {
+  if (SRCDS_GAMES.has(p.id)) {
+    p.rcon ??= {
+      protocol: 'source',
+      port: (server) => server.server_port,
+      launchArgs: (cfg) => ['+rcon_password', cfg.password],
+      note: 'Source games answer RCON on the game port over TCP — keep the port the same as the server’s.',
+    };
+  }
+  if (p.id === 'rust') {
+    p.rcon = {
+      protocol: 'webrcon',
+      port: (server) => server.server_port + 1,
+      launchArgs: (cfg) => ['+rcon.port', String(cfg.port), '+rcon.password', cfg.password, '+rcon.web', '1'],
+    };
+  }
+  if (p.id === 'palworld') {
+    p.rcon = {
+      protocol: 'source',
+      port: () => 25575,
+      note: 'Also set RCONEnabled=True, RCONPort and AdminPassword (= this password) in Pal/Saved/Config/LinuxServer/PalWorldSettings.ini.',
+    };
+  }
+}
+
 
 export function findPreset(appId: string | null | undefined): SteamGamePreset | undefined {
   if (!appId) return undefined;

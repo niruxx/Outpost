@@ -1,4 +1,6 @@
 import { Navigate, Route, BrowserRouter, Routes, useParams } from 'react-router-dom';
+import { PublicStatusPage } from './pages/PublicStatusPage.js';
+import { I18nProvider } from './i18n/index.js';
 import { motion } from 'framer-motion';
 import { AuthProvider, useAuth } from './state/AuthContext.js';
 import { ToastProvider } from './components/Toast.js';
@@ -57,6 +59,7 @@ function AppRoutes() {
     <Routes>
       <Route path="/setup" element={setupRequired ? <SetupPage /> : <Navigate to="/" replace />} />
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/status/:slug" element={<PublicStatusPage />} />
       <Route
         path="/"
         element={
@@ -133,6 +136,7 @@ function AppRoutes() {
 
 export default function App() {
   return (
+    <I18nProvider>
     <BrowserRouter>
       <AuthProvider>
         <ToastProvider>
@@ -142,5 +146,6 @@ export default function App() {
         </ToastProvider>
       </AuthProvider>
     </BrowserRouter>
+    </I18nProvider>
   );
 }

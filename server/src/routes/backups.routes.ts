@@ -73,6 +73,7 @@ backupsRouter.get(
   asyncHandler(async (req, res) => {
     requirePermission(req, 'files.read');
     const filePath = resolveBackupPath(req.params.serverId, req.params.fileName);
+    logAudit(req.auth!.sub, req.auth!.username, 'backup.download', req.params.serverId, req.params.fileName);
     res.download(filePath, req.params.fileName);
   })
 );

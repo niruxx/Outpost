@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { OffsiteChips, OffsiteRestoreCard, useOffsite } from './OffsiteBackups.js';
 import { useServerDetail } from './ServerContext.js';
 import { api, ApiError, downloadUrl } from '../../api/client.js';
 import type { BackupInfo, BackupSchedule, SnapshotEntry, SnapshotFileSide } from '../../api/types.js';
@@ -226,6 +227,7 @@ export function BackupsTab() {
   const [busyFile, setBusyFile] = useState<string | null>(null);
   const [savingSchedule, setSavingSchedule] = useState(false);
   const [browsing, setBrowsing] = useState<BackupInfo | null>(null);
+  const offsite = useOffsite(serverId);
 
   const canCreate = can('backups.create');
   const canRestore = can('backups.restore');
@@ -380,6 +382,7 @@ export function BackupsTab() {
                     <p className="truncate text-xs text-ink-500">
                       {formatBytes(b.sizeBytes)} · <span className="font-mono">{b.fileName}</span>
                     </p>
+                    <OffsiteChips state={offsite.state} fileName={b.fileName} />
                   </div>
                   <div className="flex flex-wrap gap-1.5">
                     {canBrowse && (
@@ -401,6 +404,22 @@ export function BackupsTab() {
                         <Icon name="update" className="h-4 w-4" />
                       </a>
                     )}
+                    {canCreate && !!offsite.state?.destinations.length && (
+                      <Button
+                        variant="ghost"
+                        title="Copy to off-site storage now"
+                        onClick={async () => {
+                          try {
+                            await api.post(`/servers/${serverId}/offsite/copy`, { fileName: b.fileName });
+                            offsite.reload();
+                          } catch (err) {
+                            toast.error(err instanceof ApiError ? err.message : 'Copy failed');
+                          }
+                        }}
+                      >
+                        <Icon name="upload" className="h-4 w-4" />
+                      </Button>
+                    )}
                     {canCreate && (
                       <Button variant="ghost" disabled={busyFile === b.fileName} onClick={() => deleteSnapshot(b)} title="Delete snapshot">
                         <Icon name="trash" className="h-4 w-4 text-red-400" />
@@ -414,6 +433,8 @@ export function BackupsTab() {
         )}
         {canRestore && running && <p className="mt-3 text-xs text-ink-500">Stop the server to restore a whole snapshot. Single files can be restored any time.</p>}
       </Card>
+
+      <OffsiteRestoreCard serverId={serverId} state={offsite.state} canRestore={canRestore} onFetched={() => load()} />
 
       <Card className="p-5">
         <CardTitle>Snapshot schedule</CardTitle>

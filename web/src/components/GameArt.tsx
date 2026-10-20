@@ -19,6 +19,7 @@ const MARKED_GAMES: Record<string, MarkedGame> = {
   '740': { label: 'Counter-Strike: Global Offensive', mark: { type: 'crosshair', color: '#e8b04a' }, tile: 'from-[#3a2a12] to-[#1f170b]' },
   '232330': { label: 'Counter-Strike: Source', mark: { type: 'crosshair', color: '#d9c27a' }, tile: 'from-[#33301c] to-[#1c1a0f]' },
   '90': { label: 'Half-Life Dedicated Server', mark: { type: 'crosshair', color: '#e0c890' }, tile: 'from-[#33301c] to-[#1c1a0f]' },
+  '545990': { label: 'Call of Duty: Black Ops III', mark: { type: 'monogram', text: 'BO3', color: '#f0a23a' }, tile: 'from-[#2b2b2b] to-[#121212]' },
   '2200': { label: 'Quake III Arena', mark: { type: 'monogram', text: 'Q3', color: '#e0623a' }, tile: 'from-[#3a1a12] to-[#1c0d08]' },
   '232370': { label: 'Half-Life 2: Deathmatch', mark: { type: 'monogram', text: 'HL2', color: '#f08a24' }, tile: 'from-[#3a2412] to-[#21140a]' },
   '232290': { label: 'Day of Defeat: Source', mark: { type: 'monogram', text: 'DoD', color: '#b9a36a' }, tile: 'from-[#2e2a1c] to-[#1a1810]' },
@@ -59,6 +60,7 @@ export const APP_ICONS: Record<string, { label: string; tile: string; color: str
   monitor: { label: 'Monitoring', tile: 'from-[#173f3a] to-[#0c2420]', color: '#7ee0cf', path: 'M4 17h6l3-8 5 15 3-7h7' },
   vault: { label: 'Password manager', tile: 'from-[#3a3214] to-[#211c0b]', color: '#f2d16b', path: 'M16 4l9 4v7c0 6-4 10.5-9 13-5-2.5-9-7-9-13V8zM16 13a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM16 18v4' },
   cloud: { label: 'Cloud & files', tile: 'from-[#163a52] to-[#0c2130]', color: '#9fd6ff', path: 'M10 24a6 6 0 0 1-.5-12A8 8 0 0 1 25 13a5.5 5.5 0 0 1 0 11z' },
+  template: { label: 'Template', tile: 'from-[#2e3a1c] to-[#171e0e]', color: '#c5e58f', path: 'M9 5h10l5 5v17H9zM19 5v5h5M12 15h9M12 19h9M12 23h6' },
   app: { label: 'App', tile: 'from-[#2a2f36] to-[#16191d]', color: '#c2c9bb', path: 'M6 6h8v8H6zM18 6h8v8h-8zM6 18h8v8H6zM18 18h8v8h-8z' },
 };
 

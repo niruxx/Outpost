@@ -46,6 +46,7 @@
 > ./install.sh --engine=podman    # rootless Podman instead — no root daemon, no docker group
 > ./install.sh -y                 # accept every default
 > ./install.sh --no-containers    # skip the container engine
+> ./install.sh --wine             # also install Wine + winetricks (Windows-only game servers)
 > ```
 >
 > With **Docker** it installs `docker.io` / `moby-engine` / `docker`, enables `docker.service` + `docker.socket` and adds you to the `docker` group (root-equivalent — log out and back in afterwards). With **Podman** it installs `podman`, enables your user's `podman.socket` (what Portainer talks to) and turns on lingering so it runs without a login. Either way it can pre-download the Portainer image.
@@ -65,6 +66,7 @@ Open **http://localhost:8642** — the first visit walks you through creating th
 | ☕ **Java 21+** | Vanilla / Paper / Purpur / Spigot servers |
 | 🛠️ **JDK + git** | building Spigot from source |
 | 🧱 **32-bit libraries** (Linux) | Steam-based servers — [see Guides → Steam](#-guides) |
+| 🍷 **Wine** (Linux, optional) | Windows-only servers like Black Ops III — `./install.sh --wine` |
 
 ---
 
@@ -213,15 +215,22 @@ Every template is just a starting point — change the image, ports, environment
 |:-:|---|---|---|
 | ⛏️ | **Minecraft: Java** — Paper · Purpur · Spigot | 🧩 Bukkit plugins — Modrinth + upload | `25565/tcp` |
 | ⛏️ | **Minecraft: Java** — Vanilla | 📦 Data packs — Modrinth + upload | `25565/tcp` |
+| 🧵 | **Minecraft: Java** — Fabric · Quilt · Forge · NeoForge | 🧩 Mods — Modrinth / CurseForge + upload | `25565/tcp` |
+| 🧪 | **Minecraft: Java** — Mohist (Forge + Bukkit) · SpongeForge | 🧩 Forge mods (+ Bukkit / Sponge plugins) | `25565/tcp` |
+| 📦 | **Modrinth modpacks** (.mrpack) — any of the above loaders | 🧩 The pack’s mods and configs | `25565/tcp` |
 | 🪨 | **Minecraft: Bedrock** | 🎒 `.mcpack` / `.mcaddon`, auto-activated per world | `19132/udp` |
 | 🪖 | **Valheim** | 🔌 BepInEx plugins (`.dll` / `.zip`) | `2456/udp` |
 | 🐾 | **Palworld** | 📦 `.pak` mods | `8211/udp` |
 | 🔫 | **Counter-Strike 2, CS:GO, Source, 1.6 & Condition Zero** | — | `27015/udp` |
 | 🎩 | **Team Fortress 2** | — | `27015/udp` |
 | ⚡ | **Quake III Arena (ioquake3) & Quake Live** | — | `27960/udp` |
-| 🛠️ | **Garry's Mod, Left 4 Dead 2, HL2:DM, DoD:S, Half-Life DM, TFC** | — | `27015/udp` |
-| 🏝️ | **Rust, ARK, 7 Days to Die, Satisfactory, Unturned** | — | game default |
-| 🧟 | **Project Zomboid** | — *(Workshop IDs live in its own `.ini`, under `<instance>/Zomboid/Server`)* | `16261/udp` |
+| 🛠️ | **Garry's Mod** | 🧰 Steam Workshop addons & collections | `27015/udp` |
+| 🛠️ | **Left 4 Dead 2, HL2:DM, DoD:S, Half-Life DM, TFC** | — | `27015/udp` |
+| 🦖 | **ARK: Survival Evolved** | 🧰 Steam Workshop mods (load order) | `7777/udp` |
+| 🪖 | **Arma 3** | 🧰 Steam Workshop mods + keys | `2302/udp` |
+| 🔫 | **Call of Duty: Black Ops III** *(Wine on Linux)* | 🧰 Steam Workshop maps & mods | `27017/udp` |
+| 🏝️ | **Rust, 7 Days to Die, Satisfactory, Unturned** | — | game default |
+| 🧟 | **Project Zomboid** | 🧰 Steam Workshop items, written into its `.ini` | `16261/udp` |
 | 🌳 | **Terraria** | — *(the vanilla server has no mod loader)* | `7777/tcp` |
 | 🎯 | **Any Steam App ID** — CS2, TF2, Rust, ARK, Quake Live… | — | your choice |
 
@@ -230,6 +239,155 @@ Known titles and app types get their own emblem, and running instances wear a li
 ---
 
 ## 📚 Guides
+
+<details>
+<summary><h3>🍷 Wine — Windows-only servers on Linux</h3></summary>
+
+Some dedicated servers only ship for Windows (Call of Duty: Black Ops III, and many older games). On Linux, Outpost runs them through **Wine**:
+
+- Install it with `./install.sh --wine` (Wine, Xvfb, winetricks and cabextract for your distro), or your package manager.
+- **Automatic:** Windows-only presets and any `.exe` / `.bat` executable run through Wine. For a Steam App ID without a Linux server, tick **"Windows-only server"** when creating it — steamcmd then fetches the Windows build.
+- **Per instance**, the **Wine** tab sets:
+  - **Run through Wine:** automatic, always or never.
+  - **Windows version** (XP → 11), applied before the next start.
+  - **Prefix architecture:** 64-bit, or 32-bit only.
+  - **DLL overrides** (`WINEDLLOVERRIDES`), **debug channels** (`WINEDEBUG`), **esync / fsync**.
+  - A **virtual screen** (Xvfb, with its size) for servers that open a window.
+  - Admins can point an instance at a specific Wine build (e.g. `/opt/wine-staging/bin/wine`).
+- **Dependencies:** pick winetricks verbs (Visual C++ runtimes, .NET, DirectX, XACT, PhysX…) or type your own. You can also run an `.exe` / `.msi` installer that's in the instance folder. Both run inside the instance's sandbox and log to the console. If winetricks isn't installed, Outpost downloads it the first time.
+- **Isolated:** each instance has its own prefix in `<instance>/.wine`, so games never share registry or installs and backups include it. It's set up on the first start (about a minute), or from **Wine → Set up now**. **Reset prefix** starts it fresh.
+
+</details>
+
+<details>
+<summary><h3>☕ Java versions</h3></summary>
+
+Minecraft versions need different Java releases (1.16 and older: Java 8 · 1.17: 16 · 1.18–1.20.4: 17 · 1.20.5+: 21 · newer: what Mojang's metadata says).
+
+- **Configuration → Java runtimes** lists every Java on the host and installs Eclipse Temurin in one click. Downloaded runtimes go in `data/runtimes/<version>`.
+- Each Java instance automatically starts with the version its Minecraft version needs. To pin one, use **Configuration → Launch → Java version** on the instance.
+- If the right Java isn't installed, the console says so and Outpost uses the closest newer one (never a newer one for Java 8 versions).
+
+</details>
+
+<details>
+<summary><h3>🎛️ RCON, automatic updates &amp; console history</h3></summary>
+
+- **RCON console** (instance → Configuration): Source RCON for Source games, Minecraft, ARK and Palworld, and WebRCON for Rust.
+  - Outpost switches it on in the game where it can: `server.properties` for Minecraft, launch arguments for Rust, Source games and ARK.
+  - It can generate the password, and **Test connection** checks it works.
+  - Tick **Send console commands through RCON** to route the Console box, player actions and stop commands over RCON.
+- **Automatic updates** (instance → Update): Outpost checks on a schedule.
+  - Steam servers compare the installed build with Steam's. Paper and Purpur look for new builds, and Bedrock for new releases.
+  - When there's an update, Outpost warns players in-game ("restarting in 5 minutes…"), stops the server, takes a snapshot, updates, and starts it again.
+  - **Only notify** sends a webhook instead. Vanilla only follows new Minecraft versions if you allow it.
+- **Console log history** (instance → Console → **Log history**):
+  - Every line is saved to `data/console-logs/<instance>/<date>.log`, and past days are gzipped.
+  - Search, download or delete a day's log.
+  - Retention defaults to 30 days and is set under Configuration → Console logs.
+
+</details>
+
+<details>
+<summary><h3>🧵 Modded Minecraft</h3></summary>
+
+Pick the server software when creating a Java instance:
+
+| Software | What runs | Installed with |
+|---|---|---|
+| **Fabric** / **Quilt** | Fabric (Quilt also runs most Fabric) mods | Fabric's server launcher · Quilt's installer |
+| **Forge** / **NeoForge** | Forge / NeoForge mods | Their installers (launched from `@libraries/…/unix_args.txt`) |
+| **Mohist** | Forge mods **and** Bukkit plugins | Mohist's own jar (sets up libraries on first start) |
+| **SpongeForge** | Forge mods + Sponge plugins | Forge at the version Sponge needs, plus SpongeForge in `mods/` |
+| **Modpack from Modrinth…** | A whole `.mrpack` | The pack's server-side mods + configs, then the exact loader version it was built for |
+
+- Each instance starts with the Java its Minecraft version needs (see **Java versions**). Installers run with it too.
+- The **Mods** tab searches Modrinth (and CurseForge with an API key) for mods that match the loader and Minecraft version, installs them with one click, and lets you toggle or remove them.
+- **Update** installs the newest loader build for the same Minecraft version, and your mods stay put. Modpack instances stay pinned to their pack version.
+- On Windows hosts, keep the data folder path short (e.g. `C:\Outpost\data`): Forge-style servers nest libraries deep inside each instance and can hit Windows' 260-character path limit. Outpost warns about this at startup.
+
+</details>
+
+<details>
+<summary><h3>📂 SFTP, ☁️ off-site backups &amp; 🗄️ databases</h3></summary>
+
+**SFTP**
+- An admin switches it on under Configuration → SFTP (default port 2022).
+- Each user sets their own **SFTP password**, which is separate from the panel password so SFTP can't sidestep 2FA. SSH keys work too.
+- The login name is `<user>.<first 8 characters of the instance id>`; each instance's File Management page shows it.
+- A login only reaches that one instance's folder, with the same rights as in the panel ("View files" = read-only, "Edit files" = read/write). Logins and changes go to the audit log.
+
+**Off-site backups**
+- Configuration → Off-site backups adds destinations: AWS S3, Backblaze B2, Wasabi, Cloudflare R2, any S3-compatible storage, or another machine over SFTP.
+- Every new snapshot (manual or scheduled) is copied to them. Large snapshots upload in parts.
+- Each destination keeps the newest N copies per instance.
+- On an instance's Backups tab, each snapshot shows where it's been copied. **Off-site copies** brings one back, ready to restore.
+
+**Per-server databases**
+- An admin adds a MySQL/MariaDB **database host** under Configuration → Databases. Use an account with `ALL PRIVILEGES … WITH GRANT OPTION`.
+- On an instance's Configuration page, anyone with "Edit configuration" can create databases for its plugins.
+- Each database gets its own user that can only reach it. Outpost shows the host, user, password and JDBC URL, and can rotate the password.
+- Deleting the database (or the instance) drops it and its user.
+
+</details>
+
+<details>
+<summary><h3>📏 Resource limits &amp; 🔑 API keys</h3></summary>
+
+**Resource limits** (instance → Configuration, admins)
+- **CPU:** percent of one core (200 = two cores).
+- **Memory:** hard cap in MB.
+- **Processes:** a cap on processes and threads.
+- **Disk:** a cap in MB on the instance folder.
+- **How they're enforced:**
+  - On Linux, CPU, memory and processes are enforced by the kernel. The instance runs inside a systemd scope wrapped around its sandbox. This needs Outpost running as a systemd service with lingering on (install.sh sets that up), or as root.
+  - Container instances get the same values as Docker/Podman limits.
+  - Disk usage is checked every few minutes. Going over warns in the console and by webhook ("Disk limit reached"), blocks starts, uploads, editor saves and SFTP writes, and can also stop the server.
+
+**API keys** (Configuration → API keys)
+- Personal keys for scripts, bots and Discord integrations: `Authorization: Bearer opk_…`.
+- A key acts as its owner, with the same role and instance permissions. It can be read-only and can expire.
+- Only a hash is stored, so the key is shown once.
+- Keys can't create keys or change passwords, 2FA or SFTP logins.
+- The audit log notes which key made each change. Admins can see and revoke everyone's keys.
+
+</details>
+
+<details>
+<summary><h3>📦 Server templates &amp; 🌐 status pages</h3></summary>
+
+- **Export** any instance as a template file (instance → Configuration → Template). It holds:
+  - game and version, memory, port, launch settings, container config, automatic updates, RCON
+  - the config files you tick (text only, 256 KB each)
+
+  Passwords, tokens, Steam logins and secret-looking config values are stripped.
+- **Import** template files under Configuration → Server templates. Create from them with **New instance → From a template**.
+- Templates can declare **variables** (`{{MOTD}}`, `{{MAX_PLAYERS}}`…), which are asked for when creating and filled into arguments, environment and files. Built-ins like `{{PORT}}` still resolve at launch.
+- Account limits still apply when creating from a template: platforms, memory, number of instances, and custom processes being admin-only.
+- **Public status page** (instance → Configuration): an unguessable link (`/status/<id>`) that shows, with no sign-in:
+  - whether the server is up, its uptime, the address to join (with a copy button) and, for Minecraft, who's playing
+  - plus an SVG badge for websites and Discord (`/api/public/status/<id>/badge.svg`)
+
+  Nothing else about the instance is exposed. **New link** retires the old one.
+
+</details>
+
+<details>
+<summary><h3>🧰 Steam Workshop</h3></summary>
+
+Supported games have a **Workshop** tab. Paste item or collection links/IDs; Outpost looks each one up on Steam (title, size, preview) and rejects items that belong to another game. What happens next depends on the game:
+
+| Game | How items get onto the server |
+|---|---|
+| 🧟 Project Zomboid | Written into `WorkshopItems=` / `Mods=` in the server's `.ini`. The server downloads them itself |
+| 🦖 ARK | Passed as `?GameModIds=` with `-automanagedmods`; ARK downloads and updates them on start |
+| 🛠️ Garry's Mod | Downloaded, unpacked into `garrysmod/addons`, and listed with `resource.AddWorkshop` so players get them too |
+| 🪖 Arma 3 | Downloaded into `@<id>` folders (lower-cased on Linux), keys copied to `keys/`, loaded with `-mod=` |
+| 🔫 Black Ops III | Maps go to `usermaps/<codename>`, mods to `mods/`. Pick the start map and active mod |
+
+ARK, Arma 3 and Zomboid load mods top to bottom; use the arrows to reorder. Black Ops III and Arma 3 Workshop downloads need a Steam account that owns the game (stored on the panel, never sent to the browser).
+
+</details>
 
 <details>
 <summary><h3>🚀 Custom servers &amp; launch settings</h3></summary>
@@ -588,6 +746,8 @@ Backs up `server/data/` first, records the current commit, `git pull --ff-only`s
 
 Manual: `git pull && npm run setup && npm run build`, then restart (`pm2 restart outpost` / `sudo systemctl restart outpost` / …).
 
+**Knowing when to update:** the bottom-left corner shows the version and commit the panel runs (`Outpost v1.0.1 · e0569a5`). Every 6 hours the panel fetches its Git remote (it never pulls). When there are newer commits, admins see a banner: *"Outpost update available: N new changes — run ./update.sh"*. It lists what's new and notes local edits. **Ignore** hides it until something newer lands.
+
 > [!CAUTION]
 > Never run `git clean -fdx` in the repo — `server/data/` is git-ignored, and `git clean` deletes ignored files: your database, every instance and every snapshot.
 </details>
@@ -678,7 +838,53 @@ Nodes on older versions can still transfer instances to and from upgraded ones.
 - [x] 🔌 UPnP port forwarding and ♻️ auto-restart
 - [x] 🛡️ Process sandbox and 🐳 Docker/Podman instances
 - [x] 🧭 General-purpose platform: app catalog, Portainer, web UI links
-- [ ] 🧱 Mohist and SpongeForge instances
-- [ ] ⏪ Restore view for Minecraft's own auto-save states
+- [x] ⏰ Scheduled tasks, 🔔 Discord/webhook alerts, 🔐 two-factor sign-in and an audit log
+- [x] 🧱 Host firewall (UFW / firewalld) with per-user access
+- [x] 🔫 Counter-Strike, TF2, Quake and more one-click game servers
+- [x] 🎨 Themes (XP, Vista/7, Frutiger Aero, Minecraft) with animated wallpapers
+- [x] 🧩 CurseForge search for Bedrock add-ons and Java plugins
+- [x] 🔫 Call of Duty: Black Ops III server (Wine on Linux) with Workshop maps & mods
+- [x] 🍷 Per-instance Wine settings and dependencies (winetricks, installers)
+- [x] 🧰 Steam Workshop for Garry's Mod, ARK and Arma 3
+- [x] ☕ Java version manager, 🎛️ RCON consoles, 🔄 automatic updates and 📜 console log history
+- [x] 📦 Server templates, 🌐 public status pages and 🌍 translations
+- [x] 📜 Audit log with IP/device, retention, CSV export, and journald / `/var/log` viewers
+- [x] 🧱 Mohist and SpongeForge instances
+- [x] 🧵 Modded Minecraft & modpacks, 📂 SFTP, ☁️ off-site backups, 📏 resource limits, 🔑 API keys and 🗄️ per-server databases
+- [x] ⬆️ Panel update notice and running commit in the corner
+- [x] ⏪ World Rewind — scheduled Minecraft world restore points (Java & Bedrock) and level.dat rollback
+
+## 📝 TODO
+
+Features other game panels (Pterodactyl, AMP, Crafty, PufferPanel) have that Outpost doesn't yet — roughly in order of how much they're asked for.
+
+**Big ones**
+
+- [x] 🧵 **Modded Minecraft** — Fabric, Quilt, Forge, NeoForge, Mohist and SpongeForge instances, Modrinth modpacks, one-click mods
+- [ ] 🧵 CurseForge modpacks (server packs)
+- [ ] 🔀 **Proxy servers** — Velocity, BungeeCord and Waterfall for multi-server networks
+- [x] 📂 **SFTP access** — per-user SFTP logins scoped to the instances they can manage
+- [x] ☁️ **Off-site backups** — copy snapshots to S3-compatible storage (AWS, Backblaze, Wasabi, R2…) or another SFTP host
+- [x] 📏 **Resource limits** — CPU, memory, process and disk caps for every instance type
+
+**Common**
+
+- [x] 🔑 **API keys for users** — for scripts, bots and Discord integrations
+- [ ] 🎮 **Per-user Steam accounts** — each user signs in to their own Steam account (with Steam Guard) and Outpost uses it for installs and Workshop downloads that need ownership (Arma 3, Black Ops III), instead of one shared login per instance
+- [x] 🎛️ **RCON consoles** — Source RCON and Rust WebRCON; console, player actions and stop commands can go over RCON
+- [x] 🛠️ **Steam Workshop mod management** — Project Zomboid, Garry's Mod, ARK, Arma 3 and Black Ops III
+- [x] ☕ **Java version manager** — one-click Temurin installs; each instance gets the Java its Minecraft version needs, or one you pick
+- [x] 🗄️ **Per-server databases** — one-click MySQL / MariaDB for plugins
+- [x] 🔄 **Automatic game updates** — scheduled checks (Steam build ids, Paper/Purpur builds, Bedrock), in-game warning, snapshot, update, restart
+- [ ] 📧 **Password reset & email**, and optional sign-in with Discord / Google / LDAP
+- [x] 📜 **Console log history** — every console line saved per day, compressed, searchable, downloadable, with a retention setting
+
+**Nice to have**
+
+- [ ] 💳 Billing integration (WHMCS, Paymenter) for hosting providers
+- [x] 🌐 Public status page per instance, with an embeddable badge
+- [x] 📦 Server templates — export any instance (secrets stripped), import, and create from them with variables
+- [x] 🌍 Translations — Español, Deutsch, Français, Português (Brasil); navigation, dashboard and common screens so far
+- [ ] 🌍 Translate the remaining screens (settings descriptions, dialogs, help text)
 
 <p align="center"><sub>Made with 💚 for people who'd rather play than SSH.</sub></p>

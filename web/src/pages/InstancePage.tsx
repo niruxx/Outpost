@@ -22,6 +22,9 @@ import { BackupsTab } from './server/BackupsTab.js';
 import { UpdateTab } from './server/UpdateTab.js';
 import { UpnpTab } from './server/UpnpTab.js';
 import { TasksTab } from './server/TasksTab.js';
+import { WorkshopTab } from './server/WorkshopTab.js';
+import { WineTab } from './server/WineTab.js';
+import { RewindTab } from './server/RewindTab.js';
 import { useEndpoint } from '../hooks/useEndpoint.js';
 import { api, ApiError } from '../api/client.js';
 import { isMinecraftPlatform, type ServerRecord } from '../api/types.js';
@@ -56,10 +59,13 @@ function InstanceNav({ server, onNavigate }: { server: ServerRecord; onNavigate:
       {(server.platform === 'java' || server.platform === 'bedrock' || server.platform === 'steam') && (
         <NavItem to="plugins" icon="plugin" label={addonNavLabel(server)} onClick={onNavigate} />
       )}
+      {server.platform === 'steam' && <NavItem to="workshop" icon="box" label="Workshop" onClick={onNavigate} />}
+      {(server.platform === 'steam' || server.platform === 'custom') && <NavItem to="wine" icon="wine" label="Wine" onClick={onNavigate} />}
       {!steam && <NavItem to="players" icon="player" label="Players" onClick={onNavigate} />}
       {!steam && <NavItem to="operator" icon="shield" label="Operators" onClick={onNavigate} />}
       {!steam && <NavItem to="whitelist" icon="checklist" label="Whitelist" onClick={onNavigate} />}
       {!steam && <NavItem to="maps" icon="map" label="Map" onClick={onNavigate} />}
+      {!steam && <NavItem to="rewind" icon="refresh" label="World Rewind" onClick={onNavigate} />}
       <NavItem to="update" icon="update" label="Update" onClick={onNavigate} />
     </nav>
   );
@@ -333,6 +339,8 @@ function InstancePageInner() {
             <Route path="console" element={<ConsoleTab />} />
             <Route path="backups" element={<BackupsTab />} />
             <Route path="tasks" element={<TasksTab />} />
+            <Route path="workshop" element={<WorkshopTab />} />
+            <Route path="wine" element={<WineTab />} />
             <Route path="configuration" element={<SettingsTab />} />
             <Route path="files" element={<FilesTab />} />
             <Route path="plugins" element={<PluginsTab />} />
@@ -340,6 +348,7 @@ function InstancePageInner() {
             {!steam && <Route path="operator" element={<OperatorTab />} />}
             {!steam && <Route path="whitelist" element={<WhitelistTab />} />}
             {!steam && <Route path="maps" element={<MapsTab />} />}
+            {!steam && <Route path="rewind" element={<RewindTab />} />}
             <Route path="update" element={<UpdateTab />} />
             <Route path="upnp" element={<UpnpTab />} />
             {/* Old tab names, so existing bookmarks keep working. */}

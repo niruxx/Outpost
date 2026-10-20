@@ -41,7 +41,21 @@ export interface ScheduledTask {
 }
 
 export type Platform = 'java' | 'bedrock' | 'steam' | 'custom' | 'docker';
-export type Loader = 'vanilla' | 'paper' | 'purpur' | 'spigot' | 'bedrock' | 'steam' | 'custom' | 'docker';
+export type Loader =
+  | 'vanilla'
+  | 'paper'
+  | 'purpur'
+  | 'spigot'
+  | 'fabric'
+  | 'quilt'
+  | 'forge'
+  | 'neoforge'
+  | 'mohist'
+  | 'spongeforge'
+  | 'bedrock'
+  | 'steam'
+  | 'custom'
+  | 'docker';
 
 /** Loaders that support the Bukkit plugin API (a /plugins directory of jars). */
 export const PLUGIN_CAPABLE_LOADERS: Loader[] = ['paper', 'purpur', 'spigot'];
@@ -90,6 +104,20 @@ export interface ServerRecord {
   steam_app_id: string | null;
   /** Curated preset id (STEAM_GAME_PRESETS); null for custom App IDs and older instances. */
   steam_preset: string | null;
+  /** JSON WorkshopState (services/workshopState.ts) — Steam Workshop items and settings. */
+  workshop: string | null;
+  /** JSON RewindConfig (services/rewindService.ts) — automatic world restore points. */
+  rewind_config: string | null;
+  /** JSON RconConfig (services/rconService.ts). Holds the RCON password — never send raw to browsers. */
+  rcon_config: string | null;
+  /** JSON AutoUpdateConfig (services/autoUpdateService.ts). */
+  auto_update: string | null;
+  /** JSON StatusPageConfig (services/statusPageService.ts). */
+  status_page: string | null;
+  /** JSON ModpackRef (services/moddedService.ts) when the instance was made from a Modrinth modpack. */
+  modpack: string | null;
+  /** JSON Limits (services/limitsService.ts). */
+  limits: string | null;
   steam_login: string;
   steam_extra_flags: string;
   /** Admin-imposed lock (non-payment, TOS violation, …): stopped, can't be started, and only
@@ -126,6 +154,8 @@ export interface AuthTokenPayload {
   role: Role;
   iat: number;
   exp: number;
+  /** Set when the request was made with a personal API key instead of a sign-in. */
+  apiKey?: { id: string; name: string; readOnly: boolean };
 }
 
 export interface PlayerInfo {
