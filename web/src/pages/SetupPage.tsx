@@ -36,16 +36,9 @@ function Backdrop() {
   return (
     <div className="pointer-events-none fixed inset-0 overflow-hidden">
       <div className="grid-backdrop absolute inset-0" />
-      <motion.div
-        className="absolute -top-32 left-1/4 h-80 w-80 rounded-full bg-accent-500/20 blur-[100px]"
-        animate={{ y: [0, 24, 0] }}
-        transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }}
-      />
-      <motion.div
-        className="absolute bottom-[-6rem] right-1/4 h-80 w-80 rounded-full bg-sky-500/15 blur-[100px]"
-        animate={{ y: [0, -24, 0] }}
-        transition={{ duration: 9, repeat: Infinity, ease: 'easeInOut', delay: 0.5 }}
-      />
+      {/* Still glows: a moving 100px blur is re-rendered every frame. */}
+      <div className="absolute -top-32 left-1/4 h-80 w-80 rounded-full bg-accent-500/20 blur-[100px]" />
+      <div className="absolute bottom-[-6rem] right-1/4 h-80 w-80 rounded-full bg-sky-500/15 blur-[100px]" />
     </div>
   );
 }

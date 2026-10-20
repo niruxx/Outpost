@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { setVisibleInterval } from '../lib/perf.js';
 import { api, ApiError } from '../api/client.js';
 import { Badge, Button, Card, CardTitle, Select, Spinner } from './ui.js';
 import { useToast } from './Toast.js';
@@ -54,8 +55,8 @@ export function JavaRuntimesCard() {
   const working = info?.jobs.some((j) => j.status === 'downloading' || j.status === 'extracting');
   useEffect(() => {
     if (!working) return;
-    const t = setInterval(() => load(true), 2000);
-    return () => clearInterval(t);
+    const t = setVisibleInterval(() => load(true), 2000);
+    return () => t();
   }, [working, load]);
 
   if (!info) return null;

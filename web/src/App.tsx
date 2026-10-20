@@ -1,4 +1,6 @@
 import { Navigate, Route, BrowserRouter, Routes, useParams } from 'react-router-dom';
+import { MotionConfig } from 'framer-motion';
+import { useEffectsMode } from './lib/perf.js';
 import { PublicStatusPage } from './pages/PublicStatusPage.js';
 import { I18nProvider } from './i18n/index.js';
 import { motion } from 'framer-motion';
@@ -134,9 +136,16 @@ function AppRoutes() {
   );
 }
 
+/** framer-motion follows "Reduce effects" (and the OS setting) for its own animations. */
+function EffectsMotion({ children }: { children: ReactNode }) {
+  const mode = useEffectsMode();
+  return <MotionConfig reducedMotion={mode === 'reduced' ? 'always' : 'user'}>{children}</MotionConfig>;
+}
+
 export default function App() {
   return (
     <I18nProvider>
+    <EffectsMotion>
     <BrowserRouter>
       <AuthProvider>
         <ToastProvider>
@@ -146,6 +155,7 @@ export default function App() {
         </ToastProvider>
       </AuthProvider>
     </BrowserRouter>
+    </EffectsMotion>
     </I18nProvider>
   );
 }

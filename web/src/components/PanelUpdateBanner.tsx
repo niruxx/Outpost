@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { setVisibleInterval } from '../lib/perf.js';
 import { api } from '../api/client.js';
 import { useAuth } from '../state/AuthContext.js';
 import { t } from '../i18n/index.js';
@@ -35,8 +36,8 @@ export function PanelUpdateBanner() {
     if (user?.role !== 'admin') return;
     const load = () => api.get<PanelVersion>('/system/panel-version').then(setV).catch(() => setV(null));
     load();
-    const timer = setInterval(load, 30 * 60_000);
-    return () => clearInterval(timer);
+    const timer = setVisibleInterval(load, 30 * 60_000);
+    return () => timer();
   }, [user?.role]);
 
   if (!v || !v.behind || !v.newCommits.length) return null;

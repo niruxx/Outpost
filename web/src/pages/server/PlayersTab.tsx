@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { setVisibleInterval } from '../../lib/perf.js';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useServerDetail } from './ServerContext.js';
 import { api, ApiError } from '../../api/client.js';
@@ -24,8 +25,8 @@ export function PlayersTab() {
 
   useEffect(() => {
     load();
-    const interval = setInterval(load, 4000);
-    return () => clearInterval(interval);
+    const interval = setVisibleInterval(load, 4000);
+    return () => interval();
   }, [load]);
 
   async function act(name: string, action: string, reason?: string) {

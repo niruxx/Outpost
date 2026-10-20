@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
+import { saveEffects, useEffectsMode } from '../lib/perf.js';
 import { DbHostsCard } from '../components/DbHostsCard.js';
 import { ApiKeysCard } from '../components/ApiKeysCard.js';
 import { OffsiteCard } from '../components/OffsiteCard.js';
 import { SftpCard } from '../components/SftpCard.js';
 import { TemplatesCard } from '../components/TemplatesCard.js';
-import { LanguageSelect } from '../i18n/index.js';
+import { LanguageSelect, t } from '../i18n/index.js';
 import { ConsoleLogRetentionCard } from '../components/ConsoleLogRetentionCard.js';
 import { JavaRuntimesCard } from '../components/JavaRuntimesCard.js';
 import { Layout, PageHeader } from '../components/Layout.js';
@@ -106,6 +107,7 @@ function ThemePreview({ theme }: { theme: ThemeOption }) {
 function AppearanceCard({ isAdmin }: { isAdmin: boolean }) {
   const [current, setCurrent] = useState(storedTheme);
   const [animated, setAnimated] = useState(() => storedWallpaper() === 'animated');
+  const effects = useEffectsMode();
   function choose(id: ThemeOption['id']) {
     saveTheme(id);
     setCurrent(id);
@@ -146,6 +148,15 @@ function AppearanceCard({ isAdmin }: { isAdmin: boolean }) {
         <span>
           <span className="font-medium">Animated wallpaper</span>
           <span className="block text-xs text-ink-400">Each theme has its own background. Turn this off for a still picture (it’s also still when your device asks for reduced motion).</span>
+        </span>
+      </label>
+      <label className="mt-3 flex cursor-pointer items-start gap-3 text-sm text-ink-200">
+        <input type="checkbox" className="mt-1" checked={effects === 'reduced'} onChange={(e) => saveEffects(e.target.checked ? 'reduced' : 'full')} />
+        <span>
+          <span className="font-medium">{t('Reduce effects')}</span>
+          <span className="block text-xs text-ink-400">
+            {t('Turns off animations, glass blur and pulsing status dots — much lighter on laptops and older GPUs. On automatically when your device asks for reduced motion.')}
+          </span>
         </span>
       </label>
       {isAdmin && <UserThemesPanel />}

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { setVisibleInterval } from '../../lib/perf.js';
 import { useServerDetail } from './ServerContext.js';
 import { api, ApiError } from '../../api/client.js';
 import { Badge, Button, Card, CardTitle, Field, Input, Notice, Select } from '../../components/ui.js';
@@ -46,8 +47,8 @@ export function AutoUpdateCard() {
   }, [base]);
   useEffect(() => {
     if (!data?.busy) return;
-    const t = setInterval(load, 3000);
-    return () => clearInterval(t);
+    const t = setVisibleInterval(load, 3000);
+    return () => t();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data?.busy]);
 

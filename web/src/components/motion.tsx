@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import { effectsReduced } from '../lib/perf.js';
 import { animate, motion, useMotionValue, useReducedMotion } from 'framer-motion';
 
 /** A number that eases to each new value instead of jumping. */
@@ -10,11 +11,11 @@ export function AnimatedNumber({ value, format = (v) => String(Math.round(v)) }:
   useEffect(() => mv.on('change', setDisplay), [mv]);
   useEffect(() => {
     if (value === null) return;
-    if (reduce) {
+    if (reduce || effectsReduced()) {
       mv.set(value);
       return;
     }
-    const controls = animate(mv, value, { duration: 0.6, ease: [0.2, 0, 0, 1] });
+    const controls = animate(mv, value, { duration: 0.4, ease: [0.2, 0, 0, 1] });
     return () => controls.stop();
   }, [value, mv, reduce]);
 

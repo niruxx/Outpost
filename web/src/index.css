@@ -935,14 +935,19 @@ body {
 }
 
 /* Frosted glass panels with a glossy top highlight. */
+/* Cards skip backdrop blur: with the wallpaper moving behind them, blurring every card on every
+   frame kept GPUs near full load. A more opaque frost reads almost the same. Dialogs keep real glass. */
 [data-theme='aero'] .ui-card:not(.ui-terminal),
 [data-theme='aero'] .ui-modal {
-  background-color: rgba(255, 255, 255, 0.66);
+  background-color: rgba(255, 255, 255, 0.8);
   background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.75) 0%, rgba(255, 255, 255, 0) 38%);
-  backdrop-filter: blur(14px) saturate(1.4);
-  -webkit-backdrop-filter: blur(14px) saturate(1.4);
   border: 1px solid rgba(255, 255, 255, 0.9);
   box-shadow: 0 8px 26px rgba(0, 90, 140, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.95);
+}
+[data-theme='aero'] .ui-modal {
+  background-color: rgba(255, 255, 255, 0.66);
+  backdrop-filter: blur(14px) saturate(1.4);
+  -webkit-backdrop-filter: blur(14px) saturate(1.4);
 }
 [data-theme='aero'] .ui-modal {
   background-color: rgba(255, 255, 255, 0.85);
@@ -1031,10 +1036,16 @@ body {
   position: absolute;
   display: none;
 }
+/* Static: no animation at all (not just paused) and no promoted layers — paused animations and
+   will-change keep full-screen GPU layers alive that get re-composited on every repaint. */
 [data-wallpaper='static'] .ui-wallpaper *,
 [data-wallpaper='static'] .ui-wallpaper *::before,
-[data-wallpaper='static'] .ui-wallpaper *::after {
-  animation-play-state: paused !important;
+[data-wallpaper='static'] .ui-wallpaper *::after,
+[data-effects='reduced'] .ui-wallpaper *,
+[data-effects='reduced'] .ui-wallpaper *::before,
+[data-effects='reduced'] .ui-wallpaper *::after {
+  animation: none !important;
+  will-change: auto !important;
 }
 /* Particles share the variables set inline: --x/--y position, --s size, --d cycle length and
    --phase (0–1), where in its cycle each one starts, so the screen is already populated at load. */
@@ -1217,4 +1228,29 @@ body {
   border-radius: 50%;
   background: radial-gradient(circle at 32% 28%, rgba(255, 255, 255, 0.98) 0 8%, rgba(255, 255, 255, 0.35) 22%, rgba(190, 236, 255, 0.12) 58%, rgba(255, 255, 255, 0.75) 72%, rgba(255, 255, 255, 0) 74%);
   animation-name: wp-rise;
+}
+
+/* ==========================================================================
+ * Reduce effects (<html data-effects="reduced">, Configuration → Appearance or the OS's reduced-motion
+ * setting): no looping or decorative animation, no glass blur, no transitions — the panel then only
+ * repaints when something actually changes. Loading spinners keep turning.
+ * ========================================================================== */
+[data-effects='reduced'] *:not(.animate-spin),
+[data-effects='reduced'] *::before,
+[data-effects='reduced'] *::after {
+  animation: none !important;
+  transition: none !important;
+}
+[data-effects='reduced'] * {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+[data-effects='reduced'] [class*='blur-['] {
+  display: none !important;
+}
+
+/* Console: lines scrolled out of view aren't laid out or painted. */
+.console-line {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 20px;
 }

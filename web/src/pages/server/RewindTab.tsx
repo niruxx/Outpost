@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { setVisibleInterval } from '../../lib/perf.js';
 import { useServerDetail } from './ServerContext.js';
 import { api, ApiError } from '../../api/client.js';
 import { Badge, Button, Card, CardTitle, ErrorText, Field, Input, Modal, Notice, Select, Spinner } from '../../components/ui.js';
@@ -74,8 +75,8 @@ export function RewindTab() {
 
   useEffect(() => {
     load();
-    const t = setInterval(load, 15000);
-    return () => clearInterval(t);
+    const t = setVisibleInterval(load, 15000);
+    return () => t();
   }, [load]);
 
   async function run(key: string, fn: () => Promise<void>) {

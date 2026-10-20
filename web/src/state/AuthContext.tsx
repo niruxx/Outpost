@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import { setVisibleInterval } from '../lib/perf.js';
 import { api, getToken, setToken } from '../api/client.js';
 import { applyAssignedTheme } from '../lib/theme.js';
 import type { EffectiveCreation, PublicUser, Role } from '../api/types.js';
@@ -83,8 +84,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // If it couldn't be loaded (server restarting/unreachable), keep retrying in the background.
   useEffect(() => {
     if (!user || creation) return;
-    const t = setInterval(refreshCreation, 10_000);
-    return () => clearInterval(t);
+    const t = setVisibleInterval(refreshCreation, 10_000);
+    return () => t();
   }, [user, creation, refreshCreation]);
 
   const effectiveCreation = creation ?? (user ? roleFallbackCreation(user.role) : null);

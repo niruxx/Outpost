@@ -54,6 +54,8 @@ export function useConsoleSocket(serverId: string | undefined): ConsoleState {
     if (!serverId) return;
     let cancelled = false;
     let retryTimer: ReturnType<typeof setTimeout>;
+    let flushTimer: ReturnType<typeof setTimeout> | undefined;
+    const pending: LogLine[] = [];
 
     function connect() {
       const ws = new WebSocket(wsUrl(`/ws/console/${serverId}`));
@@ -74,10 +76,18 @@ export function useConsoleSocket(serverId: string | undefined): ConsoleState {
             (msg.history as string[]).map((line) => ({ id: counter++, stream: 'stdout' as const, line, at: Date.now() }))
           );
         } else if (msg.type === 'log') {
-          setLines((prev) => {
-            const next = [...prev, { id: counter++, stream: msg.stream, line: msg.line, at: msg.at }];
-            return next.length > MAX_LINES ? next.slice(next.length - MAX_LINES) : next;
-          });
+          // A busy server prints dozens of lines a second; render them in batches.
+          pending.push({ id: counter++, stream: msg.stream, line: msg.line, at: msg.at });
+          if (!flushTimer) {
+            flushTimer = setTimeout(() => {
+              flushTimer = undefined;
+              const batch = pending.splice(0);
+              setLines((prev) => {
+                const next = prev.concat(batch);
+                return next.length > MAX_LINES ? next.slice(next.length - MAX_LINES) : next;
+              });
+            }, 200);
+          }
         } else if (msg.type === 'status') {
           setStatus(msg.status);
           if (msg.status !== 'installing') setInstallProgress(null);
@@ -98,6 +108,7 @@ export function useConsoleSocket(serverId: string | undefined): ConsoleState {
     connect();
     return () => {
       cancelled = true;
+      clearTimeout(flushTimer);
       clearTimeout(retryTimer);
       socketRef.current?.close();
     };

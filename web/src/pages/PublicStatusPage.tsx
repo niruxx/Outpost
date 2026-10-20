@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { setVisibleInterval } from '../lib/perf.js';
 import { useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Logo } from '../components/Logo.js';
@@ -53,10 +54,10 @@ export function PublicStatusPage() {
         })
         .catch(() => {});
     load();
-    const timer = setInterval(load, 30_000);
+    const timer = setVisibleInterval(load, 30_000);
     return () => {
       cancelled = true;
-      clearInterval(timer);
+      timer();
     };
   }, [slug]);
 

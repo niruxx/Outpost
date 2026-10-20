@@ -124,8 +124,9 @@ export function ConsoleTab() {
           {lines.length === 0 ? (
             <p className="text-slate-500">{t('No console output yet.')}</p>
           ) : (
-            lines.map((l) => (
-              <div key={l.id} className={`animate-fade-in whitespace-pre-wrap break-all ${lineColor(l.stream, l.line)}`}>
+            // The newest 1,000 lines stay on screen (everything is in Log history).
+            lines.slice(-1000).map((l) => (
+              <div key={l.id} className={`console-line whitespace-pre-wrap break-all ${lineColor(l.stream, l.line)}`}>
                 {l.line}
               </div>
             ))

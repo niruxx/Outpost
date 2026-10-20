@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import { setVisibleInterval } from '../../lib/perf.js';
 import { useServerDetail } from './ServerContext.js';
 import { useConsoleSocket } from '../../hooks/useConsoleSocket.js';
 import { useEndpoint } from '../../hooks/useEndpoint.js';
@@ -139,10 +140,10 @@ export function StatusTab() {
       }
     }
     load();
-    const interval = setInterval(load, 15000);
+    const interval = setVisibleInterval(load, 15000);
     return () => {
       cancelled = true;
-      clearInterval(interval);
+      interval();
     };
   }, [serverId]);
 
@@ -151,8 +152,8 @@ export function StatusTab() {
     setUptimeAnchor(runtime ? { uptimeMs: runtime.uptimeMs, at: Date.now() } : null);
   }, [runtime]);
   useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
+    const t = setVisibleInterval(() => setNow(Date.now()), 1000);
+    return () => t();
   }, []);
 
   const series = (pick: (s: (typeof statsHistory)[number]) => number | null): ChartPoint[] =>

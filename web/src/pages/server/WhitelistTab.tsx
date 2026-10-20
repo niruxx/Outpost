@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { setVisibleInterval } from '../../lib/perf.js';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useServerDetail } from './ServerContext.js';
 import { api, ApiError } from '../../api/client.js';
@@ -26,8 +27,8 @@ export function WhitelistTab() {
 
   useEffect(() => {
     load();
-    const interval = setInterval(load, 6000);
-    return () => clearInterval(interval);
+    const interval = setVisibleInterval(load, 6000);
+    return () => interval();
   }, [load]);
 
   async function toggleEnabled(enabled: boolean) {

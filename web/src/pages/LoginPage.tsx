@@ -49,11 +49,7 @@ export function LoginPage() {
       <Wallpaper />
       <div className="pointer-events-none fixed inset-0 overflow-hidden">
         <div className="grid-backdrop absolute inset-0" />
-        <motion.div
-          className="absolute -top-24 left-1/3 h-72 w-72 rounded-full bg-accent-500/15 blur-[100px]"
-          animate={{ y: [0, 20, 0] }}
-          transition={{ duration: 7, repeat: Infinity, ease: 'easeInOut' }}
-        />
+        <div className="absolute -top-24 left-1/3 h-72 w-72 rounded-full bg-accent-500/15 blur-[100px]" />
       </div>
       <motion.div
         initial={{ opacity: 0, y: 16, scale: 0.98 }}

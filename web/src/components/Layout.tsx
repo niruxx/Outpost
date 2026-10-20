@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import { setVisibleInterval } from '../lib/perf.js';
 import { PanelUpdateBanner } from './PanelUpdateBanner.js';
 import { t, tc } from '../i18n/index.js';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
@@ -68,10 +69,10 @@ function useSidebarInstances(): ServerRecord[] | null {
         .then((res) => !cancelled && setServers(res.servers))
         .catch(() => {});
     load();
-    const t = setInterval(load, 10000);
+    const t = setVisibleInterval(load, 10000);
     return () => {
       cancelled = true;
-      clearInterval(t);
+      t();
     };
   }, []);
   return servers;
@@ -93,6 +94,9 @@ function MainNav({ onNavigate }: { onNavigate?: () => void }) {
   const { user } = useAuth();
   const servers = useSidebarInstances();
   return (
+    // Each menu gets its own layout group: two menus on screen sharing one layoutId made framer-motion
+    // treat their highlights as one element and re-animate it on every render.
+    <LayoutGroup id="main-nav">
     <nav className="space-y-1">
       <NavItem to="/" end icon="instances" label="Instances" onClick={onNavigate} />
       <NavItem to="/configuration" icon="configuration" label="Configuration" onClick={onNavigate} />
@@ -112,6 +116,7 @@ function MainNav({ onNavigate }: { onNavigate?: () => void }) {
         </>
       )}
     </nav>
+    </LayoutGroup>
   );
 }
 
@@ -120,7 +125,7 @@ function DrawerFooter({ system }: { system: SystemInfo | null }) {
   const navigate = useNavigate();
   return (
     <div className="mt-auto space-y-3 px-1 pt-4">
-      <motion.div layout className="ui-sidebar-panel flex items-center gap-3 rounded-2xl bg-surface-850 p-3 transition-colors hover:bg-surface-800">
+      <div className="ui-sidebar-panel flex items-center gap-3 rounded-2xl bg-surface-850 p-3 transition-colors hover:bg-surface-800">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent-container text-sm font-medium text-accent-on-container">
           {user?.username?.slice(0, 1).toUpperCase()}
         </div>
@@ -139,7 +144,7 @@ function DrawerFooter({ system }: { system: SystemInfo | null }) {
         >
           <Icon name="logout" />
         </button>
-      </motion.div>
+      </div>
       {system && (
         <p className="truncate px-3 text-[11px] text-ink-500" title={`Node ${system.nodeVersion} on ${system.hostname}`}>
           <span className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-accent-400 align-middle" />

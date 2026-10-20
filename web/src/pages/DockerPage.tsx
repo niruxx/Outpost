@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { setVisibleInterval } from '../lib/perf.js';
 import { Link, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Layout, PageHeader } from '../components/Layout.js';
@@ -158,8 +159,8 @@ export function DockerPage() {
   useEffect(() => {
     loadEngine();
     loadInstances();
-    const t = setInterval(loadInstances, 4000);
-    return () => clearInterval(t);
+    const t = setVisibleInterval(loadInstances, 4000);
+    return () => t();
   }, [loadEngine, loadInstances]);
 
   const managed = overview?.containers ?? [];

@@ -1,5 +1,4 @@
 import { useRef, useState } from 'react';
-import { motion } from 'framer-motion';
 
 export interface ChartPoint {
   t: number;
@@ -112,7 +111,8 @@ export function Gauge({
     <div className="relative shrink-0" style={{ width: size, height: size }}>
       <svg width={size} height={size} className="-rotate-90">
         <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgb(var(--surface-700))" strokeWidth={stroke} />
-        <motion.circle
+        {/* A CSS transition (not a spring) — it settles in 600 ms instead of animating most of the time. */}
+        <circle
           cx={size / 2}
           cy={size / 2}
           r={r}
@@ -121,9 +121,8 @@ export function Gauge({
           strokeWidth={stroke}
           strokeLinecap="round"
           strokeDasharray={c}
-          initial={{ strokeDashoffset: c }}
-          animate={{ strokeDashoffset: c * (1 - pct / 100) }}
-          transition={{ type: 'spring', stiffness: 60, damping: 18 }}
+          strokeDashoffset={c * (1 - pct / 100)}
+          style={{ transition: 'stroke-dashoffset 600ms cubic-bezier(0.2, 0, 0, 1)' }}
         />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">{children}</div>
@@ -136,13 +135,7 @@ export function MiniBar({ percent, color }: { percent: number | null; color: str
   const pct = Math.max(0, Math.min(100, percent ?? 0));
   return (
     <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-700">
-      <motion.div
-        className="h-full rounded-full"
-        style={{ backgroundColor: color }}
-        initial={{ width: 0 }}
-        animate={{ width: `${pct}%` }}
-        transition={{ type: 'spring', stiffness: 90, damping: 20 }}
-      />
+      <div className="h-full rounded-full" style={{ backgroundColor: color, width: `${pct}%`, transition: 'width 500ms cubic-bezier(0.2, 0, 0, 1)' }} />
     </div>
   );
 }

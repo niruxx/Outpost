@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { setVisibleInterval } from '../lib/perf.js';
 import { api, ApiError } from '../api/client.js';
 import { Button, Card, Input, Notice, Select, Spinner } from './ui.js';
 import { Icon } from './icons.js';
@@ -84,8 +85,8 @@ function Journal({ status }: { status: Status }) {
   }, [load]);
   useEffect(() => {
     if (!follow) return;
-    const t = setInterval(() => load(true), 5000);
-    return () => clearInterval(t);
+    const t = setVisibleInterval(() => load(true), 5000);
+    return () => t();
   }, [follow, load]);
 
   return (

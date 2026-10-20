@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { setVisibleInterval } from '../lib/perf.js';
 import { t } from '../i18n/index.js';
 import { Link } from 'react-router-dom';
 import { AnimatePresence, LayoutGroup, motion } from 'framer-motion';
@@ -333,8 +334,8 @@ export function InstancesPage() {
   useEffect(() => {
     load();
     api.get<{ totalMemMb: number }>('/system').then((s) => setHostMemMb(s.totalMemMb)).catch(() => {});
-    const interval = setInterval(load, 4000);
-    return () => clearInterval(interval);
+    const interval = setVisibleInterval(load, 4000);
+    return () => interval();
   }, [load]);
 
   function changeView(next: ViewMode) {

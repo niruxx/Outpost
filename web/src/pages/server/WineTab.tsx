@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { setVisibleInterval } from '../../lib/perf.js';
 import { useServerDetail } from './ServerContext.js';
 import { api, ApiError } from '../../api/client.js';
 import { Badge, Button, Card, CardTitle, ErrorText, Field, Input, Notice, Select, Spinner } from '../../components/ui.js';
@@ -68,8 +69,8 @@ export function WineTab() {
   // While a Wine job runs, keep the view fresh (progress itself is in the console).
   useEffect(() => {
     if (!data?.busy) return;
-    const t = setInterval(load, 3000);
-    return () => clearInterval(t);
+    const t = setVisibleInterval(load, 3000);
+    return () => t();
   }, [data?.busy, load]);
 
   async function run(key: string, fn: () => Promise<void>) {

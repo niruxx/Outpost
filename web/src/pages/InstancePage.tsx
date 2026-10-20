@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
+import { setVisibleInterval } from '../lib/perf.js';
 import { Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { motion, LayoutGroup } from 'framer-motion';
 import { Layout, NavItem, NavSectionLabel } from '../components/Layout.js';
 import { StatusBadge, SuspendedBadge } from '../components/StatusBadge.js';
 import { Button, Card } from '../components/ui.js';
@@ -33,6 +34,7 @@ function InstanceNav({ server, onNavigate }: { server: ServerRecord; onNavigate:
   const steam = !isMinecraftPlatform(server.platform);
   const kind = gameKindOf(server);
   return (
+    <LayoutGroup id="instance-nav">
     <nav className="space-y-1">
       <NavLink to="/" onClick={onNavigate} className="state-layer flex h-12 items-center gap-3 rounded-full px-4 text-sm font-medium text-ink-300">
         <Icon name="back" />
@@ -68,6 +70,7 @@ function InstanceNav({ server, onNavigate }: { server: ServerRecord; onNavigate:
       {!steam && <NavItem to="rewind" icon="refresh" label="World Rewind" onClick={onNavigate} />}
       <NavItem to="update" icon="update" label="Update" onClick={onNavigate} />
     </nav>
+    </LayoutGroup>
   );
 }
 
@@ -96,10 +99,12 @@ function CopyChip({ icon, label, value, copyValue }: { icon: 'globe' | 'port'; l
 function AutoRestartCountdown({ onCancel, canCancel }: { onCancel: () => void; canCancel: boolean }) {
   const { autoRestart } = useServerDetail();
   const [now, setNow] = useState(Date.now());
+  const pending = !!autoRestart?.pendingAt;
   useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 500);
-    return () => clearInterval(t);
-  }, []);
+    if (!pending) return;
+    const t = setVisibleInterval(() => setNow(Date.now()), 1000);
+    return () => t();
+  }, [pending]);
   if (!autoRestart?.pendingAt) return null;
   const secs = Math.max(0, Math.ceil((Date.parse(autoRestart.pendingAt) - now) / 1000));
   return (
@@ -208,9 +213,11 @@ function InstanceTopBar({ server }: { server: ServerRecord }) {
     >
       <motion.div
         className="pointer-events-none absolute -right-6 -top-10"
-        initial={{ opacity: 0, rotate: 0, scale: 0.9 }}
-        animate={{ opacity: 0.09, rotate: [12, 16, 12], y: [0, -6, 0], scale: 1 }}
-        transition={{ opacity: { duration: 0.6 }, scale: { duration: 0.6 }, rotate: { duration: 9, repeat: Infinity, ease: 'easeInOut' }, y: { duration: 9, repeat: Infinity, ease: 'easeInOut' } }}
+        // Fades in once and then holds still. It used to sway forever, which repainted the whole
+        // header ~60 times a second and kept laptop GPUs busy.
+        initial={{ opacity: 0, rotate: 12, scale: 0.9 }}
+        animate={{ opacity: 0.09, rotate: 14, scale: 1 }}
+        transition={{ duration: 0.6 }}
       >
         <GameWatermark kind={kind} className="h-56 w-56" />
       </motion.div>

@@ -81,7 +81,8 @@ export default {
         shimmer: 'shimmer 1.6s ease-in-out infinite',
         'pulse-soft': 'pulse-soft 2s ease-in-out infinite',
         float: 'float 5s ease-in-out infinite',
-        'ping-slow': 'ping-slow 1.8s cubic-bezier(0,0,0.2,1) infinite',
+        // Three pulses when a status appears, then still — an endless ping keeps the GPU busy for nothing.
+        'ping-slow': 'ping-slow 1.8s cubic-bezier(0,0,0.2,1) 3 both',
       },
     },
   },

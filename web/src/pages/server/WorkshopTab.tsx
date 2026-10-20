@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { setVisibleInterval } from '../../lib/perf.js';
 import { useServerDetail } from './ServerContext.js';
 import { api, ApiError } from '../../api/client.js';
 import { Badge, Button, Card, CardTitle, ErrorText, Field, Input, Notice, Select, Spinner } from '../../components/ui.js';
@@ -206,8 +207,8 @@ export function WorkshopTab() {
   // While BO3 items download in the background, keep the list fresh.
   useEffect(() => {
     if (!data?.applying) return;
-    const t = setInterval(load, 3000);
-    return () => clearInterval(t);
+    const t = setVisibleInterval(load, 3000);
+    return () => t();
   }, [data?.applying, load]);
 
   async function run<T>(key: typeof busy, fn: () => Promise<T>) {

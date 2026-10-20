@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { setVisibleInterval } from '../lib/perf.js';
 import { t } from '../i18n/index.js';
 import { AnimatePresence, motion } from 'framer-motion';
 import { api } from '../api/client.js';
@@ -123,10 +124,10 @@ export function HostOverview() {
       }
     }
     poll();
-    const t = setInterval(poll, 2000);
+    const t = setVisibleInterval(poll, 4000);
     return () => {
       cancelled = true;
-      clearInterval(t);
+      t();
     };
   }, []);
 
@@ -279,12 +280,10 @@ export function HostOverview() {
                   <p className="mb-2 text-xs text-ink-400">{t('Per-thread CPU')}</p>
                   <div className="flex h-12 items-end gap-1">
                     {host.cpu.perCore.map((p, i) => (
-                      <motion.div
+                      <div
                         key={i}
                         className="flex-1 rounded-t-sm"
-                        style={{ backgroundColor: COLORS.cpu, opacity: 0.35 + (p / 100) * 0.65 }}
-                        animate={{ height: `${Math.max(4, p)}%` }}
-                        transition={{ type: 'spring', stiffness: 120, damping: 20 }}
+                        style={{ backgroundColor: COLORS.cpu, opacity: 0.35 + (p / 100) * 0.65, height: `${Math.max(4, p)}%`, transition: 'height 400ms cubic-bezier(0.2, 0, 0, 1)' }}
                         title={`Thread ${i}: ${p}%`}
                       />
                     ))}

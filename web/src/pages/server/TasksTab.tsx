@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { setVisibleInterval } from '../../lib/perf.js';
 import { useServerDetail } from './ServerContext.js';
 import { api, ApiError } from '../../api/client.js';
 import type { ScheduledTask, TaskAction } from '../../api/types.js';
@@ -207,8 +208,8 @@ export function TasksTab() {
 
   useEffect(() => {
     load();
-    const t = setInterval(load, 15000);
-    return () => clearInterval(t);
+    const t = setVisibleInterval(load, 15000);
+    return () => t();
   }, [load]);
 
   async function run(task: ScheduledTask) {

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { setVisibleInterval } from '../../lib/perf.js';
 import { api, ApiError } from '../../api/client.js';
 import { Badge, Button, Card, CardTitle, Select, Spinner } from '../../components/ui.js';
 import { useToast } from '../../components/Toast.js';
@@ -19,8 +20,8 @@ export function useOffsite(serverId: string) {
   const busy = state?.copies.some((c) => c.status === 'pending' || c.status === 'uploading');
   useEffect(() => {
     if (!busy) return;
-    const t = setInterval(load, 3000);
-    return () => clearInterval(t);
+    const t = setVisibleInterval(load, 3000);
+    return () => t();
   }, [busy, load]);
   return { state, reload: load };
 }

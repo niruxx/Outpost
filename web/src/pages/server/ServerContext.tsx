@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { setVisibleInterval } from '../../lib/perf.js';
 import { useParams } from 'react-router-dom';
 import { api, ApiError } from '../../api/client.js';
 import type { AutoRestartState, RuntimeInfo, ServerPermission, ServerRecord } from '../../api/types.js';
@@ -78,8 +79,8 @@ export function ServerDetailProvider({ children, serverId: explicitId }: { child
     setSuspendedMessage(null);
     setLoadError(null);
     refresh();
-    const interval = setInterval(refresh, 3000);
-    return () => clearInterval(interval);
+    const interval = setVisibleInterval(refresh, 3000);
+    return () => interval();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serverId]);
 

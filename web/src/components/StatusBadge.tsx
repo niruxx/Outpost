@@ -31,7 +31,7 @@ const PULSE: Record<ServerStatus, boolean> = {
   install_failed: false,
   stopped: false,
   starting: true,
-  running: true,
+  running: false, // steady state — no endless pulse
   stopping: true,
   crashed: false,
   updating: true,

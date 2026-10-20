@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { setVisibleInterval } from '../../lib/perf.js';
 import { Link, useNavigate } from 'react-router-dom';
 import { useServerDetail } from './ServerContext.js';
 import { api, ApiError } from '../../api/client.js';
@@ -144,7 +145,7 @@ function TransferCard() {
   // Poll while a transfer is in flight.
   useEffect(() => {
     if (!server || transfer?.state !== 'running') return;
-    const t = setInterval(async () => {
+    const t = setVisibleInterval(async () => {
       try {
         const res = await api.get<{ transfer: TransferState | null }>(`/servers/${server.id}/transfer`);
         setTransfer(res.transfer);
@@ -159,7 +160,7 @@ function TransferCard() {
         // instance deleted after a move — the done branch above navigates away
       }
     }, 1500);
-    return () => clearInterval(t);
+    return () => t();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [server?.id, transfer?.state]);
 
