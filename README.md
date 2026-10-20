@@ -168,6 +168,10 @@ Open **http://localhost:8642** — the first visit walks you through creating th
       <h4>🧱 Firewall</h4>
       Open and close ports through UFW or firewalld, per-user access levels, and SSH / the panel are never cut off by accident.
     </td>
+    <td valign="top">
+      <h4>🔫 Counter-Strike 2 tab</h4>
+      Game modes, surf / bhop / practice presets, Workshop map library, live map changes, admin setup — and one-click Metamod + CounterStrikeSharp plugins (speedometer &amp; keys HUD, timers, admin menus).
+    </td>
   </tr>
 </table>
 
@@ -610,7 +614,7 @@ Choose **Steam** when creating an instance, then a game:
 | 🧟 Project Zomboid | 380870 | `16261/udp` | Stops cleanly with `save` → `quit`. Saves, `.ini` files and logs go in `<instance>/Zomboid` (`-cachedir=`), not `~/Zomboid`. |
 | 🪖 Valheim | 896660 | `2456/udp` | Stops with SIGINT — it only saves its world on SIGINT. |
 | 🌳 Terraria | 105600 | `7777/tcp` | Fetched from terraria.org; started with `-autocreate`/`-world`. |
-| 🔫 Counter-Strike 2 | 730 | `27015/udp` | ~35 GB. Add `+sv_setsteamaccount TOKEN` to extra args to be listed publicly. |
+| 🔫 Counter-Strike 2 | 730 | `27015/udp` | ~35 GB. Mode, maps, presets, bots, server token and plugins are in the instance's **CS2** tab — see below. |
 | 🔫 CS:GO (legacy) | 740 | `27015/udp` | Players join with CS2's `csgo_legacy` beta. |
 | 🔫 Counter-Strike: Source | 232330 | `27015/udp` | Settings in `cstrike/cfg/server.cfg`. |
 | 🔫 Counter-Strike 1.6 / Condition Zero | 90 | `27015/udp` | Half-Life Dedicated Server with the `cstrike` / `czero` mod; its download is flaky — run Update again if needed. |
@@ -637,8 +641,35 @@ SteamCMD downloads itself once, automatically. On Linux it's 32-bit and needs:
 | 🦎 openSUSE | `sudo zypper install libstdc++6-32bit glibc-32bit` |
 | 🏔️ Arch | enable `[multilib]` in `/etc/pacman.conf`, then `sudo pacman -S lib32-gcc-libs` |
 
+`install.sh` also installs ICU (`libicu-dev` / `libicu` / `icu`), which CS2's CounterStrikeSharp plugins need.
+
 - **Source of SteamCMD** — **Configuration → SteamCMD** (admin): Valve's official archive (default), a mirror URL, a local archive, or an existing install folder.
 - **Per-instance options** — a *Steam login* (default `anonymous`; owned-license games need `username password`, Steam Guard prompts aren't supported) and *extra steamcmd flags*.
+- **Ownership check** — before every start on Linux, Outpost warns in the console if files in the instance belong to another user (usually left by running something with `sudo`) and prints the `chown` that fixes it. Servers can't write to such files — CS2 plugins, for one, fail with *Permission denied*.
+
+</details>
+
+<details>
+<summary><h3>🔫 Counter-Strike 2</h3></summary>
+
+Every CS2 instance gets a **CS2** tab. Settings are written to `game/csgo/cfg/outpost.cfg` (exec'd from `server.cfg` and the mode's `gamemode_*_server.cfg`) and to the launch command, so they apply on the next start — or press **Apply now** on a running server.
+
+- 🎮 **Game mode & map** — casual, competitive, wingman, deathmatch, arms race or custom; start map from installed maps or the Workshop library; Workshop collections; **Change map now**.
+- ⚡ **Presets** — **Surf** and **Bhop** set every movement cvar those maps need (air acceleration, auto-bhop, no stamina or fall damage, high max velocity, endless rounds) so they work straight away; plus practice, competitive, deathmatch and casual. Your own extra cvars are kept.
+- 🗺️ **Map library** — paste a Workshop link, an ID or a collection link; Outpost checks each with Steam (CS2 items only) and lists them with previews. Maps uploaded to `game/csgo/maps` (any prefix) and Workshop maps the server downloaded appear automatically. Outpost creates the Workshop download folders CS2 expects (fixing *Staging/Install library folder not found*).
+- 🤖 **Server & bots** — hostname, password, slots, server token (GSLT, to be listed publicly), LAN mode, bot count, difficulty and fill.
+- 🛠️ **Advanced cvars** — any extra cvar; dangerous ones (`rcon_password`, `exec`, `quit`…) are refused.
+- 📋 **Commands panel** — quick actions (restart round, end warmup, add/kick bots, re-apply settings), a searchable list of server commands to send in one click, and **Becoming an admin**: turn on RCON (shows the exact `rcon_address` / `rcon_password` lines) or list SteamID64s as CounterStrikeSharp admins (`@css/root`).
+
+**🧩 Plugins** — server-side, so players install nothing:
+
+1. **Install (one click)** downloads Metamod:Source 2.0 and CounterStrikeSharp (with its .NET runtime, ~55 MB). Outpost adds Metamod to `gameinfo.gi` and re-adds it before every start, because CS2 updates replace that file.
+2. Pick from the catalog — **Speedometer HUD + WASD** (speed and pressed keys on screen; its GameHUD dependency installs itself), **SharpTimer** (surf/bhop/KZ timer), **CS2-SimpleAdmin**, **Retakes** (de_ maps only — turn it off for other modes), **MatchZy** — or paste any CounterStrikeSharp plugin's GitHub link. Outpost installs the latest release and works out where its files go.
+3. Turn plugins on/off (moved to `plugins/disabled`), check for updates, update or remove them. Configs you edited are kept.
+
+- **Switch to vanilla** takes Metamod out of `gameinfo.gi`, so CS2 starts with no plugins at all — handy when a CS2 update breaks plugins. Nothing is deleted; **Turn plugins on** puts it back.
+- **SwiftlyS2 plugins** (another framework) can't load in CounterStrikeSharp and can stop other plugins loading: Outpost refuses to install them and flags any already there.
+- Check what loaded with `meta list` and `css_plugins list` in the console. If the host has no ICU library, Outpost runs CounterStrikeSharp's .NET in invariant mode and says so.
 
 </details>
 
@@ -853,6 +884,9 @@ Nodes on older versions can still transfer instances to and from upgraded ones.
 - [x] 🧵 Modded Minecraft & modpacks, 📂 SFTP, ☁️ off-site backups, 📏 resource limits, 🔑 API keys and 🗄️ per-server databases
 - [x] ⬆️ Panel update notice and running commit in the corner
 - [x] ⏪ World Rewind — scheduled Minecraft world restore points (Java & Bedrock) and level.dat rollback
+- [x] ⚡ Lighter UI — far less CPU/GPU while the tab is open, polling pauses in background tabs, and a *Reduce effects* switch
+- [x] 🔫 Counter-Strike 2 tab — modes, surf/bhop presets, Workshop map library, commands &amp; admin setup
+- [x] 🧩 CS2 plugins — one-click Metamod + CounterStrikeSharp, plugin catalog, GitHub installs, vanilla switch
 
 ## 📝 TODO
 
@@ -886,5 +920,22 @@ Features other game panels (Pterodactyl, AMP, Crafty, PufferPanel) have that Out
 - [x] 📦 Server templates — export any instance (secrets stripped), import, and create from them with variables
 - [x] 🌍 Translations — Español, Deutsch, Français, Português (Brasil); navigation, dashboard and common screens so far
 - [ ] 🌍 Translate the remaining screens (settings descriptions, dialogs, help text)
+
+**Counter-Strike 2** — what dedicated CS2 panels and hosts (DatHost, CS2 Server Manager, AMP, Pterodactyl eggs) offer that the CS2 tab doesn't yet
+
+- [ ] 👥 **Live player list** — players, ping, score and team from `status`, with kick / ban / mute / slay buttons (the Players page is Minecraft-only today)
+- [ ] 🚫 **Ban list** — view and lift bans (`banned_user.cfg`, CS2-SimpleAdmin's database) from the panel
+- [ ] 🔁 **Map rotation & votes** — a map cycle / map group editor, next-map and rock-the-vote (via a plugin), Workshop collection rotation
+- [ ] 🏆 **Match setup** — MatchZy / Get5-style matches from a form: teams, map veto, knife round, overtime, with live score
+- [ ] 📼 **CSTV & demos** — enable CSTV (GOTV) with its port, delay and password; auto-record demos and download or upload them to S3
+- [ ] 🧾 **HTTP log & live scoreboard** — `logaddress_add_http` into the panel for kills, rounds and scores, plus Discord match reports
+- [ ] 🛡️ **Admin groups & flags** — groups, flags and immunity for CounterStrikeSharp admins instead of only `@css/root`
+- [ ] 🔑 **Automatic server tokens** — create and renew the GSLT through Steam's Web API
+- [ ] 🔄 **Framework auto-update after CS2 updates** — update Metamod / CounterStrikeSharp when CS2 updates, and fall back to vanilla automatically if they crash on start
+- [ ] 🧩 **SwiftlyS2 support** — a second plugin framework, so SwiftlyS2-only plugins work too
+- [ ] 📝 **Plugin config editor** — edit each plugin's JSON config from a form, with reload
+- [ ] 🗂️ **Shared game files** — run several CS2 instances from one ~35 GB install (overlay / hard links) instead of a copy each
+- [ ] 📈 **Server-browser stats** — A2S query of players and map on the dashboard, with player-count history
+- [ ] 🎟️ **Reserved slots & whitelist** — SteamID lists for private or pug servers
 
 <p align="center"><sub>Made with 💚 for people who'd rather play than SSH.</sub></p>
