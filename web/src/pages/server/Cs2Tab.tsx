@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { setVisibleInterval } from '../../lib/perf.js';
+import { formatBytes } from './StatusTab.js';
 import { useServerDetail } from './ServerContext.js';
 import { api, ApiError } from '../../api/client.js';
 import { Badge, Button, Card, CardTitle, ErrorText, Field, Input, Notice, Select, Spinner } from '../../components/ui.js';
@@ -20,12 +22,25 @@ interface Settings {
   preset: string | null;
   cvars: Record<string, string>;
   admins: string[];
+  library: LibraryMap[];
+}
+interface LibraryMap {
+  id: string;
+  title: string;
+  previewUrl: string | null;
+  sizeBytes: number;
+}
+interface DownloadedMap {
+  id: string;
+  map: string;
+  title: string | null;
 }
 interface Cs2View {
   settings: Settings;
   modes: { id: Mode; label: string; maxPlayers: number }[];
   presets: { id: string; label: string; description: string; mode: Mode; tip: string | null }[];
   maps: string[];
+  workshopMaps: DownloadedMap[];
   running: boolean;
   counterStrikeSharp: boolean;
   commands: { group: string; commands: { command: string; description: string; oneClick?: boolean }[] }[];
@@ -55,8 +70,27 @@ export function Cs2Tab() {
     setCvarRows(Object.entries(r.settings.cvars).map(([k, val]) => ({ k, v: val })));
   }, []);
   useEffect(() => {
-    api.get<Cs2View>(base).then(apply).catch((err) => setError(err instanceof ApiError ? err.message : 'Failed to load'));
+    api
+      .get<Cs2View>(base)
+      .then(apply)
+      .catch((err) => setError(err instanceof ApiError ? err.message : 'Failed to load'));
   }, [base, apply]);
+  const reload = useCallback(() => {
+    api
+      .get<Cs2View>(base)
+      .then(apply)
+      .catch(() => {});
+  }, [base, apply]);
+  // New uploads to game/csgo/maps and freshly downloaded Workshop maps appear without a reload.
+  useEffect(() => {
+    const t = setVisibleInterval(() => {
+      api
+        .get<{ maps: string[]; workshopMaps: DownloadedMap[] }>(`${base}/maps`)
+        .then((r) => setV((cur) => (cur ? { ...cur, maps: r.maps, workshopMaps: r.workshopMaps } : cur)))
+        .catch(() => {});
+    }, 30_000);
+    return () => t();
+  }, [base]);
 
   if (error) return <ErrorText>{error}</ErrorText>;
   if (!v || !draft) return <Spinner />;
@@ -80,11 +114,10 @@ export function Cs2Tab() {
     run(
       'save',
       async () => apply(await api.put<Cs2View>(base, { ...draft, cvars: Object.fromEntries(cvarRows.filter((r) => r.k.trim()).map((r) => [r.k.trim(), r.v])) })),
-      v.running ? 'Saved — press “Apply now” to load it (reloads the map), or restart' : 'Saved — applies on the next start'
+      v.running ? 'Saved — press “Apply now” to load it (reloads the map), or restart' : 'Saved — applies on the next start',
     );
   const action = (a: string, value?: string, ok?: string) => run(a, () => api.post(`${base}/action`, { action: a, value }), ok);
-  const sendRaw = (command: string) =>
-    run('cmd', () => api.post(`/servers/${serverId}/command`, { command }), `Sent: ${command}`);
+  const sendRaw = (command: string) => run('cmd', () => api.post(`/servers/${serverId}/command`, { command }), `Sent: ${command}`);
 
   return (
     <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_22rem]">
@@ -131,18 +164,34 @@ export function Cs2Tab() {
                 ))}
               </Select>
             </Field>
-            <Field label="Start map (official)">
-              <Select value={draft.map} onChange={(e) => set({ map: e.target.value })} disabled={!!draft.workshopMap}>
-                {!v.maps.includes(draft.map) && <option value={draft.map}>{draft.map}</option>}
-                {v.maps.map((m) => (
-                  <option key={m} value={m}>
-                    {m}
-                  </option>
-                ))}
+            <Field label="Start map">
+              <Select
+                value={draft.workshopMap ? `ws:${draft.workshopMap}` : draft.map}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val.startsWith('ws:')) set({ workshopMap: val.slice(3) });
+                  else set({ map: val, workshopMap: null });
+                }}
+              >
+                <optgroup label="Installed">
+                  {!v.maps.includes(draft.map) && <option value={draft.map}>{draft.map}</option>}
+                  {v.maps.map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ))}
+                </optgroup>
+                {(draft.library.length > 0 || draft.workshopMap) && (
+                  <optgroup label="Workshop library">
+                    {draft.workshopMap && !draft.library.some((m) => m.id === draft.workshopMap) && <option value={`ws:${draft.workshopMap}`}>Workshop {draft.workshopMap}</option>}
+                    {draft.library.map((m) => (
+                      <option key={m.id} value={`ws:${m.id}`}>
+                        {m.title}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
               </Select>
-            </Field>
-            <Field label="Workshop map (overrides the start map)">
-              <Input value={draft.workshopMap ?? ''} onChange={(e) => set({ workshopMap: e.target.value || null })} placeholder="Workshop link or ID" className="font-mono" />
             </Field>
             <Field label="Workshop collection (map pool)">
               <Input value={draft.workshopCollection ?? ''} onChange={(e) => set({ workshopCollection: e.target.value || null })} placeholder="Collection link or ID" className="font-mono" />
@@ -170,6 +219,19 @@ export function Cs2Tab() {
             </div>
           )}
         </Card>
+
+        <MapLibrary
+          v={v}
+          serverId={serverId}
+          canEdit={canEdit}
+          canConsole={canConsole}
+          onChange={apply}
+          onPlay={(id) => action('changelevel', id, 'Loading the map — the server downloads it first if needed')}
+          onStartMap={(id) => set({ workshopMap: id })}
+          startMap={draft.workshopMap}
+        />
+
+        <Cs2Plugins serverId={serverId} canManage={can('plugins')} onFrameworkReady={reload} />
 
         {/* Server */}
         <Card className="p-5">
@@ -248,8 +310,20 @@ export function Cs2Tab() {
           <div className="space-y-1.5">
             {cvarRows.map((row, i) => (
               <div key={i} className="grid grid-cols-[1fr_1fr_auto] gap-2">
-                <Input disabled={!canEdit} value={row.k} onChange={(e) => setCvarRows(cvarRows.map((r, j) => (j === i ? { ...r, k: e.target.value } : r)))} placeholder="cvar" className="!py-1 font-mono text-xs" />
-                <Input disabled={!canEdit} value={row.v} onChange={(e) => setCvarRows(cvarRows.map((r, j) => (j === i ? { ...r, v: e.target.value } : r)))} placeholder="value" className="!py-1 font-mono text-xs" />
+                <Input
+                  disabled={!canEdit}
+                  value={row.k}
+                  onChange={(e) => setCvarRows(cvarRows.map((r, j) => (j === i ? { ...r, k: e.target.value } : r)))}
+                  placeholder="cvar"
+                  className="!py-1 font-mono text-xs"
+                />
+                <Input
+                  disabled={!canEdit}
+                  value={row.v}
+                  onChange={(e) => setCvarRows(cvarRows.map((r, j) => (j === i ? { ...r, v: e.target.value } : r)))}
+                  placeholder="value"
+                  className="!py-1 font-mono text-xs"
+                />
                 {canEdit && (
                   <Button variant="ghost" onClick={() => setCvarRows(cvarRows.filter((_, j) => j !== i))} aria-label="Remove">
                     <Icon name="trash" className="h-4 w-4" />
@@ -318,11 +392,21 @@ function CommandsPanel({
         <Card className="p-4">
           <CardTitle>Quick actions</CardTitle>
           <div className="flex flex-wrap gap-1.5">
-            <Button disabled={!!busy} onClick={() => onAction('restart_round', undefined, 'Round restarting')}>Restart round</Button>
-            <Button disabled={!!busy} onClick={() => onAction('end_warmup', undefined, 'Warmup ended')}>End warmup</Button>
-            <Button disabled={!!busy} onClick={() => onAction('bot_add', undefined, 'Bot added')}>Add bot</Button>
-            <Button disabled={!!busy} onClick={() => onAction('bot_kick', undefined, 'Bots kicked')}>Kick bots</Button>
-            <Button disabled={!!busy} onClick={() => onAction('reload_cfg', undefined, 'Settings re-applied')}>Re-apply cvars</Button>
+            <Button disabled={!!busy} onClick={() => onAction('restart_round', undefined, 'Round restarting')}>
+              Restart round
+            </Button>
+            <Button disabled={!!busy} onClick={() => onAction('end_warmup', undefined, 'Warmup ended')}>
+              End warmup
+            </Button>
+            <Button disabled={!!busy} onClick={() => onAction('bot_add', undefined, 'Bot added')}>
+              Add bot
+            </Button>
+            <Button disabled={!!busy} onClick={() => onAction('bot_kick', undefined, 'Bots kicked')}>
+              Kick bots
+            </Button>
+            <Button disabled={!!busy} onClick={() => onAction('reload_cfg', undefined, 'Settings re-applied')}>
+              Re-apply cvars
+            </Button>
           </div>
         </Card>
       )}
@@ -402,7 +486,9 @@ function CommandsPanel({
                 <p className="mt-1 text-ink-500">Find a SteamID64 at steamid.io. Outpost writes them to addons/counterstrikesharp/configs/admins.json.</p>
               </>
             ) : (
-              <p className="text-ink-500">Install them into game/csgo/addons (File Management or SFTP); then you can list admins here.</p>
+              <p className="text-ink-500">
+                Install them in one click under <b className="text-ink-300">Plugins</b>, then list admins here.
+              </p>
             )}
           </div>
         </div>
@@ -469,5 +555,433 @@ function CommandBox({ value, onChange, onSend }: { value: string; onChange: (v: 
       <Input value={value} onChange={(e) => onChange(e.target.value)} placeholder="Command…" className="font-mono text-xs" />
       <Button type="submit">Send</Button>
     </form>
+  );
+}
+
+/** Workshop maps imported by link or ID; the server downloads each the first time it loads it. */
+function MapLibrary({
+  v,
+  serverId,
+  canEdit,
+  canConsole,
+  onChange,
+  onPlay,
+  onStartMap,
+  startMap,
+}: {
+  v: Cs2View;
+  serverId: string;
+  canEdit: boolean;
+  canConsole: boolean;
+  onChange: (r: Cs2View) => void;
+  onPlay: (id: string) => void;
+  onStartMap: (id: string) => void;
+  startMap: string | null;
+}) {
+  const toast = useToast();
+  const [input, setInput] = useState('');
+  const [busy, setBusy] = useState(false);
+  const library = v.settings.library;
+  const downloaded = new Map(v.workshopMaps.map((m) => [m.id, m]));
+  // Workshop maps the server has but that were never imported here (e.g. loaded from the console).
+  const extra = v.workshopMaps.filter((m) => !library.some((l) => l.id === m.id));
+
+  async function importNow() {
+    setBusy(true);
+    try {
+      const r = await api.post<Cs2View & { added: LibraryMap[]; skipped: { id: string; reason: string }[] }>(`/servers/${serverId}/cs2/library`, { input });
+      onChange(r);
+      setInput('');
+      if (r.added.length) toast.success(r.added.length === 1 ? `Imported “${r.added[0].title}”` : `Imported ${r.added.length} maps`);
+      for (const sk of r.skipped.slice(0, 3)) toast.error(`${sk.id}: ${sk.reason}`);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Import failed');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card className="p-5">
+      <CardTitle
+        action={
+          <a href="https://steamcommunity.com/app/730/workshop/" target="_blank" rel="noreferrer" className="text-sm font-medium text-accent-400 hover:underline">
+            Browse the Workshop ↗
+          </a>
+        }
+      >
+        Map library
+      </CardTitle>
+      <p className="mb-3 text-sm text-ink-400">
+        Import Workshop maps by link or ID — a collection link imports every map in it. They show up in the start-map list; the server downloads each one the first time it loads it.
+      </p>
+      {canEdit && (
+        <form
+          className="mb-4 flex flex-wrap gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (input.trim()) importNow();
+          }}
+        >
+          <Input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="https://steamcommunity.com/sharedfiles/filedetails/?id=… or an ID"
+            className="min-w-[14rem] flex-1 font-mono text-xs"
+          />
+          <Button type="submit" variant="primary" disabled={busy || !input.trim()}>
+            {busy ? 'Looking up…' : 'Import'}
+          </Button>
+        </form>
+      )}
+      {library.length === 0 && extra.length === 0 ? (
+        <p className="text-sm text-ink-500">No Workshop maps yet.</p>
+      ) : (
+        <div className="divide-y divide-surface-700 overflow-hidden rounded-2xl bg-surface-900">
+          {library.map((m) => {
+            const dl = downloaded.get(m.id);
+            return (
+              <div key={m.id} className="flex flex-wrap items-center gap-3 px-3 py-2.5">
+                {m.previewUrl ? (
+                  <img src={m.previewUrl} alt="" loading="lazy" className="h-11 w-16 shrink-0 rounded-lg object-cover" />
+                ) : (
+                  <div className="h-11 w-16 shrink-0 rounded-lg bg-surface-700" />
+                )}
+                <span className="min-w-0 flex-1">
+                  <a
+                    href={`https://steamcommunity.com/sharedfiles/filedetails/?id=${m.id}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="block truncate text-sm font-medium text-ink-100 hover:underline"
+                  >
+                    {m.title}
+                  </a>
+                  <span className="block truncate text-[11px] text-ink-400">
+                    {m.id}
+                    {m.sizeBytes ? ` · ${formatBytes(m.sizeBytes)}` : ''}
+                    {dl ? ` · map ${dl.map}` : ''}
+                  </span>
+                </span>
+                {dl ? <Badge tone="green">Downloaded</Badge> : <Badge>Downloads on first load</Badge>}
+                {startMap === m.id && <Badge tone="blue">Start map</Badge>}
+                <span className="flex gap-1">
+                  {canEdit && startMap !== m.id && (
+                    <Button variant="ghost" onClick={() => onStartMap(m.id)} title="Use as the start map (then Save)">
+                      Start map
+                    </Button>
+                  )}
+                  {canConsole && v.running && (
+                    <Button variant="ghost" onClick={() => onPlay(m.id)} title="Switch to it now">
+                      Play now
+                    </Button>
+                  )}
+                  {canEdit && (
+                    <Button
+                      variant="ghost"
+                      onClick={async () => {
+                        try {
+                          onChange(await api.delete<Cs2View>(`/servers/${serverId}/cs2/library/${m.id}`));
+                        } catch (err) {
+                          toast.error(err instanceof ApiError ? err.message : 'Failed');
+                        }
+                      }}
+                      aria-label={`Remove ${m.title}`}
+                    >
+                      <Icon name="trash" className="h-4 w-4" />
+                    </Button>
+                  )}
+                </span>
+              </div>
+            );
+          })}
+          {extra.map((m) => (
+            <div key={m.id} className="flex flex-wrap items-center gap-3 px-3 py-2.5">
+              <div className="h-11 w-16 shrink-0 rounded-lg bg-surface-700" />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-medium text-ink-100">{m.title ?? m.map}</span>
+                <span className="block text-[11px] text-ink-400">{m.id} · downloaded by the server, not in the library</span>
+              </span>
+              {canEdit && (
+                <Button
+                  variant="ghost"
+                  onClick={async () => {
+                    try {
+                      onChange(await api.post<Cs2View>(`/servers/${serverId}/cs2/library`, { input: m.id }));
+                    } catch (err) {
+                      toast.error(err instanceof ApiError ? err.message : 'Failed');
+                    }
+                  }}
+                >
+                  Add to library
+                </Button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+interface Cs2PluginInfo {
+  folder: string;
+  enabled: boolean;
+  repo: string | null;
+  version: string | null;
+  catalogId: string | null;
+}
+interface CatalogEntry {
+  id: string;
+  name: string;
+  repo: string;
+  description: string;
+  tags: string[];
+  requires?: string[];
+  note?: string;
+}
+interface PluginsView {
+  frameworks: { metamod: { installed: boolean; version: string | null }; css: { installed: boolean; version: string | null }; gameinfoPatched: boolean };
+  frameworkJob: { state: 'running' | 'failed'; error?: string } | null;
+  installed: Cs2PluginInfo[];
+  catalog: CatalogEntry[];
+  running: boolean;
+}
+
+/** Metamod + CounterStrikeSharp, a catalog (speedometers, timers, admin…), installs from any GitHub repo, and on/off/update/remove. */
+function Cs2Plugins({ serverId, canManage, onFrameworkReady }: { serverId: string; canManage: boolean; onFrameworkReady: () => void }) {
+  const toast = useToast();
+  const base = `/servers/${serverId}/cs2/plugins`;
+  const [pv, setPv] = useState<PluginsView | null>(null);
+  const [busy, setBusy] = useState('');
+  const [repo, setRepo] = useState('');
+  const [updates, setUpdates] = useState<Record<string, string>>({});
+  useEffect(() => {
+    api
+      .get<PluginsView>(base)
+      .then(setPv)
+      .catch(() => {});
+  }, [base]);
+  // While Metamod + CounterStrikeSharp download, watch for them to land.
+  const installing = pv?.frameworkJob?.state === 'running';
+  useEffect(() => {
+    if (!installing) return;
+    const t = setVisibleInterval(async () => {
+      const r = await api.get<PluginsView>(base).catch(() => null);
+      if (!r) return;
+      setPv(r);
+      if (r.frameworkJob?.state === 'running') return;
+      if (r.frameworks.css.installed && !r.frameworkJob) {
+        toast.success('Metamod + CounterStrikeSharp installed — restart the server to load them');
+        onFrameworkReady();
+      } else if (r.frameworkJob?.error) toast.error(r.frameworkJob.error);
+    }, 2_500);
+    return () => t();
+  }, [installing, base, toast, onFrameworkReady]);
+
+  async function run(key: string, fn: () => Promise<PluginsView>, ok?: string) {
+    setBusy(key);
+    try {
+      setPv(await fn());
+      if (ok) toast.success(ok);
+      return true;
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Something went wrong');
+      return false;
+    } finally {
+      setBusy('');
+    }
+  }
+  if (!pv) return null;
+  const fw = pv.frameworks;
+  const ready = fw.metamod.installed && fw.css.installed;
+  const restartHint = pv.running ? ' — restart the server to load it' : '';
+  const install = (body: { catalogId?: string; repo?: string }, key: string) =>
+    run(key, async () => {
+      const r = await api.post<PluginsView & { result: { folders: string[]; version: string } }>(base, body);
+      toast.success(`Installed ${r.result.folders.join(', ')} ${r.result.version}${restartHint}`);
+      return r;
+    });
+  const checkUpdates = async () => {
+    setBusy('updates');
+    try {
+      const r = await api.get<{ updates: Record<string, string> }>(`${base}/updates`);
+      setUpdates(r.updates);
+      const n = Object.keys(r.updates).length;
+      toast.success(n ? `${n} update${n === 1 ? '' : 's'} available` : 'Every plugin is up to date');
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Failed');
+    } finally {
+      setBusy('');
+    }
+  };
+  const installedIds = new Set(pv.installed.map((p) => p.catalogId).filter(Boolean));
+  const sourceName = (r: string) => pv.catalog.find((c) => c.repo === r)?.name ?? r;
+
+  return (
+    <Card className="p-5">
+      <CardTitle
+        action={
+          ready &&
+          pv.installed.some((p) => p.repo) && (
+            <Button variant="ghost" disabled={!!busy} onClick={checkUpdates}>
+              {busy === 'updates' ? 'Checking…' : 'Check for updates'}
+            </Button>
+          )
+        }
+      >
+        Plugins
+      </CardTitle>
+      <p className="mb-3 text-sm text-ink-400">
+        Server-side plugins — speedometers, key displays, surf/bhop timers, admin menus. Players don’t install anything. They run on <b className="text-ink-200">Metamod:Source</b> +{' '}
+        <b className="text-ink-200">CounterStrikeSharp</b>.
+      </p>
+
+      {/* Frameworks */}
+      <div className="mb-4 flex flex-wrap items-center gap-2 rounded-2xl bg-surface-900 px-3 py-2.5 text-sm">
+        <span className="text-ink-200">Metamod:Source</span>
+        {fw.metamod.installed ? <Badge tone="green">{fw.metamod.version}</Badge> : <Badge>not installed</Badge>}
+        <span className="ml-2 text-ink-200">CounterStrikeSharp</span>
+        {fw.css.installed ? <Badge tone="green">{fw.css.version}</Badge> : <Badge>not installed</Badge>}
+        {fw.metamod.installed && !fw.gameinfoPatched && <Badge tone="yellow">re-linked on next start</Badge>}
+        <span className="flex-1" />
+        {canManage && (
+          <Button
+            variant={ready ? 'ghost' : 'primary'}
+            disabled={installing || !!busy}
+            onClick={() => run('fw', () => api.post<PluginsView>(`${base}/frameworks`), 'Downloading Metamod + CounterStrikeSharp (~55 MB) — progress is in the Console')}
+          >
+            {installing ? 'Installing…' : ready ? 'Update frameworks' : 'Install (one click)'}
+          </Button>
+        )}
+      </div>
+      {pv.frameworkJob?.state === 'failed' && (
+        <div className="mb-3">
+          <Notice tone="error">Framework install failed: {pv.frameworkJob.error}</Notice>
+        </div>
+      )}
+
+      {/* Installed */}
+      {pv.installed.length > 0 && (
+        <div className="mb-4 divide-y divide-surface-700 overflow-hidden rounded-2xl bg-surface-900">
+          {pv.installed.map((p) => {
+            const upd = p.repo ? updates[p.repo] : undefined;
+            return (
+              <div key={p.folder} className="flex flex-wrap items-center gap-3 px-3 py-2.5">
+                <span className="min-w-0 flex-1">
+                  <span className={`block truncate text-sm font-medium ${p.enabled ? 'text-ink-100' : 'text-ink-500 line-through'}`}>{p.folder}</span>
+                  <span className="block truncate text-[11px] text-ink-400">{p.repo ? `${sourceName(p.repo)} · ${p.version}` : 'added by hand'}</span>
+                </span>
+                {upd && <Badge tone="blue">{upd} available</Badge>}
+                {!p.enabled && <Badge>off</Badge>}
+                {canManage && (
+                  <span className="flex gap-1">
+                    {upd && p.repo && (
+                      <Button
+                        variant="ghost"
+                        disabled={!!busy}
+                        onClick={async () => {
+                          if (await install(p.catalogId ? { catalogId: p.catalogId } : { repo: p.repo! }, `up:${p.folder}`))
+                            setUpdates((cur) => Object.fromEntries(Object.entries(cur).filter(([k]) => k !== p.repo)));
+                        }}
+                      >
+                        {busy === `up:${p.folder}` ? 'Updating…' : 'Update'}
+                      </Button>
+                    )}
+                    <Button
+                      variant="ghost"
+                      disabled={!!busy}
+                      onClick={() =>
+                        run(
+                          `t:${p.folder}`,
+                          () => api.post<PluginsView>(`${base}/${encodeURIComponent(p.folder)}/toggle`, { enabled: !p.enabled }),
+                          `${p.folder} turned ${p.enabled ? 'off' : 'on'}${restartHint}`,
+                        )
+                      }
+                    >
+                      {p.enabled ? 'Turn off' : 'Turn on'}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      disabled={!!busy}
+                      aria-label={`Remove ${p.folder}`}
+                      onClick={() => {
+                        if (confirm(`Remove ${p.folder}? Its config files are kept.`))
+                          run(`rm:${p.folder}`, () => api.delete<PluginsView>(`${base}/${encodeURIComponent(p.folder)}`), `${p.folder} removed`);
+                      }}
+                    >
+                      <Icon name="trash" className="h-4 w-4" />
+                    </Button>
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Catalog (dependencies like GameHUD install themselves) */}
+      <div className="grid gap-2 sm:grid-cols-2">
+        {pv.catalog
+          .filter((c) => !c.tags.includes('library'))
+          .map((c) => {
+            const has = installedIds.has(c.id);
+            return (
+              <div key={c.id} className="flex flex-col rounded-2xl border border-surface-600 p-3">
+                <div className="mb-1 flex items-center gap-2">
+                  <a href={`https://github.com/${c.repo}`} target="_blank" rel="noreferrer" className="font-medium text-ink-100 hover:underline">
+                    {c.name}
+                  </a>
+                  {has && <Badge tone="green">installed</Badge>}
+                </div>
+                <p className="flex-1 text-xs text-ink-400">{c.description}</p>
+                <div className="mt-2 flex flex-wrap items-center gap-1">
+                  {c.tags.slice(0, 4).map((t) => (
+                    <span key={t} className="rounded-full bg-surface-800 px-2 py-0.5 text-[10px] text-ink-400">
+                      {t}
+                    </span>
+                  ))}
+                  <span className="flex-1" />
+                  {canManage && !has && (
+                    <Button
+                      variant="ghost"
+                      disabled={!ready || !!busy}
+                      title={ready ? undefined : 'Install Metamod + CounterStrikeSharp first'}
+                      onClick={() => install({ catalogId: c.id }, `c:${c.id}`)}
+                    >
+                      {busy === `c:${c.id}` ? 'Installing…' : 'Install'}
+                    </Button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+      </div>
+
+      {/* Any GitHub plugin */}
+      {canManage && (
+        <form
+          className="mt-4 flex flex-wrap gap-2"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (repo.trim() && (await install({ repo: repo.trim() }, 'repo'))) setRepo('');
+          }}
+        >
+          <Input
+            value={repo}
+            onChange={(e) => setRepo(e.target.value)}
+            placeholder="Any CounterStrikeSharp plugin: https://github.com/owner/plugin"
+            className="min-w-[14rem] flex-1 font-mono text-xs"
+            disabled={!ready}
+          />
+          <Button type="submit" disabled={!ready || !repo.trim() || !!busy}>
+            {busy === 'repo' ? 'Installing…' : 'Install from GitHub'}
+          </Button>
+        </form>
+      )}
+      <p className="mt-2 text-[11px] text-ink-500">
+        Outpost installs each repo’s latest release. Plugins load on the next start; check with <span className="font-mono">meta list</span> / <span className="font-mono">css_plugins list</span>. CS2
+        updates can unhook Metamod — Outpost re-links it before every start.
+      </p>
+    </Card>
   );
 }

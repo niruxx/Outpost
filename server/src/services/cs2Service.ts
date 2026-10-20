@@ -48,6 +48,16 @@ export interface Cs2Settings {
   cvars: Record<string, string>;
   /** CounterStrikeSharp admins (SteamID64) — written to its admins.json when it's installed. */
   admins: string[];
+  /** Workshop maps imported into this server's map list (by link or ID). */
+  library: LibraryMap[];
+}
+
+export interface LibraryMap {
+  id: string;
+  title: string;
+  previewUrl: string | null;
+  sizeBytes: number;
+  addedAt: string;
 }
 
 export const DEFAULTS: Cs2Settings = {
@@ -64,6 +74,7 @@ export const DEFAULTS: Cs2Settings = {
   preset: null,
   cvars: {},
   admins: [],
+  library: [],
 };
 
 // ---------------------------------------------------------------------------
@@ -209,12 +220,12 @@ export function cs2SettingsOf(server: Pick<ServerRecord, 'game_settings'>): Cs2S
   } catch {
     // defaults
   }
-  return { ...DEFAULTS, ...raw, bots: { ...DEFAULTS.bots, ...(raw.bots ?? {}) }, cvars: { ...(raw.cvars ?? {}) }, admins: [...(raw.admins ?? [])] };
+  return { ...DEFAULTS, ...raw, bots: { ...DEFAULTS.bots, ...(raw.bots ?? {}) }, cvars: { ...(raw.cvars ?? {}) }, admins: [...(raw.admins ?? [])], library: Array.isArray(raw.library) ? raw.library : [] };
 }
 
 const CVAR = /^[a-z_][a-z0-9_]{1,63}$/i;
 const VALUE = /^[^\r\n";]{0,200}$/;
-const MAP = /^[a-z0-9_]{2,64}$/i;
+const MAP = /^[a-z0-9][a-z0-9_.\-]{1,63}$/i;
 const STEAMID64 = /^7656119\d{10}$/;
 
 /** "https://steamcommunity.com/sharedfiles/filedetails/?id=123" or "123" → "123". */
@@ -373,18 +384,71 @@ export function writeCs2Configs(server: ServerRecord): string {
 // ---------------------------------------------------------------------------
 
 /** Official maps installed with the server (game/csgo/maps/*.vpk). */
+/** A .vpk that's a playable map (not a vanity/preview file, an archive chunk, or the lobby). */
+const isMapVpk = (f: string) => /^[a-z0-9][a-z0-9_.\-]*\.vpk$/i.test(f) && !/(_vanity|_preview|_dir|_\d{3})\.vpk$/i.test(f) && !/^lobby_/i.test(f);
+
+/**
+ * Maps in game/csgo/maps — the official ones plus anything uploaded there (File Management, SFTP),
+ * whatever its prefix (awp_, mg_, jb_, surf_…). Read fresh on every request, so new uploads show up.
+ */
 export function installedMaps(server: ServerRecord): string[] {
   const dir = path.join(instanceDir(server.id), 'game', 'csgo', 'maps');
   try {
     return fs
-      .readdirSync(dir)
-      .filter((f) => /^(de|cs|ar|dm|gd|lobby|aim|surf|bhop|kz)_[a-z0-9_]+\.vpk$/i.test(f) && !/(_vanity|_preview|_dir|_\d{3})\.vpk$/i.test(f))
-      .map((f) => f.replace(/\.vpk$/i, ''))
-      .filter((m) => !m.startsWith('lobby_'))
+      .readdirSync(dir, { withFileTypes: true })
+      .filter((e) => e.isFile() && isMapVpk(e.name))
+      .map((e) => e.name.replace(/\.vpk$/i, ''))
       .sort();
   } catch {
     return [];
   }
+}
+
+/** Where CS2 dedicated servers keep the Workshop maps they've downloaded (it depends on the working folder). */
+function workshopRoots(server: ServerRecord): string[] {
+  const dir = instanceDir(server.id);
+  return ['', 'game', 'game/csgo', 'game/bin/linuxsteamrt64', 'game/bin/win64'].map((p) => path.join(dir, p, 'steamapps', 'workshop', 'content', '730'));
+}
+
+export interface DownloadedWorkshopMap {
+  id: string;
+  /** The map's own name inside the item (what ds_workshop_changelevel takes). */
+  map: string;
+  title: string | null;
+}
+
+const titleCache = new Map<string, string | null>();
+
+/** Workshop maps the server has already downloaded, with their Workshop titles when Steam answers. */
+export async function downloadedWorkshopMaps(server: ServerRecord): Promise<DownloadedWorkshopMap[]> {
+  const found = new Map<string, string>();
+  for (const root of workshopRoots(server)) {
+    let ids: string[] = [];
+    try {
+      ids = fs.readdirSync(root).filter((d) => /^\d{6,12}$/.test(d));
+    } catch {
+      continue;
+    }
+    for (const id of ids) {
+      if (found.has(id)) continue;
+      try {
+        const vpk = fs.readdirSync(path.join(root, id)).find(isMapVpk);
+        if (vpk) found.set(id, vpk.replace(/\.vpk$/i, ''));
+      } catch {
+        // unreadable item
+      }
+    }
+  }
+  const missing = [...found.keys()].filter((id) => !titleCache.has(id));
+  if (missing.length) {
+    try {
+      const { fetchDetails } = await import('./workshopService.js');
+      for (const d of await fetchDetails(missing)) titleCache.set(d.id, d.found ? d.title : null);
+    } catch {
+      // offline — names only
+    }
+  }
+  return [...found.entries()].map(([id, map]) => ({ id, map, title: titleCache.get(id) ?? null })).sort((a, b) => (a.title ?? a.map).localeCompare(b.title ?? b.map));
 }
 
 const CSS_DIR = (server: ServerRecord) => path.join(instanceDir(server.id), 'game', 'csgo', 'addons', 'counterstrikesharp');
@@ -423,11 +487,11 @@ export function liveCommands(server: ServerRecord, action: string, value?: unkno
       // Re-runs the config now; mode + map take effect with the map reload.
       return ['exec outpost', `game_type ${m.type}`, `game_mode ${m.mode}`, s.workshopMap ? `host_workshop_map ${s.workshopMap}` : `changelevel ${s.map}`];
     case 'changelevel': {
-      const v = String(value ?? '');
+      const v = String(value ?? '').trim();
+      // A Workshop ID or link first — a bare number would otherwise pass as a map name.
+      if (/^\d{6,12}$/.test(v) || /steamcommunity\.com|[?&]id=\d/.test(v)) return [`host_workshop_map ${workshopId(v)}`];
       if (MAP.test(v)) return [`changelevel ${v}`];
-      const id = workshopId(v);
-      if (!id) throw new HttpError(400, 'Pick a map');
-      return [`host_workshop_map ${id}`];
+      throw new HttpError(400, 'Pick a map (a map name, or a Workshop link / ID)');
     }
     case 'restart_round':
       return ['mp_restartgame 1'];
@@ -550,3 +614,67 @@ export const COMMANDS: { group: string; commands: Cs2Command[] }[] = [
     ],
   },
 ];
+
+// ---------------------------------------------------------------------------
+// Map library: Workshop maps imported by link or ID
+// ---------------------------------------------------------------------------
+
+const MAX_LIBRARY = 200;
+
+/**
+ * Imports Workshop maps (links, IDs, or a collection link — every map in it) into the library after
+ * checking with Steam that each is a CS2 item. The server downloads a map the first time it loads it.
+ */
+export async function importMaps(server: ServerRecord, input: string): Promise<{ added: LibraryMap[]; skipped: { id: string; reason: string }[]; settings: Cs2Settings }> {
+  const { parseWorkshopIds, expandCollections, fetchDetails } = await import('./workshopService.js');
+  const ids = await expandCollections(parseWorkshopIds(input));
+  if (!ids.length) throw new HttpError(400, 'Paste a Workshop map link or ID (a collection link imports every map in it)');
+  const s = cs2SettingsOf(server);
+  const skipped: { id: string; reason: string }[] = [];
+  const fresh = ids.filter((id) => (s.library.some((m) => m.id === id) ? (skipped.push({ id, reason: 'already in the library' }), false) : true));
+  if (s.library.length + fresh.length > MAX_LIBRARY) throw new HttpError(400, `At most ${MAX_LIBRARY} maps in the library`);
+  const added: LibraryMap[] = [];
+  for (const d of fresh.length ? await fetchDetails(fresh) : []) {
+    if (!d.found) skipped.push({ id: d.id, reason: 'not found — private, removed, or not a Workshop item' });
+    else if (d.appId !== '730') skipped.push({ id: d.id, reason: `“${d.title}” isn’t a Counter-Strike 2 item` });
+    else added.push({ id: d.id, title: d.title, previewUrl: d.previewUrl, sizeBytes: d.sizeBytes, addedAt: new Date().toISOString() });
+  }
+  const settings = added.length ? saveLibrary(server, [...s.library, ...added]) : s;
+  return { added, skipped, settings };
+}
+
+function saveLibrary(server: ServerRecord, library: LibraryMap[]): Cs2Settings {
+  const s = { ...cs2SettingsOf(server), library };
+  prep('UPDATE servers SET game_settings = ? WHERE id = ?').run(JSON.stringify(s), server.id);
+  return s;
+}
+
+export function removeFromLibrary(server: ServerRecord, id: string): Cs2Settings {
+  const s = cs2SettingsOf(server);
+  if (!s.library.some((m) => m.id === id)) throw new HttpError(404, 'Not in the library');
+  const next = saveLibrary(server, s.library.filter((m) => m.id !== id));
+  // Removing the start map falls back to the installed start map. (Pass the just-saved settings —
+  // the record we were given still holds the old library.)
+  if (next.workshopMap === id) return saveCs2Settings({ ...server, game_settings: JSON.stringify(next) }, { workshopMap: null });
+  return next;
+}
+
+/**
+ * CS2's Workshop downloader uses the folder next to its binary as its Steam library. A fresh install has
+ * no steamapps/ there, so host_workshop_map fails with "Staging/Install library folder not found" — create
+ * the library (and the staging folders) before each start. Returns how many were missing.
+ */
+export function ensureWorkshopLibrary(server: ServerRecord): number {
+  let made = 0;
+  for (const bin of ['game/bin/linuxsteamrt64', 'game/bin/win64', '']) {
+    const root = path.join(instanceDir(server.id), bin);
+    if (bin && !fs.existsSync(root)) continue;
+    for (const sub of ['steamapps/workshop/content/730', 'steamapps/workshop/downloads', 'steamapps/workshop/temp', 'steamapps/downloading', 'steamapps/temp']) {
+      const dir = path.join(root, sub);
+      if (fs.existsSync(dir)) continue;
+      fs.mkdirSync(dir, { recursive: true });
+      made++;
+    }
+  }
+  return made;
+}
