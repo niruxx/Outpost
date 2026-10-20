@@ -212,6 +212,9 @@ export const STEAM_GAME_PRESETS: SteamGamePreset[] = [
     defaultPort: 27015,
     portProtocol: 'udp',
     executable: { win32: 'game/bin/win64/cs2.exe', linux: 'game/bin/linuxsteamrt64/cs2' },
+    // What Valve's cs2.sh puts on LD_LIBRARY_PATH: the engine's own libraries (libv8.so, libtier0.so…)
+    // live next to the binary, and libserver.so can't load without them.
+    libraryPaths: ['game/bin/linuxsteamrt64', 'game/csgo/bin/linuxsteamrt64'],
     buildLaunchArgs: (server) => [
       '-dedicated',
       '-console',
