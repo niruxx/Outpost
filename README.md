@@ -221,6 +221,7 @@ Every template is just a starting point — change the image, ports, environment
 | ⛏️ | **Minecraft: Java** — Vanilla | 📦 Data packs — Modrinth + upload | `25565/tcp` |
 | 🧵 | **Minecraft: Java** — Fabric · Quilt · Forge · NeoForge | 🧩 Mods — Modrinth / CurseForge + upload | `25565/tcp` |
 | 🧪 | **Minecraft: Java** — Mohist (Forge + Bukkit) · SpongeForge | 🧩 Forge mods (+ Bukkit / Sponge plugins) | `25565/tcp` |
+| 🔀 | **Minecraft proxies** — Velocity · Waterfall · BungeeCord | 🧩 Proxy plugins — Modrinth + upload | `25577/tcp` |
 | 📦 | **Modrinth modpacks** (.mrpack) — any of the above loaders | 🧩 The pack’s mods and configs | `25565/tcp` |
 | 🪨 | **Minecraft: Bedrock** | 🎒 `.mcpack` / `.mcaddon`, auto-activated per world | `19132/udp` |
 | 🪖 | **Valheim** | 🔌 BepInEx plugins (`.dll` / `.zip`) | `2456/udp` |
@@ -434,6 +435,7 @@ Every instance — custom or not — has a **Launch** card under **Configuration
 The **Manage → Plugins** page (called *Data Packs*, *Add-ons* or *Mods* where that fits) adapts to each game:
 
 - **⛏️ Paper / Purpur / Spigot** — search Modrinth and install in one click (falling back to the newest build if your exact version isn't listed), or upload `.jar`s. Disabling renames to `.jar.disabled`.
+- **🔀 Velocity / Waterfall / BungeeCord** — proxy plugins from Modrinth (Velocity's own catalog, or BungeeCord/Waterfall's), or uploaded `.jar`s. Bukkit plugins belong on the backend servers.
 - **⛏️ Vanilla** — data packs from Modrinth or uploaded `.zip`s into `<world>/datapacks`; they load on restart or with `/reload`.
 - **🪨 Bedrock** — upload `.mcpack`, `.mcaddon` (nested packs included) or `.zip`. Packs are unpacked into `behavior_packs`/`resource_packs` and **activated for the world**; toggling adds/removes them.
 - **🪖 Valheim** — BepInEx plugins (`.dll`, or a Thunderstore-style `.zip` unpacked into its own folder). Upload *BepInExPack_Valheim* to the instance root once and Outpost loads it automatically on Linux.
@@ -897,7 +899,7 @@ Features other game panels (Pterodactyl, AMP, Crafty, PufferPanel) have that Out
 
 - [x] 🧵 **Modded Minecraft** — Fabric, Quilt, Forge, NeoForge, Mohist and SpongeForge instances, Modrinth modpacks, one-click mods
 - [ ] 🧵 CurseForge modpacks (server packs)
-- [ ] 🔀 **Proxy servers** — Velocity, BungeeCord and Waterfall for multi-server networks
+- [x] 🔀 **Proxy servers** — Velocity, BungeeCord and Waterfall, with a **Network** tab for backend servers, join order and forwarding, and one-click linking of other instances (offline mode + Velocity modern or BungeeCord forwarding set up on the backend)
 - [x] 📂 **SFTP access** — per-user SFTP logins scoped to the instances they can manage
 - [x] ☁️ **Off-site backups** — copy snapshots to S3-compatible storage (AWS, Backblaze, Wasabi, R2…) or another SFTP host
 - [x] 📏 **Resource limits** — CPU, memory, process and disk caps for every instance type
@@ -924,7 +926,8 @@ Features other game panels (Pterodactyl, AMP, Crafty, PufferPanel) have that Out
 
 **Counter-Strike 2** — what dedicated CS2 panels and hosts (DatHost, CS2 Server Manager, AMP, Pterodactyl eggs) offer that the CS2 tab doesn't yet
 
-- [ ] 👥 **Live player list** — players, ping, score and team from `status`, with kick / ban / mute / slay buttons (the Players page is Minecraft-only today)
+- [x] 👥 **Live player list** — a Players page for Steam games: names, score and time from A2S, ping from RCON `status`, kick (and ban by user id on Source 1 / GoldSrc / Rust)
+- [ ] 🔇 **More player actions** — team, mute and slay, and CS2 bans through an admin plugin
 - [ ] 🚫 **Ban list** — view and lift bans (`banned_user.cfg`, CS2-SimpleAdmin's database) from the panel
 - [ ] 🔁 **Map rotation & votes** — a map cycle / map group editor, next-map and rock-the-vote (via a plugin), Workshop collection rotation
 - [ ] 🏆 **Match setup** — MatchZy / Get5-style matches from a form: teams, map veto, knife round, overtime, with live score
@@ -937,7 +940,7 @@ Features other game panels (Pterodactyl, AMP, Crafty, PufferPanel) have that Out
 - [x] 📝 **Plugin config editor** — form and raw editing of each plugin's config files, example files, undo
 - [ ] 🔃 **Live plugin reload** — apply a config change without restarting the server
 - [ ] 🗂️ **Shared game files** — run several CS2 instances from one ~35 GB install (overlay / hard links) instead of a copy each
-- [ ] 📈 **Server-browser stats** — A2S query of players and map on the dashboard, with player-count history
+- [x] 📈 **Server-browser stats** — A2S query of name, map and players on the Status tab, player counts on the instance list, and a 24 h / 7 day player-count history
 - [ ] 🎟️ **Reserved slots & whitelist** — SteamID lists for private or pug servers
 
 <p align="center"><sub>Made with 💚 for people who'd rather play than SSH.</sub></p>

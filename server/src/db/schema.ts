@@ -202,4 +202,14 @@ CREATE TABLE IF NOT EXISTS audit_log (
   user_agent TEXT -- the client's browser / tool
 );
 CREATE INDEX IF NOT EXISTS audit_log_created_at ON audit_log (created_at);
+
+-- Server-browser (A2S) player counts, sampled once a minute while a Steam instance runs.
+CREATE TABLE IF NOT EXISTS player_samples (
+  server_id TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+  at INTEGER NOT NULL, -- unix ms
+  players INTEGER NOT NULL,
+  max_players INTEGER,
+  bots INTEGER,
+  PRIMARY KEY (server_id, at)
+);
 `;

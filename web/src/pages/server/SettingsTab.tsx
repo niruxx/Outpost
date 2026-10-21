@@ -12,7 +12,7 @@ import { RconCard } from './RconCard.js';
 import { TemplateCard } from './TemplateCard.js';
 import { StatusPageCard } from './StatusPageCard.js';
 import { LimitsCard } from './LimitsCard.js';
-import { isMinecraftPlatform } from '../../api/types.js';
+import { isMinecraftPlatform, isProxyLoader } from '../../api/types.js';
 
 export function SettingsTab() {
   const { server, can, refresh } = useServerDetail();
@@ -223,12 +223,13 @@ export function SettingsTab() {
       <StatusPageCard />
       <TemplateCard />
 
-      {!isMinecraftPlatform(server.platform) ? (
+      {!isMinecraftPlatform(server.platform) || isProxyLoader(server.loader) ? (
         <Card className="p-5">
           <h2 className="mb-2 text-base font-medium text-ink-100">Config files</h2>
           <p className="text-sm text-ink-400">
-            {server.platform === 'custom' ? 'Custom instances keep their config in their own files' : "This game's config files aren't edited here"} — open File Management to view or edit whatever config file
-            it writes (INI, JSON, or otherwise).
+            {isProxyLoader(server.loader)
+              ? `Proxies have no server.properties — backends, join order and forwarding are on the Network tab, and the rest of ${server.loader === 'velocity' ? 'velocity.toml' : 'config.yml'} is in File Management.`
+              : `${server.platform === 'custom' ? 'Custom instances keep their config in their own files' : "This game's config files aren't edited here"} — open File Management to view or edit whatever config file it writes (INI, JSON, or otherwise).`}
           </p>
         </Card>
       ) : (

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, ApiError } from '../api/client.js';
-import type { LaunchConfig, Loader, Platform, ServerRecord, SteamGameOption, VersionOption } from '../api/types.js';
+import { isProxyLoader, type LaunchConfig, type Loader, type Platform, type ServerRecord, type SteamGameOption, type VersionOption } from '../api/types.js';
 import { useAuth } from '../state/AuthContext.js';
 import { LaunchEditor, cleanLaunchConfig } from './LaunchEditor.js';
 import { Button, ErrorText, Field, Input, Modal, Select, Spinner } from './ui.js';
@@ -17,6 +17,9 @@ const LOADERS_BY_PLATFORM: Record<Platform, { value: Loader; label: string }[]> 
     { value: 'neoforge', label: 'NeoForge (mods)' },
     { value: 'mohist', label: 'Mohist (Forge mods + Bukkit plugins)' },
     { value: 'spongeforge', label: 'SpongeForge (Forge + Sponge plugins)' },
+    { value: 'velocity', label: 'Velocity (proxy)' },
+    { value: 'waterfall', label: 'Waterfall (proxy)' },
+    { value: 'bungeecord', label: 'BungeeCord (proxy)' },
     { value: 'modpack' as Loader, label: 'Modpack from Modrinth…' },
   ],
   bedrock: [{ value: 'bedrock', label: 'Bedrock Dedicated Server' }],
@@ -208,7 +211,15 @@ export function CreateServerModal({
           </Field>
           {(platform === 'java' || platform === 'bedrock') && (
             <Field label="Server software">
-              <Select value={loader} onChange={(e) => setLoader(e.target.value as Loader)}>
+              <Select
+                value={loader}
+                onChange={(e) => {
+                  const next = e.target.value as Loader;
+                  // Proxies conventionally listen on 25577 so the backends can keep 25565.
+                  if (platform === 'java' && (isProxyLoader(next) !== isProxyLoader(loader))) setServerPort(isProxyLoader(next) ? 25577 : 25565);
+                  setLoader(next);
+                }}
+              >
                 {LOADERS_BY_PLATFORM[platform].map((l) => (
                   <option key={l.value} value={l.value}>
                     {l.label}

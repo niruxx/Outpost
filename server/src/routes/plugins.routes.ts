@@ -68,6 +68,7 @@ pluginsRouter.post(
     if (!profile.catalog) throw new HttpError(400, `${profile.label} for this instance can only be uploaded, not installed from a catalog`);
 
     if (req.body?.source === 'curseforge') {
+      if (profile.catalog.startsWith('proxy:')) throw new HttpError(400, 'Proxy plugins install from Modrinth or by upload');
       const modId = Number(req.body?.modId);
       if (!Number.isInteger(modId) || modId <= 0) throw new HttpError(400, 'modId is required');
       const javaVersion = profile.kind === 'bedrock' ? null : server.version;

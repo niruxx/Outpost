@@ -62,7 +62,8 @@ import { forgetServerSchedules } from '../services/schedulerService.js';
 import { wantsWindowsBuild, wineStatus } from '../services/wineService.js';
 import { instancePortProtocol } from '../services/portProtocol.js';
 import { STEAM_GAME_PRESETS, findPreset, findPresetById, findPresetFor } from '../services/steamGames.js';
-import { isMinecraftPlatform, type Loader, type Platform, type ServerRecord } from '../types/index.js';
+import { latestQuery } from '../services/browserStatsService.js';
+import { ALL_LOADERS, isMinecraftPlatform, type Loader, type Platform, type ServerRecord } from '../types/index.js';
 import { sanitizeLaunchConfig, launchConfigOf, launchVariables, resolveExecutable, ensureExecutable } from '../services/launchConfig.js';
 import { getOnlinePlayers } from '../services/playerService.js';
 import { dockerConfigOf, enforceContainerPolicy, getEngineStatus, pullImage, sanitizeDockerConfig } from '../services/containerService.js';
@@ -163,7 +164,10 @@ serversRouter.get(
         .filter((s) => req.auth!.role === 'admin' || !s.suspended)
         .map((s) => [
           s.id,
-          { runtime: getRuntimeInfo(s.id), playersOnline: isMinecraftPlatform(s.platform) ? getOnlinePlayers(s.id).length : null },
+          {
+            runtime: getRuntimeInfo(s.id),
+            playersOnline: isMinecraftPlatform(s.platform) ? getOnlinePlayers(s.id).length : s.platform === 'steam' && s.status === 'running' ? steamPlayers(s.id) : null,
+          },
         ])
     );
     const owners = usernamesFor(visible.map((s) => s.created_by).filter((id): id is string => !!id));
@@ -171,11 +175,17 @@ serversRouter.get(
   })
 );
 
+/** Humans on a Steam server per its last A2S answer (null until one arrives). */
+function steamPlayers(id: string): number | null {
+  const info = latestQuery(id)?.info;
+  return info ? Math.max(0, info.players - info.bots) : null;
+}
+
 serversRouter.get(
   '/catalog/versions',
   asyncHandler(async (req, res) => {
     const loader = req.query.loader as Loader;
-    if (!['vanilla', 'paper', 'purpur', 'spigot', 'fabric', 'quilt', 'forge', 'neoforge', 'mohist', 'spongeforge', 'bedrock', 'steam'].includes(loader)) {
+    if (!ALL_LOADERS.includes(loader) || loader === 'custom' || loader === 'docker') {
       throw new HttpError(400, 'Unknown server type');
     }
     const versions = await listAvailableVersions(loader);
@@ -321,7 +331,7 @@ serversRouter.post(
       throw new HttpError(400, `Max memory is limited to ${creation.maxMemoryMb} MB per instance for your account`);
     }
     if (!['java', 'bedrock', 'steam', 'custom', 'docker'].includes(platform)) throw new HttpError(400, 'Invalid platform');
-    if (!['vanilla', 'paper', 'purpur', 'spigot', 'fabric', 'quilt', 'forge', 'neoforge', 'mohist', 'spongeforge', 'bedrock', 'steam', 'custom', 'docker'].includes(loader)) {
+    if (!ALL_LOADERS.includes(loader)) {
       throw new HttpError(400, 'Invalid loader');
     }
     if (platform !== 'docker' && (typeof version !== 'string' || !version)) throw new HttpError(400, 'Version is required');

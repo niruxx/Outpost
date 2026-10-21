@@ -48,6 +48,9 @@ import { cs2Router } from './routes/cs2.routes.js';
 import { dbHostsRouter, serverDatabasesRouter } from './routes/databases.routes.js';
 import { startSftp, stopSftp } from './services/sftpService.js';
 import { consoleLogsRouter, consoleLogSettingsRouter } from './routes/consoleLogs.routes.js';
+import { browserStatsRouter } from './routes/browserStats.routes.js';
+import { startBrowserStats } from './services/browserStatsService.js';
+import { proxyRouter } from './routes/proxy.routes.js';
 import { rconRouter } from './routes/rcon.routes.js';
 import { initRewind } from './services/rewindService.js';
 import { requestContextMiddleware } from './utils/requestContext.js';
@@ -102,6 +105,8 @@ app.use('/api/servers/:serverId/workshop', workshopRouter);
 app.use('/api/servers/:serverId/rewind', rewindRouter);
 app.use('/api/servers/:serverId/wine', wineRouter);
 app.use('/api/servers/:serverId/rcon', rconRouter);
+app.use('/api/servers/:serverId/proxy', proxyRouter);
+app.use('/api/servers/:serverId/query', browserStatsRouter);
 app.use('/api/servers/:serverId/console-logs', consoleLogsRouter);
 app.use('/api/console-logs', consoleLogSettingsRouter);
 app.use('/api/templates', templatesRouter);
@@ -217,6 +222,7 @@ async function bootstrap() {
     );
   }
   startAuditPruning();
+  startBrowserStats(isRunning);
   initRewind();
   recoverInterruptedTransfers();
 

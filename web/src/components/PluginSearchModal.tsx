@@ -7,7 +7,7 @@ import { useAuth } from '../state/AuthContext.js';
 import { useToast } from './Toast.js';
 import { Button, ErrorText, Input, Modal, Notice, Spinner } from './ui.js';
 
-const LOADER_ICON: Record<string, string> = { paper: '📄', purpur: '🟣', spigot: '🥄', bedrock: '🪨' };
+const LOADER_ICON: Record<string, string> = { paper: '📄', purpur: '🟣', spigot: '🥄', bedrock: '🪨', velocity: '⚡', waterfall: '🌊', bungeecord: '🔀' };
 
 type Source = 'modrinth' | 'curseforge';
 
@@ -19,6 +19,8 @@ const NOUN: Record<AddonCatalog, string> = {
   'mod:quilt': 'mods',
   'mod:forge': 'mods',
   'mod:neoforge': 'mods',
+  'proxy:velocity': 'Velocity plugins',
+  'proxy:bungee': 'BungeeCord plugins',
 };
 const PLACEHOLDER: Record<AddonCatalog, string> = {
   plugin: 'Search plugins (EssentialsX, LuckPerms, WorldEdit…)',
@@ -28,6 +30,8 @@ const PLACEHOLDER: Record<AddonCatalog, string> = {
   'mod:quilt': 'Search Quilt & Fabric mods…',
   'mod:forge': 'Search Forge mods…',
   'mod:neoforge': 'Search NeoForge mods…',
+  'proxy:velocity': 'Search Velocity plugins (LuckPerms, ViaVersion, LibreLogin…)',
+  'proxy:bungee': 'Search BungeeCord plugins (LuckPerms, ViaVersion…)',
 };
 
 /** The mod ecosystem an instance's mods come from (Mohist and SpongeForge run Forge mods). */
@@ -41,6 +45,8 @@ function eligible(catalog: AddonCatalog, s: ServerRecord): boolean {
   if (catalog === 'bedrock') return s.platform === 'bedrock';
   if (catalog === 'datapack') return s.loader === 'vanilla';
   if (catalog.startsWith('mod:')) return modEcosystem(s) === catalog.slice(4);
+  if (catalog === 'proxy:velocity') return s.loader === 'velocity';
+  if (catalog === 'proxy:bungee') return s.loader === 'waterfall' || s.loader === 'bungeecord';
   return PLUGIN_CAPABLE_LOADERS.includes(s.loader);
 }
 
@@ -124,13 +130,17 @@ export function PluginSearchModal({
       ? 'Results come from CurseForge.'
       : catalog === 'datapack'
         ? "Results come from Modrinth's data pack catalog."
-        : "Results come from Modrinth's plugin catalog (Bukkit / Spigot / Paper / Purpur).";
+        : catalog === 'proxy:velocity'
+          ? "Results come from Modrinth's Velocity plugins."
+          : catalog === 'proxy:bungee'
+            ? "Results come from Modrinth's BungeeCord / Waterfall plugins."
+            : "Results come from Modrinth's plugin catalog (Bukkit / Spigot / Paper / Purpur).";
 
   return (
     <>
       <Modal open={open && !picking} onClose={onClose} title={`Browse ${noun}`} size="xl">
         <div className="mb-4 space-y-3">
-          {catalog !== 'bedrock' && (
+          {catalog !== 'bedrock' && !catalog.startsWith('proxy:') && (
             <div className="flex w-fit rounded-full border border-surface-500 p-0.5" role="radiogroup" aria-label="Catalog">
               {(['modrinth', 'curseforge'] as const).map((s) => (
                 <button

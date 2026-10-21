@@ -68,6 +68,9 @@ export type Loader =
   | 'neoforge'
   | 'mohist'
   | 'spongeforge'
+  | 'velocity'
+  | 'waterfall'
+  | 'bungeecord'
   | 'bedrock'
   | 'steam'
   | 'custom'
@@ -76,6 +79,10 @@ export type Loader =
 export const MODDED_LOADERS: Loader[] = ['fabric', 'quilt', 'forge', 'neoforge', 'mohist', 'spongeforge'];
 
 export const PLUGIN_CAPABLE_LOADERS: Loader[] = ['paper', 'purpur', 'spigot'];
+
+/** Minecraft proxies (Velocity, Waterfall, BungeeCord): no world, players connect through them. */
+export const PROXY_LOADERS: Loader[] = ['velocity', 'waterfall', 'bungeecord'];
+export const isProxyLoader = (loader: Loader): boolean => PROXY_LOADERS.includes(loader);
 
 /** Java/Bedrock instances have Minecraft features (players, ops, whitelist, maps, server.properties). */
 export function isMinecraftPlatform(platform: Platform): boolean {
@@ -305,7 +312,34 @@ export interface InstalledPlugin {
   detail: string | null;
 }
 
-export type AddonCatalog = 'plugin' | 'datapack' | 'bedrock' | 'mod:fabric' | 'mod:quilt' | 'mod:forge' | 'mod:neoforge';
+export type AddonCatalog = 'plugin' | 'datapack' | 'bedrock' | 'mod:fabric' | 'mod:quilt' | 'mod:forge' | 'mod:neoforge' | 'proxy:velocity' | 'proxy:bungee';
+
+export type ProxyForwarding = 'none' | 'legacy' | 'bungeeguard' | 'modern';
+
+export interface ProxyBackend {
+  name: string;
+  address: string;
+  restricted?: boolean;
+  motd?: string;
+}
+
+export interface ProxyNetwork {
+  kind: 'velocity' | 'bungee';
+  configured: boolean;
+  configFile: string;
+  backends: ProxyBackend[];
+  tryOrder: string[];
+  forwarding: ProxyForwarding;
+  onlineMode: boolean;
+}
+
+export interface ProxyCandidate {
+  id: string;
+  name: string;
+  loader: Loader;
+  version: string;
+  address: string;
+}
 
 export interface AddonProfile {
   kind: 'bukkit' | 'datapack' | 'bedrock' | 'bepinex' | 'pak';

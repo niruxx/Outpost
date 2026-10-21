@@ -9,7 +9,7 @@ import { dockerConfigOf } from './containerService.js';
 import { autoUpdateOf } from './autoUpdateService.js';
 import { rconConfigOf } from './rconService.js';
 import { findPresetFor } from './steamGames.js';
-import type { ServerRecord } from '../types/index.js';
+import { ALL_LOADERS, type Loader, type ServerRecord } from '../types/index.js';
 
 /**
  * Server templates ("eggs"): a portable JSON description of how to create an instance — game and
@@ -90,7 +90,7 @@ export function validateTemplate(input: unknown): OutpostTemplate {
   if (!name) throw new HttpError(400, 'Template needs a name');
   const inst = (raw.instance ?? {}) as Record<string, any>;
   if (!['java', 'bedrock', 'steam', 'custom', 'docker'].includes(inst.platform)) throw new HttpError(400, 'Template has an unknown platform');
-  if (!['vanilla', 'paper', 'purpur', 'spigot', 'fabric', 'quilt', 'forge', 'neoforge', 'mohist', 'spongeforge', 'bedrock', 'steam', 'custom', 'docker'].includes(inst.loader)) throw new HttpError(400, 'Template has an unknown server type');
+  if (!ALL_LOADERS.includes(inst.loader as Loader)) throw new HttpError(400, 'Template has an unknown server type');
 
   const variables: TemplateVariable[] = [];
   for (const v of Array.isArray(raw.variables) ? raw.variables.slice(0, 30) : []) {

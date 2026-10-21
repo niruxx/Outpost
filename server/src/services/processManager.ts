@@ -7,6 +7,7 @@ import { getServer, setServerStatus } from './serverService.js';
 import { instanceDir } from '../utils/paths.js';
 import { pickRuntime } from './javaRuntimeService.js';
 import { activeRcon, rconLaunchArgs, rconSend } from './rconService.js';
+import { proxyLaunchArgs } from './proxyService.js';
 import { readProcessStats, clearStatsSample, emptyStats, type ProcessStats } from './statsService.js';
 import { addonLaunchEnv } from './pluginService.js';
 import { upnpOnStart, upnpOnStop } from './upnpService.js';
@@ -20,7 +21,7 @@ import { HttpError } from '../utils/asyncHandler.js';
 import { findPresetFor, type StopStrategy } from './steamGames.js';
 import { notify } from './notificationService.js';
 import { ensurePrefix, findWine, findXvfbRun, INSTALL_HINT, prefixNeedsWork, usesWine, wineBusy, wineEnv, wineSettingsOf, withWineJob } from './wineService.js';
-import type { ServerRecord } from '../types/index.js';
+import { isProxyLoader, type ServerRecord } from '../types/index.js';
 import {
   ensureExecutable,
   expandVariables,
@@ -33,11 +34,14 @@ import {
 } from './launchConfig.js';
 
 const JAVA_READY_RE = /Done \(/i;
+// Velocity prints "Done (1.2s)!"; BungeeCord/Waterfall announce their listener instead.
+const BUNGEE_READY_RE = /Listening on \/|Done \(/i;
 const BEDROCK_READY_RE = /Server started\./i;
 const DEFAULT_STOP_TIMEOUT_MS = 60_000;
 const STATS_INTERVAL_MS = 4000;
 
 const JAVA_STOP: StopStrategy = { kind: 'stdin', commands: ['stop'], delayMs: 0 };
+const PROXY_STOP: StopStrategy = { kind: 'stdin', commands: ['end'], delayMs: 0 };
 // Preserves Bedrock's existing exact behavior (stdin "stop") — not a signal change.
 const BEDROCK_STOP: StopStrategy = { kind: 'stdin', commands: ['stop'], delayMs: 0 };
 const CUSTOM_STEAM_STOP: StopStrategy = { kind: 'signal', signal: 'SIGTERM' };
@@ -276,7 +280,8 @@ export async function buildLaunch(server: ServerRecord): Promise<LaunchPlan> {
       `-Xmx${server.max_memory_mb}M`,
       ...splitPlain(server.extra_java_args),
       ...(argsFile ? [`@${argsFile}`] : ['-jar', jar]),
-      ...(customArgs ?? ['nogui', ...splitPlain(server.extra_args)]),
+      // Proxies have no GUI flag; they take their port from proxyLaunchArgs instead.
+      ...(customArgs ?? (isProxyLoader(server.loader) ? [...proxyLaunchArgs(server), ...splitPlain(server.extra_args)] : ['nogui', ...splitPlain(server.extra_args)])),
     ];
   } else if (server.platform === 'bedrock') {
     const exe = executable ?? path.join(dir, process.platform === 'win32' ? 'bedrock_server.exe' : 'bedrock_server');
@@ -347,7 +352,7 @@ function resolveReadyRegex(server: ServerRecord, config: LaunchConfig): RegExp |
       // validated on save; ignore a corrupt value rather than refusing to start
     }
   }
-  if (server.platform === 'java') return JAVA_READY_RE;
+  if (server.platform === 'java') return server.loader === 'bungeecord' || server.loader === 'waterfall' ? BUNGEE_READY_RE : JAVA_READY_RE;
   if (server.platform === 'bedrock') return BEDROCK_READY_RE;
   if (server.platform === 'custom' || server.platform === 'docker') return null;
   return findPresetFor(server)?.readyRegex ?? null;
@@ -359,7 +364,7 @@ function resolveStopStrategy(server: ServerRecord, config: LaunchConfig): StopPl
   if (stop?.kind === 'stdin') return { kind: 'stdin', commands: stop.commands.map((c) => expandVariables(c, vars)), delayMs: stop.delayMs ?? 0 };
   if (stop?.kind === 'signal') return { kind: 'signal', signal: stop.signal };
   if (stop?.kind === 'script') return { kind: 'script', command: stop.command };
-  if (server.platform === 'java') return JAVA_STOP;
+  if (server.platform === 'java') return isProxyLoader(server.loader) ? PROXY_STOP : JAVA_STOP;
   if (server.platform === 'bedrock') return BEDROCK_STOP;
   if (server.platform === 'custom' || server.platform === 'docker') return CUSTOM_STEAM_STOP; // docker: proxied to the container
   return findPresetFor(server)?.stopStrategy ?? CUSTOM_STEAM_STOP;

@@ -36,6 +36,8 @@ function loadersFor(catalog: AddonCatalog): string[] {
     const loader = catalog.slice(4);
     return loader === 'quilt' ? ['quilt', 'fabric'] : [loader];
   }
+  if (catalog === 'proxy:velocity') return ['velocity'];
+  if (catalog === 'proxy:bungee') return ['bungeecord', 'waterfall'];
   return catalog === 'datapack' ? ['datapack'] : BUKKIT_LOADERS;
 }
 
@@ -46,7 +48,7 @@ export async function searchPlugins(query: string, limit = 24, catalog: AddonCat
       ? [['project_type:datapack']]
       : catalog.startsWith('mod:')
         ? [['project_type:mod'], loadersFor(catalog).map((l) => `categories:${l}`), ['server_side:required', 'server_side:optional']]
-        : [BUKKIT_LOADERS.map((l) => `categories:${l}`)]
+        : [loadersFor(catalog).map((l) => `categories:${l}`)]
   );
   const params = new URLSearchParams({
     query,
@@ -94,7 +96,9 @@ export async function resolvePluginVersion(
 ): Promise<ResolvedPluginVersion> {
   const loadersParam = JSON.stringify(loadersFor(catalog));
 
-  const exact = await modrinthFetch<ModrinthVersion[]>(
+  // Proxy plugins aren't tied to a Minecraft version (the proxy's own version is unrelated).
+  const proxy = catalog.startsWith('proxy:');
+  const exact = proxy ? [] : await modrinthFetch<ModrinthVersion[]>(
     `/project/${encodeURIComponent(slug)}/version?loaders=${encodeURIComponent(loadersParam)}&game_versions=${encodeURIComponent(
       JSON.stringify([gameVersion])
     )}`
@@ -120,7 +124,7 @@ export async function resolvePluginVersion(
   const fallback = await modrinthFetch<ModrinthVersion[]>(
     `/project/${encodeURIComponent(slug)}/version?loaders=${encodeURIComponent(loadersParam)}`
   ).catch(() => [] as ModrinthVersion[]);
-  const fallbackMatch = fromList(fallback, true);
+  const fallbackMatch = fromList(fallback, !proxy);
   if (fallbackMatch) return fallbackMatch;
 
   throw new Error(`No downloadable version of "${slug}" was found for this instance type.`);

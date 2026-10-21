@@ -13,6 +13,7 @@ import type { Loader, Platform } from '../types/index.js';
 const MOJANG_MANIFEST = 'https://launchermeta.mojang.com/mc/game/version_manifest_v2.json';
 const PAPER_API = 'https://fill.papermc.io/v3/projects';
 const PURPUR_API = 'https://api.purpurmc.org/v2/purpur';
+const BUNGEECORD_JOB = 'https://ci.md-5.net/job/BungeeCord/lastSuccessfulBuild';
 const BEDROCK_LINKS_API =
   'https://net-secondary.web.minecraft-services.net/api/v1.0/download/links';
 const BUILD_TOOLS_URL =
@@ -96,6 +97,14 @@ export async function listAvailableVersions(loader: Loader): Promise<VersionOpti
   if (loader === 'purpur') {
     const data = await fetchJson<{ versions: string[] }>(PURPUR_API);
     return newestFirst(data.versions);
+  }
+  if (loader === 'velocity' || loader === 'waterfall') {
+    const data = await fetchJson<{ versions: Record<string, string[]> }>(`${PAPER_API}/${loader}`);
+    return newestFirst(Object.values(data.versions).flat());
+  }
+  if (loader === 'bungeecord') {
+    // md-5's Jenkins only keeps the latest build around; BungeeCord supports every client version.
+    return [{ version: 'latest', recommended: true }];
   }
   if (isModded(loader)) return listModdedVersions(loader);
   if (loader === 'bedrock') {
@@ -263,14 +272,34 @@ export async function installServer(
     return { jarFile, build: null, executable: null };
   }
 
-  if (loader === 'paper' || loader === 'purpur') {
-    if (loader === 'paper') {
-      onProgress?.(0, 'Resolving Paper build');
-      onLog?.(`==> Resolving Paper builds for ${version} from the PaperMC Fill API`);
+  if (loader === 'bungeecord') {
+    onProgress?.(0, 'Resolving BungeeCord build');
+    onLog?.('==> Resolving the latest BungeeCord build from ci.md-5.net');
+    const job = await fetchJson<{ number: number }>(`${BUNGEECORD_JOB}/api/json`, onLog).catch(() => null);
+    const jarFile = 'BungeeCord.jar';
+    onLog?.(`==> Selected build #${job?.number ?? '?'} -> ${jarFile}`);
+    onProgress?.(10, `Downloading ${jarFile}`);
+    await downloadFile(
+      `${BUNGEECORD_JOB}/artifact/bootstrap/target/BungeeCord.jar`,
+      path.join(instanceDir, jarFile),
+      (pct) => onProgress?.(10 + Math.round(pct * 0.85), `Downloading ${jarFile}`),
+      onLog
+    );
+    onLog?.('==> Install complete');
+    onProgress?.(100, 'Installed');
+    return { jarFile, build: job ? String(job.number) : null, executable: null };
+  }
+
+  if (loader === 'paper' || loader === 'purpur' || loader === 'velocity' || loader === 'waterfall') {
+    if (loader !== 'purpur') {
+      const project = loader;
+      const label = project[0].toUpperCase() + project.slice(1);
+      onProgress?.(0, `Resolving ${label} build`);
+      onLog?.(`==> Resolving ${label} builds for ${version} from the PaperMC Fill API`);
       const builds = await fetchJson<
         { id: number; channel: string; downloads: Record<string, { name: string; url: string }> }[]
-      >(`${PAPER_API}/paper/versions/${version}/builds`, onLog);
-      if (!builds.length) throw new Error(`No Paper builds found for version ${version}`);
+      >(`${PAPER_API}/${project}/versions/${version}/builds`, onLog);
+      if (!builds.length) throw new Error(`No ${label} builds found for version ${version}`);
       const best =
         builds.find((b) => b.channel === 'STABLE' || b.channel === 'DEFAULT') ?? builds[0];
       const download = best.downloads['server:default'] ?? Object.values(best.downloads)[0];
@@ -415,13 +444,18 @@ export async function getLatestVanillaRelease(): Promise<string> {
   return manifest.latest.release;
 }
 
-export async function getLatestPaperBuild(version: string): Promise<string | null> {
-  const builds = await fetchJson<{ id: number; channel: string }[]>(`${PAPER_API}/paper/versions/${version}/builds`).catch(
+export async function getLatestPaperBuild(version: string, project: 'paper' | 'velocity' | 'waterfall' = 'paper'): Promise<string | null> {
+  const builds = await fetchJson<{ id: number; channel: string }[]>(`${PAPER_API}/${project}/versions/${version}/builds`).catch(
     () => []
   );
   if (!builds.length) return null;
   const best = builds.find((b) => b.channel === 'STABLE' || b.channel === 'DEFAULT') ?? builds[0];
   return String(best.id);
+}
+
+export async function getLatestBungeeCordBuild(): Promise<string | null> {
+  const job = await fetchJson<{ number: number }>(`${BUNGEECORD_JOB}/api/json`).catch(() => null);
+  return job ? String(job.number) : null;
 }
 
 export async function getLatestPurpurBuild(version: string): Promise<string | null> {

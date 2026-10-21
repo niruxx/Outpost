@@ -26,7 +26,10 @@ pluginRegistryRouter.get(
   asyncHandler(async (req, res) => {
     const query = typeof req.query.query === 'string' ? req.query.query : '';
     const limit = req.query.limit ? Number(req.query.limit) : 24;
+    const PROXY_CATALOGS = ['proxy:velocity', 'proxy:bungee'] as const;
+    const proxyCatalog = PROXY_CATALOGS.find((c) => c === req.query.catalog);
     if (req.query.source === 'curseforge') {
+      if (proxyCatalog) throw new HttpError(400, 'Proxy plugins are searched on Modrinth');
       const classId = req.query.classId ? Number(req.query.classId) : undefined;
       const results = await curseforge.search(cfTarget(req.query.catalog), query, { classId, limit });
       return res.json({ results });
@@ -34,7 +37,7 @@ pluginRegistryRouter.get(
     if (req.query.catalog === 'bedrock') throw new HttpError(400, 'Bedrock packs are on CurseForge, not Modrinth');
     const MOD_CATALOGS = ['mod:fabric', 'mod:quilt', 'mod:forge', 'mod:neoforge'] as const;
     const catalog =
-      req.query.catalog === 'datapack' ? 'datapack' : MOD_CATALOGS.find((c) => c === req.query.catalog) ?? 'plugin';
+      proxyCatalog ?? (req.query.catalog === 'datapack' ? 'datapack' : MOD_CATALOGS.find((c) => c === req.query.catalog) ?? 'plugin');
     try {
       const results = await searchPlugins(query, limit, catalog);
       res.json({ results });

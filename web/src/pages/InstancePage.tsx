@@ -29,11 +29,16 @@ import { WineTab } from './server/WineTab.js';
 import { RewindTab } from './server/RewindTab.js';
 import { useEndpoint } from '../hooks/useEndpoint.js';
 import { api, ApiError } from '../api/client.js';
-import { isMinecraftPlatform, type ServerRecord } from '../api/types.js';
+import { isMinecraftPlatform, isProxyLoader, type ServerRecord } from '../api/types.js';
+import { ProxyTab } from './server/ProxyTab.js';
+import { SteamPlayersTab, hasBrowserStats } from './server/BrowserStats.js';
 
 function InstanceNav({ server, onNavigate }: { server: ServerRecord; onNavigate: () => void }) {
   const isCs2 = server.platform === 'steam' && (server.steam_preset === 'cs2' || (!server.steam_preset && server.steam_app_id === '730'));
   const steam = !isMinecraftPlatform(server.platform);
+  // Proxies have no world: no players file, ops, whitelist, map or rewind.
+  const proxy = isProxyLoader(server.loader);
+  const world = !steam && !proxy;
   const kind = gameKindOf(server);
   return (
     <LayoutGroup id="instance-nav">
@@ -63,14 +68,15 @@ function InstanceNav({ server, onNavigate }: { server: ServerRecord; onNavigate:
       {(server.platform === 'java' || server.platform === 'bedrock' || server.platform === 'steam') && (
         <NavItem to="plugins" icon="plugin" label={addonNavLabel(server)} onClick={onNavigate} />
       )}
+      {proxy && <NavItem to="network" icon="node" label="Network" onClick={onNavigate} />}
       {isCs2 && <NavItem to="cs2" icon="bolt" label="CS2" onClick={onNavigate} />}
       {server.platform === 'steam' && <NavItem to="workshop" icon="box" label="Workshop" onClick={onNavigate} />}
       {(server.platform === 'steam' || server.platform === 'custom') && <NavItem to="wine" icon="wine" label="Wine" onClick={onNavigate} />}
-      {!steam && <NavItem to="players" icon="player" label="Players" onClick={onNavigate} />}
-      {!steam && <NavItem to="operator" icon="shield" label="Operators" onClick={onNavigate} />}
-      {!steam && <NavItem to="whitelist" icon="checklist" label="Whitelist" onClick={onNavigate} />}
-      {!steam && <NavItem to="maps" icon="map" label="Map" onClick={onNavigate} />}
-      {!steam && <NavItem to="rewind" icon="refresh" label="World Rewind" onClick={onNavigate} />}
+      {(world || hasBrowserStats(server)) && <NavItem to="players" icon="player" label="Players" onClick={onNavigate} />}
+      {world && <NavItem to="operator" icon="shield" label="Operators" onClick={onNavigate} />}
+      {world && <NavItem to="whitelist" icon="checklist" label="Whitelist" onClick={onNavigate} />}
+      {world && <NavItem to="maps" icon="map" label="Map" onClick={onNavigate} />}
+      {world && <NavItem to="rewind" icon="refresh" label="World Rewind" onClick={onNavigate} />}
       <NavItem to="update" icon="update" label="Update" onClick={onNavigate} />
     </nav>
     </LayoutGroup>
@@ -321,6 +327,8 @@ function InstancePageInner() {
   }
 
   const steam = !isMinecraftPlatform(server.platform);
+  const proxy = isProxyLoader(server.loader);
+  const world = !steam && !proxy;
   const onConsole = location.pathname.endsWith('/console');
 
   return (
@@ -355,11 +363,13 @@ function InstancePageInner() {
             <Route path="configuration" element={<SettingsTab />} />
             <Route path="files" element={<FilesTab />} />
             <Route path="plugins" element={<PluginsTab />} />
-            {!steam && <Route path="players" element={<PlayersTab />} />}
-            {!steam && <Route path="operator" element={<OperatorTab />} />}
-            {!steam && <Route path="whitelist" element={<WhitelistTab />} />}
-            {!steam && <Route path="maps" element={<MapsTab />} />}
-            {!steam && <Route path="rewind" element={<RewindTab />} />}
+            {world && <Route path="players" element={<PlayersTab />} />}
+            {hasBrowserStats(server) && <Route path="players" element={<SteamPlayersTab />} />}
+            {world && <Route path="operator" element={<OperatorTab />} />}
+            {world && <Route path="whitelist" element={<WhitelistTab />} />}
+            {world && <Route path="maps" element={<MapsTab />} />}
+            {world && <Route path="rewind" element={<RewindTab />} />}
+            {proxy && <Route path="network" element={<ProxyTab />} />}
             <Route path="update" element={<UpdateTab />} />
             <Route path="upnp" element={<UpnpTab />} />
             {/* Old tab names, so existing bookmarks keep working. */}

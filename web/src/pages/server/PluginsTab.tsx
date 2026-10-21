@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useServerDetail } from './ServerContext.js';
 import { api, ApiError } from '../../api/client.js';
 import type { AddonSupport, InstalledPlugin, ServerRecord } from '../../api/types.js';
-import { PLUGIN_CAPABLE_LOADERS } from '../../api/types.js';
+import { isProxyLoader, PLUGIN_CAPABLE_LOADERS } from '../../api/types.js';
 import { useToast } from '../../components/Toast.js';
 import { useConfirm } from '../../components/ConfirmDialog.js';
 import { PluginSearchModal } from '../../components/PluginSearchModal.js';
@@ -12,7 +12,7 @@ import { gameKindOf } from '../../components/GameArt.js';
 
 /** Sidebar label for an instance's add-on page — each game calls them something different. */
 export function addonNavLabel(server: ServerRecord): string {
-  if (PLUGIN_CAPABLE_LOADERS.includes(server.loader)) return 'Plugins';
+  if (PLUGIN_CAPABLE_LOADERS.includes(server.loader) || isProxyLoader(server.loader)) return 'Plugins';
   if (server.loader === 'vanilla') return 'Data Packs';
   if (server.platform === 'bedrock') return 'Add-ons';
   return gameKindOf(server) === 'valheim' ? 'Plugins' : 'Mods';

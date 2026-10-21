@@ -52,6 +52,9 @@ export type Loader =
   | 'neoforge'
   | 'mohist'
   | 'spongeforge'
+  | 'velocity'
+  | 'waterfall'
+  | 'bungeecord'
   | 'bedrock'
   | 'steam'
   | 'custom'
@@ -59,6 +62,16 @@ export type Loader =
 
 /** Loaders that support the Bukkit plugin API (a /plugins directory of jars). */
 export const PLUGIN_CAPABLE_LOADERS: Loader[] = ['paper', 'purpur', 'spigot'];
+
+/** Minecraft proxies: they sit in front of other Java servers and have no world of their own. */
+export const PROXY_LOADERS: Loader[] = ['velocity', 'waterfall', 'bungeecord'];
+export const isProxyLoader = (loader: string): boolean => (PROXY_LOADERS as string[]).includes(loader);
+
+/** Every loader the API accepts when creating an instance. */
+export const ALL_LOADERS: Loader[] = [
+  'vanilla', 'paper', 'purpur', 'spigot', 'fabric', 'quilt', 'forge', 'neoforge', 'mohist', 'spongeforge',
+  'velocity', 'waterfall', 'bungeecord', 'bedrock', 'steam', 'custom', 'docker',
+];
 
 /** Steam-platform servers (Palworld, Valheim, etc.) have no Minecraft-specific concept of
  *  players/operators/whitelist/world maps — those tabs and routes are hidden/rejected for them. */

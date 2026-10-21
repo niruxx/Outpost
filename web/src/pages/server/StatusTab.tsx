@@ -8,6 +8,7 @@ import type { ResourcesInfo } from '../../api/types.js';
 import { Card, CardTitle, Notice, Skeleton } from '../../components/ui.js';
 import { Icon, type IconName } from '../../components/icons.js';
 import { Sparkline, type ChartPoint } from '../../components/charts.js';
+import { BrowserStatsCard } from './BrowserStats.js';
 
 function formatUptime(ms: number): string {
   const s = Math.floor(ms / 1000);
@@ -174,6 +175,7 @@ export function StatusTab() {
       )}
 
       <ConnectionCard />
+      <BrowserStatsCard />
 
       <div className="stagger grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-3">
         <MetricCard

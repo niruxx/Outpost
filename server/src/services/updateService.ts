@@ -9,6 +9,7 @@ import { findPresetFor } from './steamGames.js';
 import { downloadFile, type LogFn } from '../utils/download.js';
 import {
   getLatestBedrockDownload,
+  getLatestBungeeCordBuild,
   getLatestPaperBuild,
   getLatestPurpurBuild,
   getLatestVanillaRelease,
@@ -107,8 +108,19 @@ export async function checkForUpdate(server: ServerRecord): Promise<UpdateCheckR
     };
   }
 
-  if (server.loader === 'paper') {
-    const latestBuild = await getLatestPaperBuild(server.version);
+  if (server.loader === 'bungeecord') {
+    const latestBuild = await getLatestBungeeCordBuild();
+    return {
+      currentVersion: server.version,
+      currentBuild: server.build,
+      latestVersion: server.version,
+      latestBuild,
+      updateAvailable: !!latestBuild && latestBuild !== server.build,
+    };
+  }
+
+  if (server.loader === 'paper' || server.loader === 'velocity' || server.loader === 'waterfall') {
+    const latestBuild = await getLatestPaperBuild(server.version, server.loader);
     return {
       currentVersion: server.version,
       currentBuild: server.build,

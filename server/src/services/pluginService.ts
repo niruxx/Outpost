@@ -8,7 +8,7 @@ import { HttpError } from '../utils/asyncHandler.js';
 import { readServerProperties } from './propertiesService.js';
 import { findPresetFor } from './steamGames.js';
 import type { ServerRecord } from '../types/index.js';
-import { PLUGIN_CAPABLE_LOADERS } from '../types/index.js';
+import { isProxyLoader, PLUGIN_CAPABLE_LOADERS } from '../types/index.js';
 
 /**
  * "Plugins" generalized across every instance type. Each kind of server extends itself a
@@ -21,7 +21,7 @@ import { PLUGIN_CAPABLE_LOADERS } from '../types/index.js';
  *   pak      — Palworld .pak mods in Pal/Content/Paks/~mods
  */
 export type AddonKind = 'bukkit' | 'datapack' | 'bedrock' | 'bepinex' | 'pak' | 'mod';
-export type AddonCatalog = 'plugin' | 'datapack' | 'bedrock' | `mod:${'fabric' | 'quilt' | 'forge' | 'neoforge'}`;
+export type AddonCatalog = 'plugin' | 'datapack' | 'bedrock' | `mod:${'fabric' | 'quilt' | 'forge' | 'neoforge'}` | `proxy:${'velocity' | 'bungee'}`;
 
 export interface AddonProfile {
   kind: AddonKind;
@@ -89,6 +89,25 @@ export function getAddonSupport(server: ServerRecord): AddonSupport {
         extensions: ['.jar'],
         catalog: `mod:${ecosystem}` as AddonCatalog,
         notes,
+        warning: null,
+      },
+    };
+  }
+  if (isProxyLoader(server.loader)) {
+    const velocity = server.loader === 'velocity';
+    return {
+      supported: true,
+      profile: {
+        kind: 'bukkit',
+        label: 'Plugins',
+        singular: 'plugin',
+        folder: 'plugins',
+        extensions: ['.jar'],
+        catalog: velocity ? 'proxy:velocity' : 'proxy:bungee',
+        notes: [
+          velocity ? 'Velocity plugins only — Bukkit/Paper plugins go on the backend servers.' : 'BungeeCord plugins (Waterfall runs them too) — Bukkit/Paper plugins go on the backend servers.',
+          'Restart the proxy after installing, removing, or toggling a plugin.',
+        ],
         warning: null,
       },
     };
