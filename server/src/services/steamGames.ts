@@ -8,6 +8,7 @@ import { installQuake3 } from './directInstallers.js';
 import { workshopStateOf } from './workshopState.js';
 import type { LogFn } from '../utils/download.js';
 import type { ServerRecord } from '../types/index.js';
+import { gmodLaunchArgs } from './gmodService.js';
 
 export type StopStrategy =
   | { kind: 'stdin'; commands: string[]; delayMs: number }
@@ -418,16 +419,14 @@ export const STEAM_GAME_PRESETS: SteamGamePreset[] = [
       '-console',
       '-norestart',
       '-port', String(server.server_port),
-      '+maxplayers', '16',
-      '+gamemode', 'sandbox',
-      '+map', 'gm_construct',
+      ...gmodLaunchArgs(server),
       ...extraArgs(server),
     ],
     readyRegex: /Connection to Steam servers successful|VAC secure mode is activated/i,
     stopStrategy: { kind: 'stdin', commands: ['quit'], delayMs: 0 },
     needsExecuteBit: true,
     workshop: { appId: '4000', mode: 'gmod', needsLogin: false },
-    notes: 'Change the gamemode with extra args (e.g. "+gamemode terrortown"); addons go in garrysmod/addons, or add them from the Workshop tab. Settings live in garrysmod/cfg/server.cfg.',
+    notes: 'Pick the gamemode, map and slots on the Garry’s Mod tab; addons, gamemodes and maps go on the Addons page or come from the Workshop tab. Other settings live in garrysmod/cfg/server.cfg.',
   },
   {
     id: 'l4d2',

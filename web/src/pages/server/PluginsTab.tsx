@@ -15,6 +15,7 @@ export function addonNavLabel(server: ServerRecord): string {
   if (PLUGIN_CAPABLE_LOADERS.includes(server.loader) || isProxyLoader(server.loader)) return 'Plugins';
   if (server.loader === 'vanilla') return 'Data Packs';
   if (server.platform === 'bedrock') return 'Add-ons';
+  if (server.platform === 'steam' && (server.steam_preset === 'gmod' || server.steam_app_id === '4020')) return 'Addons';
   return gameKindOf(server) === 'valheim' ? 'Plugins' : 'Mods';
 }
 

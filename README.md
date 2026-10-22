@@ -229,7 +229,7 @@ Every template is just a starting point — change the image, ports, environment
 | 🔫 | **Counter-Strike 2, CS:GO, Source, 1.6 & Condition Zero** | — | `27015/udp` |
 | 🎩 | **Team Fortress 2** | — | `27015/udp` |
 | ⚡ | **Quake III Arena (ioquake3) & Quake Live** | — | `27960/udp` |
-| 🛠️ | **Garry's Mod** | 🧰 Steam Workshop addons & collections | `27015/udp` |
+| 🛠️ | **Garry's Mod** | 🧰 Workshop addons & collections, uploaded `.gma` / folder addons / gamemodes / maps, CS:S content | `27015/udp` |
 | 🛠️ | **Left 4 Dead 2, HL2:DM, DoD:S, Half-Life DM, TFC** | — | `27015/udp` |
 | 🦖 | **ARK: Survival Evolved** | 🧰 Steam Workshop mods (load order) | `7777/udp` |
 | 🪖 | **Arma 3** | 🧰 Steam Workshop mods + keys | `2302/udp` |
@@ -440,6 +440,7 @@ The **Manage → Plugins** page (called *Data Packs*, *Add-ons* or *Mods* where 
 - **🪨 Bedrock** — upload `.mcpack`, `.mcaddon` (nested packs included) or `.zip`. Packs are unpacked into `behavior_packs`/`resource_packs` and **activated for the world**; toggling adds/removes them.
 - **🪖 Valheim** — BepInEx plugins (`.dll`, or a Thunderstore-style `.zip` unpacked into its own folder). Upload *BepInExPack_Valheim* to the instance root once and Outpost loads it automatically on Linux.
 - **🐾 Palworld** — `.pak` mods into `Pal/Content/Paks/~mods`.
+- **🛠️ Garry's Mod** — the *Addons* page takes `.gma` addons, a `.zip` of a folder addon or a gamemode (e.g. straight from GitHub — unpacked and lowercased for Linux), and `.bsp` maps. Addons can be turned off without deleting them, and Workshop items show up read-only. The **Garry's Mod** tab sets the gamemode, map and slots (picked from what's installed), hostname, password, loading screen and server token, and can download and mount **Counter-Strike: Source content** for TTT and CS:S maps in one click.
 
 </details>
 
@@ -880,6 +881,7 @@ Nodes on older versions can still transfer instances to and from upgraded ones.
 - [x] 🔫 Call of Duty: Black Ops III server (Wine on Linux) with Workshop maps & mods
 - [x] 🍷 Per-instance Wine settings and dependencies (winetricks, installers)
 - [x] 🧰 Steam Workshop for Garry's Mod, ARK and Arma 3
+- [x] 🛠️ Garry's Mod addons, gamemodes and maps from uploads, a settings tab, and one-click CS:S content mounting
 - [x] ☕ Java version manager, 🎛️ RCON consoles, 🔄 automatic updates and 📜 console log history
 - [x] 📦 Server templates, 🌐 public status pages and 🌍 translations
 - [x] 📜 Audit log with IP/device, retention, CSV export, and journald / `/var/log` viewers

@@ -31,6 +31,7 @@ import { useEndpoint } from '../hooks/useEndpoint.js';
 import { api, ApiError } from '../api/client.js';
 import { isMinecraftPlatform, isProxyLoader, type ServerRecord } from '../api/types.js';
 import { ProxyTab } from './server/ProxyTab.js';
+import { GmodTab, isGmodServer } from './server/GmodTab.js';
 import { SteamPlayersTab, hasBrowserStats } from './server/BrowserStats.js';
 
 function InstanceNav({ server, onNavigate }: { server: ServerRecord; onNavigate: () => void }) {
@@ -70,6 +71,7 @@ function InstanceNav({ server, onNavigate }: { server: ServerRecord; onNavigate:
       )}
       {proxy && <NavItem to="network" icon="node" label="Network" onClick={onNavigate} />}
       {isCs2 && <NavItem to="cs2" icon="bolt" label="CS2" onClick={onNavigate} />}
+      {isGmodServer(server) && <NavItem to="gmod" icon="bolt" label="Garry's Mod" onClick={onNavigate} />}
       {server.platform === 'steam' && <NavItem to="workshop" icon="box" label="Workshop" onClick={onNavigate} />}
       {(server.platform === 'steam' || server.platform === 'custom') && <NavItem to="wine" icon="wine" label="Wine" onClick={onNavigate} />}
       {(world || hasBrowserStats(server)) && <NavItem to="players" icon="player" label="Players" onClick={onNavigate} />}
@@ -370,6 +372,7 @@ function InstancePageInner() {
             {world && <Route path="maps" element={<MapsTab />} />}
             {world && <Route path="rewind" element={<RewindTab />} />}
             {proxy && <Route path="network" element={<ProxyTab />} />}
+            {isGmodServer(server) && <Route path="gmod" element={<GmodTab />} />}
             <Route path="update" element={<UpdateTab />} />
             <Route path="upnp" element={<UpnpTab />} />
             {/* Old tab names, so existing bookmarks keep working. */}

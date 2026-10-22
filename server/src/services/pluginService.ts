@@ -2,11 +2,13 @@ import fs from 'node:fs';
 import { isModded } from './moddedService.js';
 import path from 'node:path';
 import AdmZip from 'adm-zip';
-import { instanceDir, safeJoin, safeJoinReal } from '../utils/paths.js';
+import { instanceDir, safeJoinReal } from '../utils/paths.js';
+import { extractZipSafely } from '../utils/zip.js';
 import { downloadFile, type LogFn } from '../utils/download.js';
 import { HttpError } from '../utils/asyncHandler.js';
 import { readServerProperties } from './propertiesService.js';
 import { findPresetFor } from './steamGames.js';
+import { deleteGmodAddon, installGmodUpload, isGmod, listGmodAddons, setGmodAddonEnabled } from './gmodService.js';
 import type { ServerRecord } from '../types/index.js';
 import { isProxyLoader, PLUGIN_CAPABLE_LOADERS } from '../types/index.js';
 
@@ -20,7 +22,7 @@ import { isProxyLoader, PLUGIN_CAPABLE_LOADERS } from '../types/index.js';
  *   bepinex  — Valheim BepInEx plugins in BepInEx/plugins
  *   pak      — Palworld .pak mods in Pal/Content/Paks/~mods
  */
-export type AddonKind = 'bukkit' | 'datapack' | 'bedrock' | 'bepinex' | 'pak' | 'mod';
+export type AddonKind = 'bukkit' | 'datapack' | 'bedrock' | 'bepinex' | 'pak' | 'mod' | 'gmod';
 export type AddonCatalog = 'plugin' | 'datapack' | 'bedrock' | `mod:${'fabric' | 'quilt' | 'forge' | 'neoforge'}` | `proxy:${'velocity' | 'bungee'}`;
 
 export interface AddonProfile {
@@ -188,6 +190,24 @@ export function getAddonSupport(server: ServerRecord): AddonSupport {
         },
       };
     }
+    if (isGmod(server)) {
+      return {
+        supported: true,
+        profile: {
+          kind: 'gmod',
+          label: 'Addons',
+          singular: 'addon',
+          folder: 'garrysmod/addons',
+          extensions: ['.gma', '.zip', '.bsp'],
+          catalog: null,
+          notes: [
+            'Upload .gma addons, a .zip of a folder addon or a gamemode (e.g. from GitHub), or .bsp maps. Steam Workshop items are added on the Workshop tab and show up here too.',
+            'Pick the gamemode and map on the Garry’s Mod tab. Restart the server after changing addons.',
+          ],
+          warning: null,
+        },
+      };
+    }
     if (preset?.id === 'palworld') {
       return {
         supported: true,
@@ -251,6 +271,8 @@ function addonDir(server: ServerRecord, profile: AddonProfile): string {
       return inInstance(server, 'BepInEx/plugins');
     case 'pak':
       return inInstance(server, 'Pal/Content/Paks/~mods');
+    case 'gmod':
+      return inInstance(server, 'garrysmod/addons');
     case 'bedrock':
       throw new Error('Bedrock packs are not a single directory');
   }
@@ -319,27 +341,6 @@ function resolveAddonPath(server: ServerRecord, profile: AddonProfile, fileName:
 
 function safeFileName(name: string): string {
   return path.basename(name).replace(/[^a-zA-Z0-9._ +-]/g, '_');
-}
-
-/** Extracts every entry of a zip into dest, refusing entries that would escape it (zip-slip). */
-function extractZipSafely(zip: AdmZip, dest: string, prefix = '') {
-  for (const entry of zip.getEntries()) {
-    if (!entry.entryName.startsWith(prefix)) continue;
-    const rel = entry.entryName.slice(prefix.length);
-    if (!rel) continue;
-    let target: string;
-    try {
-      target = safeJoin(dest, rel);
-    } catch {
-      throw new HttpError(400, `Archive contains an unsafe path: ${entry.entryName}`);
-    }
-    if (entry.isDirectory) {
-      fs.mkdirSync(target, { recursive: true });
-    } else {
-      fs.mkdirSync(path.dirname(target), { recursive: true });
-      fs.writeFileSync(target, entry.getData());
-    }
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -500,6 +501,7 @@ function installBedrockArchive(server: ServerRecord, buffer: Buffer, depth = 0):
 
 export function listPlugins(server: ServerRecord): InstalledPlugin[] {
   const profile = requireAddonProfile(server);
+  if (profile.kind === 'gmod') return listGmodAddons(server);
   return profile.kind === 'bedrock' ? listBedrockPacks(server) : listFileAddons(server, profile);
 }
 
@@ -510,6 +512,7 @@ export function setPluginEnabled(server: ServerRecord, fileName: string, enable:
     setPackActive(server, type, manifest, enable);
     return;
   }
+  if (profile.kind === 'gmod') return setGmodAddonEnabled(server, fileName, enable);
   const current = resolveAddonPath(server, profile, fileName);
   if (!fs.existsSync(current)) throw new HttpError(404, `${profile.singular} not found`);
   if (fs.statSync(current).isDirectory()) throw new HttpError(400, 'Folders can’t be toggled — delete it instead');
@@ -527,6 +530,7 @@ export function deletePlugin(server: ServerRecord, fileName: string): void {
     fs.rmSync(folder, { recursive: true, force: true });
     return;
   }
+  if (profile.kind === 'gmod') return deleteGmodAddon(server, fileName);
   fs.rmSync(resolveAddonPath(server, profile, fileName), { recursive: true, force: true });
 }
 
@@ -539,6 +543,7 @@ export function installUploadedAddon(server: ServerRecord, originalName: string,
     throw new HttpError(400, `${originalName}: expected ${profile.extensions.join(', ')}`);
   }
 
+  if (profile.kind === 'gmod') return installGmodUpload(server, originalName, buffer);
   if (profile.kind === 'bedrock') {
     const installed = installBedrockArchive(server, buffer);
     if (!installed.length) throw new HttpError(400, `${originalName}: no Bedrock pack (manifest.json) found inside`);
