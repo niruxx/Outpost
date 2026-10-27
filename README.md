@@ -775,10 +775,12 @@ then `launchctl load ~/Library/LaunchAgents/com.outpost.panel.plist`.
 <br>
 
 ```bash
-./update.sh               # recommended
+./update.sh                   # recommended — asks whether to include instance files in the backup
+./update.sh --skip-instances  # back up only the database & settings (fast on big installs)
+./update.sh --no-backup       # skip the data backup entirely
 ```
 
-Backs up `server/data/` first, records the current commit, `git pull --ff-only`s, rebuilds, and test-starts the new build before touching your live service — offering an instant rollback if it fails. `-y` runs it unattended; `--rollback` restores the previous commit.
+Backs up `server/data/` first, records the current commit, `git pull --ff-only`s, rebuilds, and test-starts the new build before touching your live service — offering an instant rollback if it fails. `-y` runs it unattended (full backup unless you add `--skip-instances` or `--no-backup`); `--rollback` restores the previous commit. Updates never modify `server/data/`, so skipping instance files only means there's no copy of them if something else goes wrong. `--skip-instances` leaves out instance files, snapshots, World Rewind points, Java runtimes, the map cache and SteamCMD.
 
 Manual: `git pull && npm run setup && npm run build`, then restart (`pm2 restart outpost` / `sudo systemctl restart outpost` / …).
 

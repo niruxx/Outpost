@@ -20,6 +20,10 @@
 #                            restart the live systemd service on success, do nothing on failure
 #   ./update.sh --rollback   skip the update entirely and just restore the last pre-update
 #                            commit this script recorded (asks first)
+#   ./update.sh --skip-instances
+#                            back up only the database and settings, not instance files,
+#                            snapshots or downloaded tools (much faster on big installs)
+#   ./update.sh --no-backup  don't back up server/data at all
 #
 set -euo pipefail
 
@@ -40,18 +44,26 @@ heading() { printf '\n%s%s%s\n' "$BOLD" "$*" "$NC"; }
 
 NONINTERACTIVE=0
 ROLLBACK_ONLY=0
+# full | settings (no instance files) | none — unset means "ask" when interactive, full otherwise
+BACKUP_MODE=""
 for arg in "$@"; do
   case "$arg" in
     -y|--yes) NONINTERACTIVE=1 ;;
     --rollback) ROLLBACK_ONLY=1 ;;
+    --skip-instances) BACKUP_MODE=settings ;;
+    --no-backup) BACKUP_MODE=none ;;
     -h|--help)
-      echo "Usage: $0 [-y|--yes] [--rollback]"
+      echo "Usage: $0 [-y|--yes] [--rollback] [--skip-instances | --no-backup]"
       echo "  -y, --yes    Non-interactive: stash local changes, test the build, restart on"
       echo "               success, leave the update in place (untested-but-built) on failure."
       echo "  --rollback   Skip updating; just restore the last pre-update commit recorded"
       echo "               by a previous run of this script."
+      echo "  --skip-instances  Back up only the database and settings — not instance files,"
+      echo "               snapshots, Java runtimes or SteamCMD (much smaller and faster)."
+      echo "  --no-backup  Don't back up server/data at all."
       exit 0
       ;;
+    *) die "Unknown option: $arg (see $0 --help)" ;;
   esac
 done
 
@@ -141,9 +153,32 @@ mkdir -p "$BACKUP_ROOT"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 DATA_BACKUP="$BACKUP_ROOT/data-$TIMESTAMP.tar.gz"
 
-if [[ -d "$DATA_DIR" ]]; then
-  info "Archiving $DATA_DIR -> $DATA_BACKUP"
-  tar -czf "$DATA_BACKUP" -C "$(dirname "$DATA_DIR")" "$(basename "$DATA_DIR")"
+# The bulky parts of server/data: every instance's files, snapshots and re-downloadable tools.
+# The database, settings and keys are what an update could actually affect.
+BULKY=(servers backups rewind runtimes map-cache steamcmd)
+
+if [[ -d "$DATA_DIR" && -z "$BACKUP_MODE" ]]; then
+  if [[ "$NONINTERACTIVE" == "1" || ! -t 0 ]]; then
+    BACKUP_MODE=full
+  else
+    info "Instance files, snapshots and tools take up $(du -shc "${BULKY[@]/#/$DATA_DIR/}" 2>/dev/null | tail -1 | cut -f1) of server/data."
+    if confirm "Include instance files and snapshots in the backup?" y; then BACKUP_MODE=full; else BACKUP_MODE=settings; fi
+  fi
+fi
+
+if [[ -d "$DATA_DIR" && "$BACKUP_MODE" == "none" ]]; then
+  warn "Skipping the data backup (--no-backup). Updates don't touch server/data, but you'll have no copy if something goes wrong."
+  DATA_BACKUP=""
+elif [[ -d "$DATA_DIR" ]]; then
+  EXCLUDES=()
+  if [[ "$BACKUP_MODE" == "settings" ]]; then
+    DATA_BACKUP="$BACKUP_ROOT/data-settings-$TIMESTAMP.tar.gz"
+    for d in "${BULKY[@]}"; do EXCLUDES+=("--exclude=$(basename "$DATA_DIR")/$d"); done
+    info "Archiving the database and settings (instance files, snapshots and tools skipped) -> $DATA_BACKUP"
+  else
+    info "Archiving $DATA_DIR -> $DATA_BACKUP"
+  fi
+  tar -czf "$DATA_BACKUP" ${EXCLUDES[@]+"${EXCLUDES[@]}"} -C "$(dirname "$DATA_DIR")" "$(basename "$DATA_DIR")"
   ok "Data backed up ($(du -h "$DATA_BACKUP" | cut -f1))"
 else
   warn "No data directory found at $DATA_DIR yet (fresh install?) — nothing to back up."
@@ -240,7 +275,7 @@ rollback() {
   git reset --hard "$PREV_SHA"
   npm run setup
   npm run build
-  ok "Rolled back and rebuilt. Your data was never touched; the backup is also still at: $DATA_BACKUP"
+  ok "Rolled back and rebuilt. Your data was never touched${DATA_BACKUP:+; the backup is also still at: $DATA_BACKUP}"
 }
 
 TEST_PORT="${PORT:-8642}"
@@ -298,5 +333,5 @@ else
 fi
 
 heading "Done"
-echo "Data backup: ${DATA_BACKUP:-none taken (no data directory existed yet)}"
+echo "Data backup: ${DATA_BACKUP:-none taken}"
 echo "Roll back the code any time with: ./update.sh --rollback"
