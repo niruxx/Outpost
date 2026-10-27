@@ -42,6 +42,8 @@ export interface Cs2Settings {
   /** Game Server Login Token — needed to be listed publicly (steamcommunity.com/dev/managegameservers, app 730). */
   gslt: string;
   lan: boolean;
+  /** VAC off (-insecure): VAC-banned players can join. Insecure servers are hidden from most server-browser filters. */
+  vacOff: boolean;
   bots: { quota: number; difficulty: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7; fill: boolean; joinAfterPlayer: boolean };
   preset: string | null;
   /** Extra cvars (key → value), applied last. */
@@ -70,6 +72,7 @@ export const DEFAULTS: Cs2Settings = {
   maxPlayers: 20,
   gslt: '',
   lan: false,
+  vacOff: false,
   bots: { quota: 0, difficulty: 2, fill: true, joinAfterPlayer: true },
   preset: null,
   cvars: {},
@@ -260,6 +263,7 @@ export function saveCs2Settings(server: ServerRecord, input: Record<string, unkn
     next.maxPlayers = n;
   }
   if (input.lan !== undefined) next.lan = input.lan === true;
+  if (input.vacOff !== undefined) next.vacOff = input.vacOff === true;
   if (input.bots && typeof input.bots === 'object') {
     const b = input.bots as Record<string, unknown>;
     const quota = b.quota === undefined ? next.bots.quota : Number(b.quota);
@@ -328,6 +332,7 @@ export function cs2LaunchArgs(server: ServerRecord): string[] {
     ...(s.workshopMap ? ['+host_workshop_map', s.workshopMap] : ['+map', s.map]),
     ...(s.gslt ? ['+sv_setsteamaccount', s.gslt] : []),
     ...(s.lan ? ['+sv_lan', '1'] : []),
+    ...(s.vacOff ? ['-insecure'] : []),
   ];
 }
 

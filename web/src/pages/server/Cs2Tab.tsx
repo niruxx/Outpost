@@ -19,6 +19,7 @@ interface Settings {
   maxPlayers: number;
   gslt: string;
   lan: boolean;
+  vacOff: boolean;
   bots: { quota: number; difficulty: number; fill: boolean; joinAfterPlayer: boolean };
   preset: string | null;
   cvars: Record<string, string>;
@@ -254,6 +255,15 @@ export function Cs2Tab() {
           <label className="mt-3 flex items-center gap-2 text-sm text-ink-300">
             <input type="checkbox" disabled={!canEdit} checked={draft.lan} onChange={(e) => set({ lan: e.target.checked })} />
             LAN only (not reachable over the internet)
+          </label>
+          <label className="mt-2 flex items-start gap-2 text-sm text-ink-300">
+            <input type="checkbox" className="mt-1" disabled={!canEdit} checked={draft.vacOff} onChange={(e) => set({ vacOff: e.target.checked })} />
+            <span>
+              Allow VAC-banned players (VAC off)
+              <span className="block text-xs text-ink-500">
+                Starts the server with <span className="font-mono">-insecure</span>: VAC is off, so friends with VAC bans can join. Nobody on this server is VAC-protected, and it shows as insecure in the server browser. Applies on the next start.
+              </span>
+            </span>
           </label>
           <p className="mt-2 text-xs text-ink-500">
             Without a token the server still works by IP (connect &lt;address&gt; in the console) but won’t be listed. Make one at{' '}

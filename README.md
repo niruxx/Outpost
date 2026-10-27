@@ -661,6 +661,7 @@ Every CS2 instance gets a **CS2** tab. Settings are written to `game/csgo/cfg/ou
 - ⚡ **Presets** — **Surf** and **Bhop** set every movement cvar those maps need (air acceleration, auto-bhop, no stamina or fall damage, high max velocity, endless rounds) so they work straight away; plus practice, competitive, deathmatch and casual. Your own extra cvars are kept.
 - 🗺️ **Map library** — paste a Workshop link, an ID or a collection link; Outpost checks each with Steam (CS2 items only) and lists them with previews. Maps uploaded to `game/csgo/maps` (any prefix) and Workshop maps the server downloaded appear automatically. Outpost creates the Workshop download folders CS2 expects (fixing *Staging/Install library folder not found*).
 - 🤖 **Server & bots** — hostname, password, slots, server token (GSLT, to be listed publicly), LAN mode, bot count, difficulty and fill.
+- 🔓 **Allow VAC-banned players** — starts the server with `-insecure` (VAC off) so friends with VAC bans can play; nobody on it is VAC-protected and it shows as insecure.
 - 🛠️ **Advanced cvars** — any extra cvar; dangerous ones (`rcon_password`, `exec`, `quit`…) are refused.
 - 📋 **Commands panel** — quick actions (restart round, end warmup, add/kick bots, re-apply settings), a searchable list of server commands to send in one click, and **Becoming an admin**: turn on RCON (shows the exact `rcon_address` / `rcon_password` lines) or list SteamID64s as CounterStrikeSharp admins (`@css/root`).
 
