@@ -191,6 +191,22 @@ export function createCurseForge(deps: { fetch: FetchFn; getKey: () => string | 
     };
   }
 
+  /** Resolve a public Minecraft mod project URL through the API; never fetch user URLs. */
+  async function resolveLink(link: string): Promise<CfResult> {
+    const slug = parseCurseForgeModLink(link);
+    const params = new URLSearchParams({ gameId: '432', classId: '6', slug, pageSize: '1' });
+    const { data } = await cf<{ data: CfMod[] }>(`/v1/mods/search?${params}`);
+    const mod = data.find(m => m.slug === slug && m.classId === 6);
+    if (!mod) throw new HttpError(404, 'That Minecraft mod was not found on CurseForge');
+    return {
+      id: mod.id, slug: mod.slug, title: mod.name, description: mod.summary,
+      iconUrl: mod.logo?.thumbnailUrl ?? null, downloads: mod.downloadCount,
+      author: mod.authors?.[0]?.name ?? 'unknown', categories: (mod.categories ?? []).map(c => c.name),
+      className: 'Mods', websiteUrl: `https://www.curseforge.com/minecraft/mc-mods/${mod.slug}`,
+      downloadable: mod.allowModDistribution !== false,
+    };
+  }
+
   /** Confirms a key works before it's saved. */
   async function checkKey(key: string): Promise<void> {
     const res = await deps.fetch(`${API}/v1/games?pageSize=1`, { headers: { 'x-api-key': key, Accept: 'application/json' }, signal: AbortSignal.timeout(15_000) });
@@ -198,7 +214,7 @@ export function createCurseForge(deps: { fetch: FetchFn; getKey: () => string | 
     if (!res.ok) throw new HttpError(502, `CurseForge answered ${res.status}`);
   }
 
-  return { classes, search, resolveFile, checkKey, reset: () => (gameIds.clear(), classCache.clear()) };
+  return { classes, search, resolveFile, resolveLink, checkKey, reset: () => (gameIds.clear(), classCache.clear()) };
 }
 
 export const curseforge = createCurseForge({
@@ -219,4 +235,16 @@ export async function saveCurseforgeKey(key: string | null): Promise<void> {
     setSetting(SETTING_CURSEFORGE_KEY, key);
   }
   curseforge.reset();
+}
+
+/** Only project links are accepted so a file URL cannot silently select a different release. */
+export function parseCurseForgeModLink(link: string): string {
+  let url: URL;
+  try { url = new URL(link.trim()); } catch { throw new HttpError(400, 'Enter a valid CurseForge Minecraft mod project link'); }
+  if (url.protocol !== 'https:' || !['curseforge.com', 'www.curseforge.com'].includes(url.hostname) || url.username || url.password || url.port) {
+    throw new HttpError(400, 'Use an HTTPS link from curseforge.com');
+  }
+  const match = /^\/minecraft\/mc-mods\/([a-z0-9][a-z0-9-]*)\/?$/.exec(url.pathname);
+  if (!match) throw new HttpError(400, 'Use a Minecraft mod project link, such as https://www.curseforge.com/minecraft/mc-mods/jade. Modpacks and individual file links are not supported here.');
+  return match[1];
 }

@@ -74,6 +74,26 @@ export function PluginSearchModal({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [picking, setPicking] = useState<{ result: PluginSearchResult; source: Source } | null>(null);
+  const [curseforgeLink, setCurseforgeLink] = useState('');
+  const [resolvingLink, setResolvingLink] = useState(false);
+  const [linkError, setLinkError] = useState('');
+
+  async function importCurseforgeLink() {
+    setResolvingLink(true);
+    setLinkError('');
+    try {
+      const { result } = await api.post<{ result: PluginSearchResult }>('/plugins/curseforge/resolve-link', { url: curseforgeLink.trim() });
+      if (result.downloadable === false) {
+        setLinkError('The author requires downloading this mod from CurseForge. Download it there, then upload it to the instance.');
+        return;
+      }
+      setPicking({ result, source: 'curseforge' });
+    } catch (err) {
+      setLinkError(err instanceof ApiError ? err.message : 'Could not look up that CurseForge link');
+    } finally {
+      setResolvingLink(false);
+    }
+  }
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
   useEffect(() => {
@@ -200,6 +220,18 @@ export function PluginSearchModal({
             </>
           )}
         </div>
+
+        {catalog.startsWith('mod:') && (
+          <form className="mb-4 space-y-2 rounded-xl border border-surface-600 p-3" onSubmit={e => { e.preventDefault(); void importCurseforgeLink(); }}>
+            <label htmlFor="curseforge-mod-link" className="text-sm font-medium text-ink-200">Install from a CurseForge link</label>
+            <div className="flex gap-2">
+              <Input id="curseforge-mod-link" type="url" value={curseforgeLink} onChange={e => setCurseforgeLink(e.target.value)} placeholder="https://www.curseforge.com/minecraft/mc-mods/jade" required />
+              <Button type="submit" disabled={resolvingLink || !curseforgeLink.trim()}>{resolvingLink ? 'Checking...' : 'Review mod'}</Button>
+            </div>
+            <p className="text-xs text-ink-500">Paste a mod project link to choose an instance and review its required dependencies. Uses the admin-configured CurseForge API key.</p>
+            <ErrorText>{linkError}</ErrorText>
+          </form>
+        )}
 
         <ErrorText>{error}</ErrorText>
 

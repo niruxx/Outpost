@@ -20,6 +20,15 @@ pluginRegistryRouter.get(
   })
 );
 
+/** Import a CurseForge project into the normal instance/dependency review flow. */
+pluginRegistryRouter.post(
+  '/curseforge/resolve-link',
+  asyncHandler(async (req, res) => {
+    if (typeof req.body?.url !== 'string' || req.body.url.length > 2048) throw new HttpError(400, 'A CurseForge mod link is required');
+    res.json({ result: await curseforge.resolveLink(req.body.url) });
+  })
+);
+
 /** Global catalog search — Modrinth (default) or CurseForge (`source=curseforge`). */
 pluginRegistryRouter.get(
   '/search',
