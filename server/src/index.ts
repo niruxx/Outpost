@@ -27,6 +27,10 @@ import { settingsRouter } from './routes/settings.routes.js';
 import { nodesRouter } from './routes/nodes.routes.js';
 import { upnpRouter } from './routes/upnp.routes.js';
 import { dockerRouter } from './routes/docker.routes.js';
+import { libvirtRouter } from './routes/libvirt.routes.js';
+import { terminalRouter } from './routes/terminal.routes.js';
+import { storageRouter } from './routes/storage.routes.js';
+import { registerHostTerminal, stopHostTerminals } from './services/hostTerminalService.js';
 import { catalogRouter } from './routes/catalog.routes.js';
 import { nodeLinkRouter } from './routes/nodeLink.routes.js';
 import { tasksRouter } from './routes/tasks.routes.js';
@@ -131,6 +135,9 @@ app.use('/api/environment', environmentRouter);
 app.use('/api/settings', settingsRouter);
 app.use('/api/nodes', nodesRouter);
 app.use('/api/docker', dockerRouter);
+app.use('/api/libvirt', libvirtRouter);
+app.use('/api/terminal', terminalRouter);
+app.use('/api/storage', storageRouter);
 app.use('/api/catalog', catalogRouter);
 app.use('/api/node-link', nodeLinkRouter);
 app.use('/api/notifications', notificationsRouter);
@@ -158,9 +165,11 @@ app.use((err: unknown, _req: express.Request, res: express.Response, _next: expr
 
 const httpServer = http.createServer(app);
 const wss = new WebSocketServer({ noServer: true });
+registerHostTerminal(httpServer);
 
 httpServer.on('upgrade', (req, socket, head) => {
   const url = new URL(req.url ?? '', 'http://localhost');
+  if (url.pathname === '/ws/host-terminal') return; // handled by the host terminal upgrader
   const match = url.pathname.match(/^\/ws\/console\/([^/]+)$/);
   if (!match) {
     socket.destroy();
@@ -245,6 +254,7 @@ bootstrap();
 function shutdown(signal: string) {
   logger.info(`Received ${signal}, shutting down`);
   stopAllForShutdown();
+  stopHostTerminals();
   void stopSftp();
   httpServer.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 5000).unref();

@@ -1,3 +1,4 @@
+import { getConfigAccess } from '../services/userService.js';
 import multer from 'multer';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
@@ -6,7 +7,7 @@ import { Router, type Request } from 'express';
 import fs from 'node:fs';
 import os from 'node:os';
 import { asyncHandler, HttpError } from '../utils/asyncHandler.js';
-import { requireAuth, requirePermission, requireRole, requireServerAccess } from '../auth/middleware.js';
+import { requireAuth, requireConfigItems, requirePermission, requireRole, requireServerAccess } from '../auth/middleware.js';
 import {
   createServerRecord,
   deleteServerRecord,
@@ -524,6 +525,7 @@ serversRouter.get(
       server,
       runtime: getRuntimeInfo(server.id),
       running: isRunning(server.id),
+      configAccess: getConfigAccess(req.auth!.sub, req.auth!.role, server.id),
       permissions: getServerPermissions(req.auth!.sub, req.auth!.role, server.id) ?? [],
       autoRestart: getAutoRestartState(server.id),
       owner: server.created_by ? { id: server.created_by, username: getUserById(server.created_by)?.username ?? 'unknown' } : null,
@@ -705,7 +707,7 @@ serversRouter.patch(
   '/:serverId',
   requireServerAccess(),
   asyncHandler(async (req, res) => {
-    requirePermission(req, 'settings');
+    requireConfigItems(req, 'setting', req.body ?? {});
     const server = getServer(req.params.serverId);
     if (!server) throw new HttpError(404, 'Server not found');
     const {
@@ -895,7 +897,6 @@ serversRouter.put(
   '/:serverId/properties',
   requireServerAccess(),
   asyncHandler(async (req, res) => {
-    requirePermission(req, 'settings');
     const server = getServer(req.params.serverId);
     if (!server) throw new HttpError(404, 'Server not found');
     const { updates } = req.body ?? {};
@@ -909,6 +910,7 @@ serversRouter.put(
       throw new HttpError(400, 'server-port must be between 1 and 65535');
     }
     if (Number(updates['server-port']) > 65535) throw new HttpError(400, 'server-port must be between 1 and 65535');
+    requireConfigItems(req, 'property', updates);
     const liveQueued: string[] = [];
     const restartRequired: string[] = [];
     const commands: Record<string, (value: string) => string | null> = {

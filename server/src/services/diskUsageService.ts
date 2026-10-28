@@ -1,6 +1,7 @@
+import { backupDir, rewindDir } from './backupStorageService.js';
 import fs from 'node:fs';
 import path from 'node:path';
-import { instanceDir, backupDir } from '../utils/paths.js';
+import { instanceDir } from '../utils/paths.js';
 
 interface CacheEntry {
   bytes: number;
@@ -35,7 +36,7 @@ function dirSize(dir: string): number {
 }
 
 /** Recursively sums a server's instance directory size (and its backups), cached briefly since large worlds are slow to walk. */
-export function getDiskUsage(serverId: string): { serverBytes: number; backupsBytes: number } {
+export function getDiskUsage(serverId: string): { serverBytes: number; backupsBytes: number; backupsAvailable: boolean } {
   const now = Date.now();
   const serverCached = cache.get(`server:${serverId}`);
   const serverBytes =
@@ -45,11 +46,15 @@ export function getDiskUsage(serverId: string): { serverBytes: number; backupsBy
   }
 
   const backupsCached = cache.get(`backups:${serverId}`);
-  const backupsBytes =
-    backupsCached && now - backupsCached.computedAt < CACHE_TTL_MS ? backupsCached.bytes : dirSize(backupDir(serverId));
+  let backupsAvailable = true;
+  let backupsBytes = backupsCached?.bytes ?? 0;
+  try {
+    const snapshots = backupDir(serverId), rewind = rewindDir(serverId);
+    if (!backupsCached || now - backupsCached.computedAt >= CACHE_TTL_MS) backupsBytes = dirSize(snapshots) + dirSize(rewind);
+  } catch { backupsAvailable = false; }
   if (!backupsCached || now - backupsCached.computedAt >= CACHE_TTL_MS) {
     cache.set(`backups:${serverId}`, { bytes: backupsBytes, computedAt: now });
   }
 
-  return { serverBytes, backupsBytes };
+  return { serverBytes, backupsBytes, backupsAvailable };
 }

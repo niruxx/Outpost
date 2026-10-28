@@ -1,7 +1,8 @@
+import { rewindDir, acquireBackupStorage, fileUndoPath } from './backupStorageService.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { HttpError } from '../utils/asyncHandler.js';
-import { instanceDir, rewindDir } from '../utils/paths.js';
+import { instanceDir } from '../utils/paths.js';
 import { logger } from '../utils/logger.js';
 import { getServer, listServers, setRewindConfig } from './serverService.js';
 import { isRunning, sendCommand } from './processManager.js';
@@ -198,74 +199,77 @@ const busy = new Set<string>();
  * only — a manual one is always kept).
  */
 export async function createPoint(server: ServerRecord, reason: RestorePoint['reason']): Promise<RestorePoint | null> {
-  requireMinecraft(server);
-  if (busy.has(server.id)) throw new HttpError(409, 'A restore point is already being taken');
-  const worlds = worldDirs(server);
-  if (!worlds.length) throw new HttpError(409, 'No world yet — start the server once so it generates one');
-  busy.add(server.id);
-  const live = instanceDir(server.id);
-  const id = new Date().toISOString().replace(/[:.]/g, '-');
-  const dest = path.join(rewindDir(server.id), id);
-  const prev = manifests(server)[0] ?? null;
-  const prevDir = prev ? path.join(rewindDir(server.id), prev.id) : null;
-  let lengths: Map<string, number> | null = null;
+  const release = acquireBackupStorage(server.id);
   try {
-    lengths = await quiesce(server);
-    const files: Manifest['files'] = {};
-    let newBytes = 0;
-    let totalBytes = 0;
-    let changed = !prev || prev.worlds.join() !== worlds.join();
-    for (const world of worlds) {
-      const rels: string[] = [];
-      walk(path.join(live, world), live, rels);
-      for (const rel of rels) {
-        const src = path.join(live, rel);
-        const target = path.join(dest, rel);
-        const st = fs.statSync(src);
-        fs.mkdirSync(path.dirname(target), { recursive: true });
-        // Bedrock: copy only what the server says is valid (it may be writing past it).
-        const bedrockKey = rel.replace(/^worlds\//, '');
-        const limit = lengths?.get(bedrockKey);
-        const size = limit ?? st.size;
-        const before = prev?.files[rel];
-        let linked = false;
-        if (before && prevDir && before.size === size && before.mtimeMs === st.mtimeMs) {
-          try {
-            fs.linkSync(path.join(prevDir, rel), target);
-            linked = true;
-          } catch {
-            // different filesystem or no hard links — copy instead
+    requireMinecraft(server);
+    if (busy.has(server.id)) throw new HttpError(409, 'A restore point is already being taken');
+    const worlds = worldDirs(server);
+    if (!worlds.length) throw new HttpError(409, 'No world yet — start the server once so it generates one');
+    const live = instanceDir(server.id);
+    const id = new Date().toISOString().replace(/[:.]/g, '-');
+    const dest = path.join(rewindDir(server.id), id);
+    const prev = manifests(server)[0] ?? null;
+    const prevDir = prev ? path.join(rewindDir(server.id), prev.id) : null;
+    let lengths: Map<string, number> | null = null;
+    busy.add(server.id);
+    try {
+      lengths = await quiesce(server);
+      const files: Manifest['files'] = {};
+      let newBytes = 0;
+      let totalBytes = 0;
+      let changed = !prev || prev.worlds.join() !== worlds.join();
+      for (const world of worlds) {
+        const rels: string[] = [];
+        walk(path.join(live, world), live, rels);
+        for (const rel of rels) {
+          const src = path.join(live, rel);
+          const target = path.join(dest, rel);
+          const st = fs.statSync(src);
+          fs.mkdirSync(path.dirname(target), { recursive: true });
+          // Bedrock: copy only what the server says is valid (it may be writing past it).
+          const bedrockKey = rel.replace(/^worlds\//, '');
+          const limit = lengths?.get(bedrockKey);
+          const size = limit ?? st.size;
+          const before = prev?.files[rel];
+          let linked = false;
+          if (before && prevDir && before.size === size && before.mtimeMs === st.mtimeMs) {
+            try {
+              fs.linkSync(path.join(prevDir, rel), target);
+              linked = true;
+            } catch {
+              // different filesystem or no hard links — copy instead
+            }
           }
+          if (!linked) {
+            fs.copyFileSync(src, target);
+            if (limit !== undefined && limit < st.size) fs.truncateSync(target, limit);
+            newBytes += size;
+            changed = true;
+          }
+          totalBytes += size;
+          files[rel] = { size, mtimeMs: st.mtimeMs };
         }
-        if (!linked) {
-          fs.copyFileSync(src, target);
-          if (limit !== undefined && limit < st.size) fs.truncateSync(target, limit);
-          newBytes += size;
-          changed = true;
-        }
-        totalBytes += size;
-        files[rel] = { size, mtimeMs: st.mtimeMs };
       }
-    }
-    if (prev && Object.keys(prev.files).length !== Object.keys(files).length) changed = true;
-    if (!changed && reason === 'auto') {
+      if (prev && Object.keys(prev.files).length !== Object.keys(files).length) changed = true;
+      if (!changed && reason === 'auto') {
+        fs.rmSync(dest, { recursive: true, force: true });
+        return null;
+      }
+      const manifest: Manifest = { id, createdAt: new Date().toISOString(), reason, worlds, newBytes, totalBytes, fileCount: Object.keys(files).length, files };
+      fs.writeFileSync(path.join(dest, 'manifest.json'), JSON.stringify(manifest));
+      appendLine(server.id, `[Outpost] World Rewind: restore point taken (${(newBytes / 1048576).toFixed(1)} MB new, ${worlds.join(', ')})`, 'system');
+      prune(server);
+      const { files: _f, ...point } = manifest;
+      return point;
+    } catch (err) {
       fs.rmSync(dest, { recursive: true, force: true });
-      return null;
+      appendLine(server.id, `[Outpost] World Rewind: couldn’t take a restore point — ${err instanceof Error ? err.message : String(err)}`, 'system');
+      throw err instanceof HttpError ? err : new HttpError(500, err instanceof Error ? err.message : String(err));
+    } finally {
+      resume(server);
+      busy.delete(server.id);
     }
-    const manifest: Manifest = { id, createdAt: new Date().toISOString(), reason, worlds, newBytes, totalBytes, fileCount: Object.keys(files).length, files };
-    fs.writeFileSync(path.join(dest, 'manifest.json'), JSON.stringify(manifest));
-    appendLine(server.id, `[Outpost] World Rewind: restore point taken (${(newBytes / 1048576).toFixed(1)} MB new, ${worlds.join(', ')})`, 'system');
-    prune(server);
-    const { files: _f, ...point } = manifest;
-    return point;
-  } catch (err) {
-    fs.rmSync(dest, { recursive: true, force: true });
-    appendLine(server.id, `[Outpost] World Rewind: couldn’t take a restore point — ${err instanceof Error ? err.message : String(err)}`, 'system');
-    throw err instanceof HttpError ? err : new HttpError(500, err instanceof Error ? err.message : String(err));
-  } finally {
-    resume(server);
-    busy.delete(server.id);
-  }
+  } finally { release(); }
 }
 
 /** Keeps the newest `keep` automatic points; manual and pre-restore points stay until deleted. */
@@ -286,28 +290,31 @@ export function deletePoint(server: ServerRecord, pointId: string) {
 // ---------------------------------------------------------------------------
 
 export async function restorePoint(server: ServerRecord, pointId: string, only?: string[]): Promise<{ restored: string[]; safetyPoint: string | null }> {
-  requireMinecraft(server);
-  if (isRunning(server.id)) throw new HttpError(409, 'Stop the server before restoring — it would overwrite the world again on its next save');
-  const dir = path.join(rewindDir(server.id), pointId);
-  const manifest = /^[\w-]+$/.test(pointId) ? readManifest(dir) : null;
-  if (!manifest) throw new HttpError(404, 'No such restore point');
-  const worlds = only?.length ? manifest.worlds.filter((w) => only.includes(w)) : manifest.worlds;
-  if (!worlds.length) throw new HttpError(400, 'Pick at least one world to restore');
+  const release = acquireBackupStorage(server.id);
+  try {
+    requireMinecraft(server);
+    if (isRunning(server.id)) throw new HttpError(409, 'Stop the server before restoring — it would overwrite the world again on its next save');
+    const dir = path.join(rewindDir(server.id), pointId);
+    const manifest = /^[\w-]+$/.test(pointId) ? readManifest(dir) : null;
+    if (!manifest) throw new HttpError(404, 'No such restore point');
+    const worlds = only?.length ? manifest.worlds.filter((w) => only.includes(w)) : manifest.worlds;
+    if (!worlds.length) throw new HttpError(400, 'Pick at least one world to restore');
 
-  // Keep what's there now, so the restore itself can be undone.
-  let safety: RestorePoint | null = null;
-  if (worldDirs(server).length) safety = await createPoint(server, 'before-restore').catch(() => null);
+    // Keep what's there now, so the restore itself can be undone.
+    let safety: RestorePoint | null = null;
+    if (worldDirs(server).length) safety = await createPoint(server, 'before-restore').catch(() => null);
 
-  const live = instanceDir(server.id);
-  for (const world of worlds) {
-    const target = path.join(live, world);
-    if (!path.resolve(target).startsWith(path.resolve(live) + path.sep)) continue;
-    fs.rmSync(target, { recursive: true, force: true });
-    // A real copy — linking would let the next save change the stored point.
-    fs.cpSync(path.join(dir, world), target, { recursive: true });
-  }
-  appendLine(server.id, `[Outpost] World Rewind: restored ${worlds.join(', ')} to ${manifest.createdAt}`, 'system');
-  return { restored: worlds, safetyPoint: safety?.id ?? null };
+    const live = instanceDir(server.id);
+    for (const world of worlds) {
+      const target = path.join(live, world);
+      if (!path.resolve(target).startsWith(path.resolve(live) + path.sep)) continue;
+      fs.rmSync(target, { recursive: true, force: true });
+      // A real copy — linking would let the next save change the stored point.
+      fs.cpSync(path.join(dir, world), target, { recursive: true });
+    }
+    appendLine(server.id, `[Outpost] World Rewind: restored ${worlds.join(', ')} to ${manifest.createdAt}`, 'system');
+    return { restored: worlds, safetyPoint: safety?.id ?? null };
+  } finally { release(); }
 }
 
 /** level.dat / level.dat_old for each world — Minecraft keeps the previous level.dat on every save. */
@@ -331,9 +338,13 @@ export function restoreLevelDat(server: ServerRecord, world: string) {
   const base = path.join(instanceDir(server.id), world);
   const old = path.join(base, 'level.dat_old');
   if (!fs.existsSync(old)) throw new HttpError(404, 'This world has no level.dat_old');
-  if (fs.existsSync(path.join(base, 'level.dat'))) fs.copyFileSync(path.join(base, 'level.dat'), path.join(base, `level.dat.before-restore-${Date.now()}`));
+  if (fs.existsSync(path.join(base, 'level.dat'))) {
+    const safety = fileUndoPath(server.id, `world-rewind/${world}/level.dat.before-restore-${Date.now()}`);
+    fs.mkdirSync(path.dirname(safety), { recursive: true });
+    fs.copyFileSync(path.join(base, 'level.dat'), safety);
+  }
   fs.copyFileSync(old, path.join(base, 'level.dat'));
-  appendLine(server.id, `[Outpost] World Rewind: ${world}/level.dat restored from level.dat_old (the replaced file was kept as level.dat.before-restore-…)`, 'system');
+  appendLine(server.id, `[Outpost] World Rewind: ${world}/level.dat restored from level.dat_old (the replaced file was kept in backup storage under file-undo/world-rewind)`, 'system');
 }
 
 // ---------------------------------------------------------------------------

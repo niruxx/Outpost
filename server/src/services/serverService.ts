@@ -1,7 +1,8 @@
+import { backupDir, rewindDir } from './backupStorageService.js';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { prep } from '../db/db.js';
-import { instanceDir, backupDir, rewindDir } from '../utils/paths.js';
+import { instanceDir } from '../utils/paths.js';
 import type { Loader, Platform, RestartPolicy, ServerRecord, ServerStatus } from '../types/index.js';
 
 export interface CreateServerInput {
@@ -129,10 +130,11 @@ export function updateServerRecord(id: string, input: UpdateServerInput) {
 }
 
 export function deleteServerRecord(id: string) {
+  const snapshots = backupDir(id), rewind = rewindDir(id);
   prep('DELETE FROM servers WHERE id = ?').run(id);
   fs.rmSync(instanceDir(id), { recursive: true, force: true });
-  fs.rmSync(backupDir(id), { recursive: true, force: true });
-  fs.rmSync(rewindDir(id), { recursive: true, force: true });
+  fs.rmSync(snapshots, { recursive: true, force: true });
+  fs.rmSync(rewind, { recursive: true, force: true });
 }
 
 export function setRewindConfig(id: string, config: string | null) {

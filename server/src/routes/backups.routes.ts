@@ -13,10 +13,27 @@ import {
 } from '../services/backupService.js';
 import { getSchedule, removeSchedule, setSchedule } from '../services/schedulerService.js';
 import { logAudit } from '../services/userService.js';
+import { getUserById } from '../services/userService.js';
+import { backupStorageInfo, setBackupStorage } from '../services/backupStorageService.js';
+import { getServer } from '../services/serverService.js';
 
 /** Snapshots (zip backups of the instance folder), their schedule, and restore — whole or per file. */
 export const backupsRouter = Router({ mergeParams: true });
 backupsRouter.use(requireAuth, requireServerAccess());
+
+backupsRouter.get('/storage', asyncHandler(async (req, res) => {
+  if (!getServer(req.params.serverId)) throw new HttpError(404, 'Instance not found');
+  res.json(backupStorageInfo(req.params.serverId));
+}));
+backupsRouter.put('/storage', asyncHandler(async (req, res) => {
+  // Absolute host paths are host administration, independent of ordinary backup privileges.
+  if (req.auth!.role !== 'admin' || getUserById(req.auth!.sub)?.role !== 'admin') throw new HttpError(403, 'Only administrators can choose host backup directories');
+  const { directory, copyExisting = true } = req.body ?? {};
+  if (typeof copyExisting !== 'boolean') throw new HttpError(400, 'copyExisting must be a boolean');
+  const storage = await setBackupStorage(req.params.serverId, directory, copyExisting);
+  logAudit(req.auth!.sub, req.auth!.username, 'backup.storage', req.params.serverId, JSON.stringify({ directory: storage.directory, copyExisting }));
+  res.json(storage);
+}));
 
 // Schedule routes come first: otherwise DELETE /schedule would be captured by DELETE /:fileName.
 backupsRouter.get(

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { asyncHandler, HttpError } from '../utils/asyncHandler.js';
 import { requireAuth, requireRole } from '../auth/middleware.js';
 import {
+  CONFIG_FIELDS,
   createUser,
   deleteUser,
   getUserById,
@@ -25,12 +26,18 @@ import {
   setFirewallAccess,
   THEME_IDS,
   setUserTheme,
+  STORAGE_PERMISSIONS,
+  setStoragePermissions,
 } from '../services/userService.js';
 import { disableTotp } from '../services/twoFactorService.js';
 import type { Role } from '../types/index.js';
 
 export const usersRouter = Router();
 usersRouter.use(requireAuth, requireRole('admin'));
+usersRouter.use((req, res, next) => {
+  if (getUserById(req.auth!.sub)?.role !== 'admin') return res.status(403).json({ error: 'Current administrator access required' });
+  next();
+});
 
 usersRouter.get(
   '/',
@@ -39,6 +46,7 @@ usersRouter.get(
       ...u,
       serverAccess: getUserServerAccess(u.id),
       serverPermissions: Object.fromEntries(getUserServerAccessDetailed(u.id).map((a) => [a.serverId, a.permissions])),
+      configAccess: Object.fromEntries(getUserServerAccessDetailed(u.id).map((a) => [a.serverId, a.configAccess ?? {}])),
       creationPolicy: u.creation ? sanitizeCreationPolicy(JSON.parse(u.creation)) : null,
       effectiveCreation: getEffectiveCreation(u.id, u.role),
       owned: countOwned(u.id),
@@ -72,6 +80,13 @@ usersRouter.patch(
     const target = getUserById(req.params.id);
     if (!target) throw new HttpError(404, 'User not found');
     const { role, password, serverAccess } = req.body ?? {};
+    if (req.body?.storagePermissions !== undefined) {
+      const permissions = req.body.storagePermissions;
+      if (!Array.isArray(permissions) || !permissions.every((key) => STORAGE_PERMISSIONS.includes(key))) throw new HttpError(400, 'Invalid storage permissions');
+      // Always recheck the actor's current role when delegating host storage authority.
+      if (getUserById(req.auth!.sub)?.role !== 'admin') throw new HttpError(403, 'Current administrator access required');
+      setStoragePermissions(target.id, permissions);
+    }
 
     if (role !== undefined) {
       if (!['admin', 'moderator', 'viewer'].includes(role)) {
@@ -121,6 +136,7 @@ usersRouter.get(
   '/permissions/catalog',
   asyncHandler(async (_req, res) => {
     res.json({
+      configFields: CONFIG_FIELDS,
       permissions: SERVER_PERMISSIONS,
       defaults: { moderator: roleDefaultPermissions('moderator'), viewer: roleDefaultPermissions('viewer') },
       creatablePlatforms: CREATABLE_PLATFORMS,

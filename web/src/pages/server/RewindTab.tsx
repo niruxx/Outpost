@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { setVisibleInterval } from '../../lib/perf.js';
 import { useServerDetail } from './ServerContext.js';
 import { api, ApiError } from '../../api/client.js';
@@ -90,13 +91,14 @@ export function RewindTab() {
     }
   }
 
-  if (error) return <ErrorText>{error}</ErrorText>;
+  if (error) return <div className="space-y-3"><ErrorText>{error}</ErrorText><Link className="text-sm text-accent-400 underline" to={`/instances/${serverId}/configuration`}>Configure backup storage</Link></div>;
   if (!data || !cfg) return <Spinner />;
   if (!data.supported) return <Notice tone="info">World Rewind is for Minecraft Java and Bedrock instances.</Notice>;
   const dirty = JSON.stringify(cfg) !== JSON.stringify(data.config);
 
   return (
     <div className="space-y-5">
+      <p className="text-sm text-ink-400">Restore points use this instance’s <Link className="text-accent-400 underline" to={`/instances/${serverId}/configuration`}>configured backup storage</Link>.</p>
       <Card className="p-5">
         <CardTitle action={<Badge tone={data.config.enabled ? 'green' : 'neutral'}>{data.config.enabled ? `Every ${data.config.intervalMinutes} min` : 'Off'}</Badge>}>World Rewind</CardTitle>
         <p className="mb-4 text-sm text-ink-400">

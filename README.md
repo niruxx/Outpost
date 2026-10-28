@@ -36,7 +36,21 @@ The redesigned interface takes inspiration from **Material Design 3 Expressive**
 
 Built with **React, TypeScript and Node.js**, Outpost uses built-in SQLite for panel data. Start with a single host, assign access to other users as needed, and link additional Outpost hosts to transfer instances. Container workloads require Docker or Podman; game runtimes depend on the platform you choose.
 
+Admins can fine-tune each assigned user's access under **Users ? Edit user ? Instance access ? Individual configuration items**. Set general server settings and individual `server.properties` keys to **Inherit**, **Allow**, or **Deny**. Allow grants that item independently of Edit configuration; Deny locks it. Any denial also disables broader actions that could overwrite protected settings, including raw file/SFTP writes, console commands, restores, launch edits, plugins, updates and player actions. Existing scheduled jobs and programs already running on the server keep their own authority. Host-wide settings remain admin-only.
+
+The admin sidebar also includes **Host Console** for interactive host-wide shell sessions. Choose the service account, root, or a named OS user on Unix; Windows uses the service account's PowerShell. See the [host console guide](docs/host-console.md). Planned AMP-inspired features are tracked in [roadmap.md](roadmap.md).
+
+Each instance's **Configuration → Backup storage** can point snapshots, scheduled/pre-update backups, World Rewind and file undo copies to an external drive or another partition. Existing archives can be copied before switching; originals are kept. See the [backup storage guide](docs/backup-storage.md).
+
+The sidebar's **Storage** page manages Linux disks, filesystem formatting, mounting, UUID-based boot mounts in `fstab`, signature wiping and basic GPT initialization. Administrators have access by default; other users need explicit permissions under Users. See the [storage setup and permissions guide](docs/storage.md).
+
+Storage also includes LUKS2 creation/unlocking/locking and passphrase changes, LVM PV/VG/LV creation and renaming, thin pools/snapshots, partition growth and supported ext4 shrinking. See the [advanced storage guide](docs/advanced-storage.md) for resize ordering, permissions and helper upgrades.
+
+Admins can also discover and manage containers created by Docker CLI/Compose/Portainer and VMs created in Cockpit/virt-manager/virsh. The Docker and Virtual Machines pages show all workloads on their selected engine/libvirt connection, including stopped ones, without importing or recreating them. See [external workload discovery](docs/external-workloads.md).
+
 ## Screenshots
+
+Administrators can also manage QEMU/KVM guests from **Virtual Machines** and **Libvirt Configuration** in the sidebar: start/stop/pause guests, configure CPU/memory/autostart, import or edit domain XML, and open a refreshing read-only display preview. Supports local libvirt and remote SSH connections. See the [libvirt setup guide](docs/libvirt.md) and [roadmap and comparison with AMP and other panels](roadmap.md).
 
 ### Desktop workspace
 

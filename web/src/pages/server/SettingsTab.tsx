@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { DatabasesCard } from './DatabasesCard.js';
+import { BackupStorageCard } from './BackupStorageCard.js';
 import { useServerDetail } from './ServerContext.js';
 import { api, ApiError } from '../../api/client.js';
 import type { PropertyEntry, RestartPolicy } from '../../api/types.js';
@@ -15,8 +16,8 @@ import { LimitsCard } from './LimitsCard.js';
 import { isMinecraftPlatform, isProxyLoader } from '../../api/types.js';
 
 export function SettingsTab() {
-  const { server, can, refresh } = useServerDetail();
-  const canWrite = can('settings');
+  const { server, can, canConfig, refresh } = useServerDetail();
+  const canWrite = can('settings') || canConfig('property', 'server-ip') || ['name', 'minMemoryMb', 'maxMemoryMb', 'serverPort', 'extraJavaArgs', 'extraArgs', 'autoStart', 'steamLogin', 'steamExtraFlags', 'restartPolicy', 'restartDelaySec', 'restartMaxAttempts'].some((key) => canConfig('setting', key));
   const [name, setName] = useState('');
   const [minMemoryMb, setMinMemoryMb] = useState(1024);
   const [maxMemoryMb, setMaxMemoryMb] = useState(2048);
@@ -63,7 +64,7 @@ export function SettingsTab() {
     setSaveError('');
     setSaved(false);
     try {
-      await api.patch(`/servers/${server!.id}`, {
+      await api.patch(`/servers/${server!.id}`, Object.fromEntries(Object.entries({
         name,
         minMemoryMb,
         maxMemoryMb,
@@ -75,8 +76,8 @@ export function SettingsTab() {
         restartDelaySec,
         restartMaxAttempts,
         ...(server!.platform === 'steam' ? { steamLogin: steamLogin.trim() || 'anonymous', steamExtraFlags } : {}),
-      });
-      if (server!.platform === 'java') {
+      }).filter(([key]) => canConfig('setting', key))));
+      if (server!.platform === 'java' && canConfig('property', 'server-ip')) {
         await api.put(`/servers/${server!.id}/properties`, { updates: { 'server-ip': serverIp } });
       }
       await refresh();
@@ -97,17 +98,17 @@ export function SettingsTab() {
         <h2 className="mb-4 text-base font-medium text-ink-100">General</h2>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Instance name">
-            <Input value={name} onChange={(e) => setName(e.target.value)} disabled={!canWrite} />
+            <Input value={name} onChange={(e) => setName(e.target.value)} disabled={!canConfig('setting', 'name')} />
           </Field>
           <Field label="Port">
-            <Input type="number" value={serverPort} onChange={(e) => setServerPort(Number(e.target.value))} disabled={!canWrite} />
+            <Input type="number" value={serverPort} onChange={(e) => setServerPort(Number(e.target.value))} disabled={!canConfig('setting', 'serverPort')} />
           </Field>
           {server.platform === 'java' && (
             <Field label="Bind IP address (server-ip)">
               <Input
                 value={serverIp}
                 onChange={(e) => setServerIp(e.target.value)}
-                disabled={!canWrite}
+                disabled={!canConfig('property', 'server-ip')}
                 placeholder="0.0.0.0 (all interfaces)"
               />
             </Field>
@@ -115,31 +116,31 @@ export function SettingsTab() {
           {server.platform !== 'steam' && (
             <>
               <Field label={server.platform === 'custom' ? 'Min memory (MB) — {{MIN_MEMORY}}' : 'Min memory (MB)'}>
-                <Input type="number" value={minMemoryMb} onChange={(e) => setMinMemoryMb(Number(e.target.value))} disabled={!canWrite} />
+                <Input type="number" value={minMemoryMb} onChange={(e) => setMinMemoryMb(Number(e.target.value))} disabled={!canConfig('setting', 'minMemoryMb')} />
               </Field>
               <Field label={server.platform === 'custom' ? 'Max memory (MB) — {{MAX_MEMORY}}' : 'Max memory (MB)'}>
-                <Input type="number" value={maxMemoryMb} onChange={(e) => setMaxMemoryMb(Number(e.target.value))} disabled={!canWrite} />
+                <Input type="number" value={maxMemoryMb} onChange={(e) => setMaxMemoryMb(Number(e.target.value))} disabled={!canConfig('setting', 'maxMemoryMb')} />
               </Field>
             </>
           )}
           {server.platform === 'java' && (
             <Field label="Extra JVM args">
-              <Input value={extraJavaArgs} onChange={(e) => setExtraJavaArgs(e.target.value)} disabled={!canWrite} placeholder="-XX:+UseG1GC" />
+              <Input value={extraJavaArgs} onChange={(e) => setExtraJavaArgs(e.target.value)} disabled={!canConfig('setting', 'extraJavaArgs')} placeholder="-XX:+UseG1GC" />
             </Field>
           )}
           <Field label={server.platform === 'java' || server.platform === 'bedrock' ? 'Extra server args' : 'Extra launch args'}>
-            <Input value={extraArgs} onChange={(e) => setExtraArgs(e.target.value)} disabled={!canWrite} />
+            <Input value={extraArgs} onChange={(e) => setExtraArgs(e.target.value)} disabled={!canConfig('setting', 'extraArgs')} />
           </Field>
           {server.platform === 'steam' && (
             <>
               <Field label="Steam login">
-                <Input value={steamLogin} onChange={(e) => setSteamLogin(e.target.value)} disabled={!canWrite} placeholder="anonymous" />
+                <Input value={steamLogin} onChange={(e) => setSteamLogin(e.target.value)} disabled={!canConfig('setting', 'steamLogin')} placeholder="anonymous" />
               </Field>
               <Field label="Extra steamcmd flags">
                 <Input
                   value={steamExtraFlags}
                   onChange={(e) => setSteamExtraFlags(e.target.value)}
-                  disabled={!canWrite}
+                  disabled={!canConfig('setting', 'steamExtraFlags')}
                   placeholder="e.g. -beta staging"
                 />
               </Field>
@@ -155,7 +156,7 @@ export function SettingsTab() {
           </p>
         )}
         <label className="mt-4 flex items-center gap-2 text-sm text-ink-300">
-          <input type="checkbox" checked={autoStart} onChange={(e) => setAutoStart(e.target.checked)} disabled={!canWrite} />
+          <input type="checkbox" checked={autoStart} onChange={(e) => setAutoStart(e.target.checked)} disabled={!canConfig('setting', 'autoStart')} />
           Automatically start this instance when the panel boots
         </label>
 
@@ -167,7 +168,7 @@ export function SettingsTab() {
           </p>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <Field label="Restart when it">
-              <Select value={restartPolicy} onChange={(e) => setRestartPolicy(e.target.value as RestartPolicy)} disabled={!canWrite}>
+              <Select value={restartPolicy} onChange={(e) => setRestartPolicy(e.target.value as RestartPolicy)} disabled={!canConfig('setting', 'restartPolicy')}>
                 <option value="never">Never restart automatically</option>
                 <option value="on-crash">Crashes or fails (non-zero exit / killed)</option>
                 <option value="always">Stops for any reason (incl. in-game stop)</option>
@@ -180,7 +181,7 @@ export function SettingsTab() {
                 max={3600}
                 value={restartDelaySec}
                 onChange={(e) => setRestartDelaySec(Number(e.target.value))}
-                disabled={!canWrite || restartPolicy === 'never'}
+                disabled={!canConfig('setting', 'restartDelaySec') || restartPolicy === 'never'}
               />
             </Field>
             <Field label="Give up after (attempts, 0 = never)">
@@ -190,7 +191,7 @@ export function SettingsTab() {
                 max={10000}
                 value={restartMaxAttempts}
                 onChange={(e) => setRestartMaxAttempts(Number(e.target.value))}
-                disabled={!canWrite || restartPolicy === 'never'}
+                disabled={!canConfig('setting', 'restartMaxAttempts') || restartPolicy === 'never'}
               />
             </Field>
           </div>
@@ -217,6 +218,7 @@ export function SettingsTab() {
         )}
       </Card>
 
+      <BackupStorageCard />
       {server.platform === 'docker' ? <DockerCard /> : <LaunchCard />}
       <IsolationCard />
       <LimitsCard />
@@ -244,6 +246,7 @@ export function SettingsTab() {
 }
 
 function PropertiesEditor({ serverId, canWrite }: { serverId: string; canWrite: boolean }) {
+  const { canConfig } = useServerDetail();
   const [properties, setProperties] = useState<PropertyEntry[] | null>(null);
   const [edited, setEdited] = useState<Record<string, string>>({});
   const [newKey, setNewKey] = useState('');
@@ -309,7 +312,7 @@ function PropertiesEditor({ serverId, canWrite }: { serverId: string; canWrite: 
                   <input
                     className="w-full rounded bg-transparent px-1 py-0.5 font-mono text-xs text-ink-100 focus:bg-surface-800 focus:outline-none"
                     value={edited[p.key] ?? p.value}
-                    disabled={!canWrite || saving}
+                    disabled={!canConfig('property', p.key) || saving}
                     onChange={(e) => setEdited((prev) => ({ ...prev, [p.key]: e.target.value }))}
                   />
                 </td>
@@ -319,7 +322,7 @@ function PropertiesEditor({ serverId, canWrite }: { serverId: string; canWrite: 
         </table>
       </div>
 
-      {canWrite && (
+      {(canWrite || canConfig('property', newKey.trim())) && (
         <div className="mt-3 flex items-end gap-2">
           <Field label="New key">
             <Input value={newKey} onChange={(e) => setNewKey(e.target.value)} placeholder="motd" />
@@ -329,7 +332,7 @@ function PropertiesEditor({ serverId, canWrite }: { serverId: string; canWrite: 
           </Field>
           <Button
             onClick={() => {
-              if (!newKey.trim()) return;
+              if (!newKey.trim() || !canConfig('property', newKey.trim())) return;
               setEdited((prev) => ({ ...prev, [newKey.trim()]: newValue }));
               setProperties((prev) => prev?.some((p) => p.key === newKey.trim()) ? prev : [...(prev ?? []), { key: newKey.trim(), value: newValue }]);
               setNewKey('');
@@ -344,7 +347,7 @@ function PropertiesEditor({ serverId, canWrite }: { serverId: string; canWrite: 
       <ErrorText>{error}</ErrorText>
       {feedback && <p className="mt-3 text-sm text-ink-400">{feedback}</p>}
 
-      {canWrite && (
+      {(canWrite || Object.keys(edited).length > 0) && (
         <div className="mt-4 flex items-center gap-3">
           <Button variant="primary" onClick={save} disabled={saving || Object.keys(edited).length === 0}>
             {saving ? 'Saving…' : `Save ${Object.keys(edited).length || ''} change(s)`}

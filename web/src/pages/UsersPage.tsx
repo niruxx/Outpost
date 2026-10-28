@@ -8,6 +8,7 @@ import type { CreatablePlatform, CreationPolicy, FirewallAccess, PublicUser, Rol
 import { GameTile, gameKindOf } from '../components/GameArt.js';
 import { useAuth } from '../state/AuthContext.js';
 import { THEMES } from '../lib/theme.js';
+import type { StoragePermission } from '../api/types.js';
 
 export function UsersPage() {
   const { user: me } = useAuth();
@@ -225,8 +226,10 @@ function EditUserModal({
   // Assigned instances → explicit permission set, or null for the role's defaults.
   const [access, setAccess] = useState<Record<string, ServerPermission[] | null>>({});
   // null = follow the role's default creation policy
+  const [configAccess, setConfigAccess] = useState<Record<string, Record<string, boolean>>>({});
   const [creation, setCreation] = useState<CreationPolicy | null>(null);
   const [firewall, setFirewall] = useState<FirewallAccess>('none');
+  const [storagePermissions, setStoragePermissions] = useState<StoragePermission[]>([]);
   const [theme, setTheme] = useState<string>('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -234,8 +237,10 @@ function EditUserModal({
   // Re-sync local form state whenever a (possibly different) user is opened for editing.
   useEffect(() => {
     if (!user) return;
+    setConfigAccess(user.configAccess ?? {});
     setRole(user.role);
     setFirewall(user.firewall ?? 'none');
+    setStoragePermissions(user.storagePermissions ?? []);
     setTheme(user.theme ?? '');
     setPassword('');
     setAccess(Object.fromEntries((user.serverAccess ?? []).map((id) => [id, user.serverPermissions?.[id] ?? null])));
@@ -251,9 +256,9 @@ function EditUserModal({
       await api.patch(`/users/${user.id}`, {
         role,
         password: password || undefined,
-        serverAccess: Object.entries(access).map(([serverId, permissions]) => ({ serverId, permissions })),
+        serverAccess: Object.entries(access).map(([serverId, permissions]) => ({ serverId, permissions, configAccess: configAccess[serverId] ?? {} })),
         theme: theme || null,
-        ...(role === 'admin' ? {} : { creation, firewall }),
+        ...(role === 'admin' ? {} : { creation, firewall, storagePermissions }),
       });
       toast.success(`Updated "${user.username}"`);
       onSaved();
@@ -299,7 +304,17 @@ function EditUserModal({
           </Field>
         )}
         {role !== 'admin' && <CreationEditor role={role} value={creation} onChange={setCreation} owned={user?.owned ?? 0} />}
-        {role !== 'admin' && <AccessEditor role={role} servers={servers} access={access} onChange={setAccess} />}
+        {role !== 'admin' && <div className="space-y-3 rounded-2xl bg-surface-850 p-4">
+          <p className="text-xs font-medium text-ink-300">Host storage permissions</p>
+          <p className="text-xs text-ink-500">Host-wide disk access, separate from instance permissions. Administrators have every permission by default. Formatting, wiping and partitioning destroy data.</p>
+          <div className="flex flex-wrap gap-3">{([
+            ['view', 'View disks'], ['mount', 'Mount / unmount'], ['automount', 'Boot mounts (fstab)'], ['format', 'Format filesystems'], ['wipe', 'Wipe signatures'], ['partition', 'Initialize GPT partitions'], ['encrypt', 'LUKS encryption / passphrases'], ['lvm', 'LVM management'], ['resize', 'Resize storage'],
+          ] as [StoragePermission, string][]).map(([permission, label]) => <label key={permission} className="flex items-center gap-2 text-xs text-ink-200">
+            <input type="checkbox" checked={storagePermissions.includes(permission)} onChange={(e) => setStoragePermissions((current) => e.target.checked ? [...current, permission] : current.filter((item) => item !== permission))} />{label}
+          </label>)}</div>
+          <p className="text-xs text-ink-500">Any change permission also grants disk viewing. Grant these only to trusted host operators.</p>
+        </div>}
+        {role !== 'admin' && <AccessEditor role={role} servers={servers} access={access} onChange={setAccess} configAccess={configAccess} onConfigChange={setConfigAccess} />}
         <ErrorText>{error}</ErrorText>
         <div className="flex justify-end gap-2">
           <Button variant="ghost" onClick={onClose}>
@@ -362,7 +377,11 @@ function AccessEditor({
   servers,
   access,
   onChange,
+  configAccess,
+  onConfigChange,
 }: {
+  configAccess: Record<string, Record<string, boolean>>;
+  onConfigChange: (next: Record<string, Record<string, boolean>>) => void;
   role: Role;
   servers: ServerRecord[];
   access: Record<string, ServerPermission[] | null>;
@@ -430,6 +449,7 @@ function AccessEditor({
                       })}
                     </div>
                   ))}
+                  <ConfigAccessEditor serverId={s.id} value={configAccess[s.id] ?? {}} onChange={(value) => onConfigChange({ ...configAccess, [s.id]: value })} />
                   {custom && (
                     <button type="button" className="text-xs text-accent-400 hover:underline" onClick={() => onChange({ ...access, [s.id]: null })}>
                       Reset to role defaults
@@ -577,4 +597,32 @@ function CreationEditor({
       </p>
     </div>
   );
+}
+
+const CONFIG_FIELDS = ['name', 'minMemoryMb', 'maxMemoryMb', 'serverPort', 'extraJavaArgs', 'extraArgs', 'autoStart', 'steamLogin', 'steamExtraFlags', 'restartPolicy', 'restartDelaySec', 'restartMaxAttempts', 'isolation'];
+function ConfigAccessEditor({ serverId, value, onChange }: { serverId: string; value: Record<string, boolean>; onChange: (next: Record<string, boolean>) => void }) {
+  const [properties, setProperties] = useState<string[]>([]);
+  const [newKey, setNewKey] = useState('');
+  const [error, setError] = useState('');
+  useEffect(() => {
+    api.get<{ properties: { key: string }[] }>(`/servers/${serverId}/properties`)
+      .then((res) => setProperties(res.properties.map((p) => `property.${p.key}`)))
+      .catch(() => setError('Could not load properties. You can still add a property key below.'));
+  }, [serverId]);
+  const keys = [...new Set([...CONFIG_FIELDS.map((key) => `setting.${key}`), ...properties, ...Object.keys(value)])];
+  return <details className="rounded-xl bg-surface-900 p-3">
+    <summary className="cursor-pointer text-xs text-ink-200">Individual configuration items ({Object.keys(value).length} overrides)</summary>
+    <p className="my-2 text-xs text-ink-400">Inherit follows Edit configuration. Allow grants this item even without that permission. Deny locks it. Admins retain full access.</p>
+    <p className="my-2 text-xs text-ink-400">Any denied item also blocks file writes (including SFTP), console commands, restores, launch edits, plugins, updates, player actions and other configuration editors that could overwrite protected settings.</p>
+    <div className="max-h-64 space-y-2 overflow-y-auto">{keys.map((key) => <label key={key} className="flex items-center justify-between gap-2 text-xs text-ink-300">
+      <span className="break-all font-mono">{key}</span>
+      <Select aria-label={`Permission for ${key}`} value={key in value ? String(value[key]) : ''} onChange={(e) => {
+        const next = { ...value };
+        if (!e.target.value) delete next[key]; else next[key] = e.target.value === 'true';
+        onChange(next);
+      }}><option value="">Inherit</option><option value="true">Allow</option><option value="false">Deny</option></Select>
+    </label>)}</div>
+    <div className="mt-3 flex gap-2"><Input aria-label="Property key" placeholder="Property key, e.g. motd" value={newKey} onChange={(e) => setNewKey(e.target.value)} /><Button type="button" disabled={!/^[a-zA-Z0-9_.-]+$/.test(newKey)} onClick={() => { onChange({ ...value, [`property.${newKey}`]: false }); setNewKey(''); }}>Add</Button></div>
+    <ErrorText>{error}</ErrorText>
+  </details>;
 }

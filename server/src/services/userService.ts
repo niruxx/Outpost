@@ -2,11 +2,23 @@ import crypto from 'node:crypto';
 import { prep, db } from '../db/db.js';
 import { hashPassword, verifyPassword } from '../auth/password.js';
 import { requestContext } from '../utils/requestContext.js';
-import type { PublicUser, Role, User } from '../types/index.js';
+import type { PublicUser, Role, User, StoragePermission } from '../types/index.js';
 
 function toPublic(user: User): PublicUser {
-  const { password_hash, password_salt, totp_secret, totp_last_step, totp_recovery, ...rest } = user;
-  return rest;
+  const { password_hash, password_salt, totp_secret, totp_last_step, totp_recovery, storage, ...rest } = user;
+  return { ...rest, storagePermissions: storagePermissionsOf(user) };
+}
+
+export const STORAGE_PERMISSIONS: StoragePermission[] = ['view', 'mount', 'automount', 'format', 'wipe', 'partition', 'encrypt', 'lvm', 'resize'];
+export function storagePermissionsOf(user: User): StoragePermission[] {
+  if (user.role === 'admin') return [...STORAGE_PERMISSIONS];
+  try {
+    const raw = JSON.parse(user.storage || '[]');
+    return STORAGE_PERMISSIONS.filter((key) => Array.isArray(raw) && (raw.includes(key) || (key === 'view' && STORAGE_PERMISSIONS.some((known) => raw.includes(known)))));
+  } catch { return []; }
+}
+export function setStoragePermissions(id: string, permissions: StoragePermission[]) {
+  prep('UPDATE users SET storage = ? WHERE id = ?').run(JSON.stringify(permissions), id);
 }
 
 /** A user without credentials or 2FA secrets — safe to send to the browser. */
@@ -122,29 +134,31 @@ export interface ServerAccessEntry {
   serverId: string;
   /** null = the role's defaults */
   permissions: ServerPermission[] | null;
+  configAccess?: Record<string, boolean>;
 }
 
 /** Replaces a user's instance assignments. Accepts plain ids (role defaults) or per-instance permission sets. */
 export function setUserServerAccess(userId: string, entries: (string | ServerAccessEntry)[]) {
   db.prepare('DELETE FROM user_server_access WHERE user_id = ?').run(userId);
-  const insert = prep('INSERT OR IGNORE INTO user_server_access (user_id, server_id, permissions) VALUES (?, ?, ?)');
+  const insert = prep('INSERT OR IGNORE INTO user_server_access (user_id, server_id, permissions, config_access) VALUES (?, ?, ?, ?)');
   for (const entry of entries) {
     const serverId = typeof entry === 'string' ? entry : entry.serverId;
     const perms = typeof entry === 'string' ? null : sanitizePermissions(entry.permissions);
-    insert.run(userId, serverId, perms ? JSON.stringify(perms) : null);
+    insert.run(userId, serverId, perms ? JSON.stringify(perms) : null, JSON.stringify(typeof entry === 'string' ? {} : sanitizeConfigAccess(entry.configAccess)));
   }
 }
 
 export function getUserServerAccessDetailed(userId: string): ServerAccessEntry[] {
-  const rows = prep('SELECT server_id, permissions FROM user_server_access WHERE user_id = ?').all(userId) as {
+  const rows = prep('SELECT server_id, permissions, config_access FROM user_server_access WHERE user_id = ?').all(userId) as {
     server_id: string;
     permissions: string | null;
+    config_access: string | null;
   }[];
-  return rows.map((r) => ({ serverId: r.server_id, permissions: r.permissions ? sanitizePermissions(JSON.parse(r.permissions)) : null }));
+  return rows.map((r) => ({ serverId: r.server_id, configAccess: JSON.parse(r.config_access || '{}'), permissions: r.permissions ? sanitizePermissions(JSON.parse(r.permissions)) : null }));
 }
 
 /** Effective permissions on one instance, or null when the user isn't assigned to it at all. */
-export function getServerPermissions(userId: string, role: Role, serverId: string): ServerPermission[] | null {
+function baseServerPermissions(userId: string, role: Role, serverId: string): ServerPermission[] | null {
   if (role === 'admin') return [...SERVER_PERMISSIONS];
   const row = prep('SELECT permissions FROM user_server_access WHERE user_id = ? AND server_id = ?').get(userId, serverId) as
     | { permissions: string | null }
@@ -301,4 +315,24 @@ export function usernamesFor(ids: string[]): Record<string, string> {
     if (u) out[id] = u.username;
   }
   return out;
+}
+
+/** Individual overrides use setting.<field> and property.<key>. */
+export const CONFIG_FIELDS = ['name', 'minMemoryMb', 'maxMemoryMb', 'serverPort', 'extraJavaArgs', 'extraArgs', 'autoStart', 'steamLogin', 'steamExtraFlags', 'restartPolicy', 'restartDelaySec', 'restartMaxAttempts', 'isolation'] as const;
+export function sanitizeConfigAccess(value: unknown): Record<string, boolean> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return Object.fromEntries(Object.entries(value).filter(([key, allowed]) =>
+    typeof allowed === 'boolean' && (CONFIG_FIELDS.some((field) => key === `setting.${field}`) || /^property\.[a-zA-Z0-9_.-]+$/.test(key))));
+}
+export function getConfigAccess(userId: string, role: Role, serverId: string): Record<string, boolean> {
+  if (role === 'admin') return {};
+  const row = prep('SELECT config_access FROM user_server_access WHERE user_id = ? AND server_id = ?').get(userId, serverId) as { config_access: string | null } | undefined;
+  return sanitizeConfigAccess(JSON.parse(row?.config_access || '{}'));
+}
+
+export function getServerPermissions(userId: string, role: Role, serverId: string): ServerPermission[] | null {
+  const permissions = baseServerPermissions(userId, role, serverId);
+  if (!Object.values(getConfigAccess(userId, role, serverId)).includes(false)) return permissions;
+  // These capabilities can replace protected files or run commands outside the form editor.
+  return permissions?.filter((p) => !['files.write', 'console', 'backups.restore', 'launch', 'plugins', 'update', 'players'].includes(p)) ?? null;
 }

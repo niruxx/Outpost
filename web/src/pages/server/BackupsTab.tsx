@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { OffsiteChips, OffsiteRestoreCard, useOffsite } from './OffsiteBackups.js';
+import { BackupStorageCard } from './BackupStorageCard.js';
 import { useServerDetail } from './ServerContext.js';
 import { api, ApiError, downloadUrl } from '../../api/client.js';
 import type { BackupInfo, BackupSchedule, SnapshotEntry, SnapshotFileSide } from '../../api/types.js';
@@ -234,6 +235,7 @@ export function BackupsTab() {
   const canBrowse = can('files.read');
 
   const load = useCallback(async () => {
+    setError('');
     try {
       const [backupsRes, scheduleRes] = await Promise.all([
         api.get<{ backups: BackupInfo[] }>(`/servers/${serverId}/backups`),
@@ -346,6 +348,7 @@ export function BackupsTab() {
   return (
     <div className="stagger space-y-5">
       <ErrorText>{error}</ErrorText>
+      <BackupStorageCard onChanged={load} />
 
       <Card className="p-5">
         <CardTitle>Snapshots</CardTitle>

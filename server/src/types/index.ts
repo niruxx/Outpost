@@ -14,6 +14,7 @@ export interface User {
   totp_last_step: number;
   totp_recovery: string | null;
   firewall: FirewallAccess;
+  storage: string;
   /** UI theme applied at sign-in (set by an admin); null = the browser's own choice. */
   theme: string | null;
 }
@@ -21,7 +22,8 @@ export interface User {
 /** What a user may do with the host firewall. Admins can always do everything. */
 export type FirewallAccess = 'none' | 'view' | 'instances' | 'manage';
 
-export type PublicUser = Omit<User, 'password_hash' | 'password_salt' | 'totp_secret' | 'totp_last_step' | 'totp_recovery'>;
+export type StoragePermission = 'view' | 'mount' | 'automount' | 'format' | 'wipe' | 'partition' | 'encrypt' | 'lvm' | 'resize';
+export type PublicUser = Omit<User, 'password_hash' | 'password_salt' | 'totp_secret' | 'totp_last_step' | 'totp_recovery' | 'storage'> & { storagePermissions: StoragePermission[] };
 
 export type TaskAction = 'command' | 'restart' | 'start' | 'stop';
 
@@ -100,6 +102,7 @@ export type RestartPolicy = 'never' | 'on-crash' | 'always';
 export interface ServerRecord {
   id: string;
   name: string;
+  backup_directory: string | null;
   platform: Platform;
   loader: Loader;
   version: string;

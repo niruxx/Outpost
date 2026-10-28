@@ -15,10 +15,15 @@ import { InstancePage } from './pages/InstancePage.js';
 import { ConfigurationPage } from './pages/ConfigurationPage.js';
 import { FileManagerPage } from './pages/FileManagerPage.js';
 import { DockerPage } from './pages/DockerPage.js';
+import { LibvirtPage } from './pages/LibvirtPage.js';
+import { StoragePage } from './pages/StoragePage.js';
 import { UsersPage } from './pages/UsersPage.js';
 import { AuditPage } from './pages/AuditPage.js';
 import { FirewallPage } from './pages/FirewallPage.js';
 import type { ReactNode } from 'react';
+import { lazy, Suspense } from 'react';
+
+const HostTerminalPage = lazy(() => import('./pages/HostTerminalPage.js').then((module) => ({ default: module.HostTerminalPage })));
 
 function FullScreenLoader() {
   return (
@@ -79,6 +84,9 @@ function AppRoutes() {
         }
       />
       <Route path="/servers/:serverId/*" element={<LegacyServerRedirect />} />
+      <Route path="/libvirt/*" element={<RequireAuth><RequireAdmin><LibvirtPage /></RequireAdmin></RequireAuth>} />
+      <Route path="/storage" element={<RequireAuth><StoragePage /></RequireAuth>} />
+      <Route path="/host-console" element={<RequireAuth><RequireAdmin><Suspense fallback={<FullScreenLoader />}><HostTerminalPage /></Suspense></RequireAdmin></RequireAuth>} />
       <Route
         path="/configuration"
         element={

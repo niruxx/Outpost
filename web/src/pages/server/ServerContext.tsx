@@ -14,6 +14,7 @@ interface ServerDetailState {
   canWrite: boolean;
   /** Whether the signed-in user holds a specific permission on this instance. */
   can: (permission: ServerPermission) => boolean;
+  canConfig: (kind: 'setting' | 'property', key: string) => boolean;
   permissions: ServerPermission[];
   /** A scheduled automatic restart after the process exited on its own. */
   autoRestart: AutoRestartState | null;
@@ -37,6 +38,7 @@ export function ServerDetailProvider({ children, serverId: explicitId }: { child
   const [server, setServer] = useState<ServerRecord | null>(null);
   const [runtime, setRuntime] = useState<RuntimeInfo | null>(null);
   const [running, setRunning] = useState(false);
+  const [configAccess, setConfigAccess] = useState<Record<string, boolean>>({});
   const [permissions, setPermissions] = useState<ServerPermission[]>([]);
   const [autoRestart, setAutoRestart] = useState<AutoRestartState | null>(null);
   const [owner, setOwner] = useState<{ id: string; username: string } | null>(null);
@@ -50,6 +52,7 @@ export function ServerDetailProvider({ children, serverId: explicitId }: { child
         server: ServerRecord;
         runtime: RuntimeInfo | null;
         running: boolean;
+        configAccess?: Record<string, boolean>;
         permissions: ServerPermission[];
         autoRestart?: AutoRestartState;
         owner?: { id: string; username: string } | null;
@@ -57,6 +60,7 @@ export function ServerDetailProvider({ children, serverId: explicitId }: { child
         `/servers/${serverId}`
       );
       setServer(res.server);
+      setConfigAccess(res.configAccess ?? {});
       setPermissions(res.permissions ?? []);
       setAutoRestart(res.autoRestart ?? null);
       setOwner(res.owner ?? null);
@@ -87,12 +91,16 @@ export function ServerDetailProvider({ children, serverId: explicitId }: { child
   const isAdmin = user?.role === 'admin';
   // Admins can still manage a suspended instance; its lock applies to everyone else.
   const locked = !!server?.suspended && !isAdmin;
-  const can = (permission: ServerPermission) => !locked && permissions.includes(permission);
+  const can = (permission: ServerPermission) => !locked && permissions.includes(permission) && !(permission === 'settings' && Object.values(configAccess).includes(false));
+  const canConfig = (kind: 'setting' | 'property', key: string) => {
+    const alias = kind === 'setting' && key === 'serverPort' ? 'property.server-port' : kind === 'property' && key === 'server-port' ? 'setting.serverPort' : null;
+    return !locked && (isAdmin || ((alias ? configAccess[alias] !== false : true) && (configAccess[`${kind}.${key}`] ?? permissions.includes('settings'))));
+  };
   const canWrite = !locked && permissions.some((p) => p !== 'files.read');
 
   return (
     <ServerDetailContext.Provider
-      value={{ serverId: serverId!, server, runtime, running, canWrite, can, permissions, autoRestart, owner, isOwner: !!owner && owner.id === user?.id, isAdmin, suspendedMessage, loadError, refresh }}
+      value={{ serverId: serverId!, server, runtime, running, canWrite, can, canConfig, permissions, autoRestart, owner, isOwner: !!owner && owner.id === user?.id, isAdmin, suspendedMessage, loadError, refresh }}
     >
       {children}
     </ServerDetailContext.Provider>

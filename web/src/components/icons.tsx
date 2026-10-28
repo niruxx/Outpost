@@ -2,6 +2,8 @@ import type { ReactNode } from 'react';
 
 /** Inline stroke icons (24px grid) — no icon font, so the panel works on hosts without internet. */
 const PATHS: Record<string, ReactNode> = {
+  storage: <><rect x="2" y="3" width="20" height="7" rx="2" /><rect x="2" y="14" width="20" height="7" rx="2" /><path d="M6 6.5h.01M6 17.5h.01M16 6.5h2M16 17.5h2" /></>,
+  monitor: <><rect x="2" y="3" width="20" height="14" rx="2" /><path d="M8 21h8M12 17v4" /></>,
   instances: (
     <>
       <rect x="3" y="3" width="18" height="7" rx="2" />

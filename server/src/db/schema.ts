@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS users (
   totp_last_step INTEGER NOT NULL DEFAULT 0, -- last accepted time step, so a code can't be replayed
   totp_recovery TEXT, -- JSON array of SHA-256 hashes of unused recovery codes
   firewall TEXT NOT NULL DEFAULT 'none', -- host firewall access: none | view | instances | manage (admins: always manage)
+  storage TEXT NOT NULL DEFAULT '[]', -- JSON host storage permissions; admins have all by default
   theme TEXT -- UI theme applied when this user signs in (an admin's choice); NULL = whatever their browser last used
 );
 
@@ -19,6 +20,7 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS user_server_access (
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   server_id TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+  config_access TEXT, -- JSON per-item allow/deny overrides; NULL = inherit
   permissions TEXT, -- JSON array of ServerPermission; NULL = the role's defaults
   PRIMARY KEY (user_id, server_id)
 );
@@ -26,6 +28,7 @@ CREATE TABLE IF NOT EXISTS user_server_access (
 CREATE TABLE IF NOT EXISTS servers (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
+  backup_directory TEXT, -- custom backup base directory; NULL = default snapshots/rewind paths
   platform TEXT NOT NULL, -- java | bedrock | steam (validated at the application layer, like loader)
   loader TEXT NOT NULL, -- vanilla | paper | purpur | spigot | bedrock | steam
   version TEXT NOT NULL,

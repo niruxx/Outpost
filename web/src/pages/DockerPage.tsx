@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
+import { NativeContainersPanel } from '../components/NativeContainersPanel.js';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { setVisibleInterval } from '../lib/perf.js';
 import { Link, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -121,7 +122,7 @@ function DockerRow({ server, metrics }: { server: ServerRecord; metrics: Instanc
   );
 }
 
-/** The Docker page: engine status + only the container-backed instances. */
+/** Engine-wide discovery alongside the user's Outpost container instances. */
 export function DockerPage() {
   const { user, creation } = useAuth();
   const toast = useToast();
@@ -133,15 +134,19 @@ export function DockerPage() {
   const [servers, setServers] = useState<ServerRecord[] | null>(null);
   const [metrics, setMetrics] = useState<Record<string, InstanceListMetrics>>({});
   const [createOpen, setCreateOpen] = useState(false);
+  const engineLoading = useRef(false);
 
-  const loadEngine = useCallback(async (refresh = false) => {
+  const loadEngine = useCallback(async (refresh = false, quiet = false) => {
+    if (engineLoading.current) return;
+    engineLoading.current = true;
     setRefreshing(true);
     try {
       setOverview(await api.get<DockerOverview>(`/docker${refresh ? '?refresh=1' : ''}`));
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Failed to reach the container engine');
+      if (!quiet) toast.error(err instanceof ApiError ? err.message : 'Failed to reach the container engine');
     } finally {
       setRefreshing(false);
+      engineLoading.current = false;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -159,18 +164,17 @@ export function DockerPage() {
   useEffect(() => {
     loadEngine();
     loadInstances();
-    const t = setVisibleInterval(loadInstances, 4000);
+    const t = setVisibleInterval(() => { void loadInstances(); void loadEngine(false, true); }, 8000);
     return () => t();
   }, [loadEngine, loadInstances]);
 
-  const managed = overview?.containers ?? [];
 
   return (
     <Layout>
       <div className="mx-auto max-w-6xl space-y-5 px-4 py-8 sm:px-8">
         <PageHeader
           title="Docker"
-          subtitle="Apps, services and game servers in containers — each one only sees its own folder."
+          subtitle="Manage Outpost instances and containers discovered on the host engine."
           action={
             canCreateContainers && (
               <Button variant="primary" onClick={() => setCreateOpen(true)} disabled={!overview?.engine.available}>
@@ -181,6 +185,7 @@ export function DockerPage() {
         />
 
         <EngineCard overview={overview} refreshing={refreshing} onRefresh={() => loadEngine(true)} />
+        {isAdmin && overview?.engine.available && <NativeContainersPanel containers={overview.containers} onRefresh={() => loadEngine()} />}
 
         <div>
           <h2 className="mb-3 text-base font-medium text-ink-100">{servers ? `${servers.length} container instance${servers.length === 1 ? '' : 's'}` : 'Container instances'}</h2>
@@ -207,19 +212,7 @@ export function DockerPage() {
           )}
         </div>
 
-        {isAdmin && managed.length > 0 && (
-          <Card className="p-5">
-            <CardTitle>Containers started by Outpost</CardTitle>
-            <p className="mb-3 text-sm text-ink-400">Labelled <span className="font-mono">outpost.instance</span> on the engine — useful for spotting leftovers after a panel restart.</p>
-            <div className="space-y-1 font-mono text-xs text-ink-300">
-              {managed.map((c) => (
-                <p key={c.name}>
-                  {c.name} · {c.image} · {c.status}
-                </p>
-              ))}
-            </div>
-          </Card>
-        )}
+
       </div>
 
       <NewInstanceModal

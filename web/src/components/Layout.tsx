@@ -102,7 +102,14 @@ function MainNav({ onNavigate }: { onNavigate?: () => void }) {
       <NavItem to="/" end icon="instances" label="Instances" onClick={onNavigate} />
       <NavItem to="/files" icon="folder" label="File Management" onClick={onNavigate} />
       <NavItem to="/docker" icon="container" label="Docker" onClick={onNavigate} />
+      {user?.role === 'admin' && <>
+        <NavSectionLabel>Virtualization</NavSectionLabel>
+        <NavItem to="/libvirt" end icon="monitor" label="Virtual Machines" onClick={onNavigate} />
+        <NavItem to="/libvirt/configuration" icon="configuration" label="Libvirt Configuration" onClick={onNavigate} />
+      </>}
       <NavSectionLabel>Administration</NavSectionLabel>
+      {(user?.role === 'admin' || !!user?.storagePermissions?.length) && <NavItem to="/storage" icon="storage" label="Storage" onClick={onNavigate} />}
+      {user?.role === 'admin' && <NavItem to="/host-console" icon="console" label="Host Console" onClick={onNavigate} />}
       <NavItem to="/configuration" icon="configuration" label="Configuration" onClick={onNavigate} />
       {user?.role === 'admin' && <NavItem to="/users" icon="users" label="Users" onClick={onNavigate} />}
       {(user?.role === 'admin' || (user?.firewall && user.firewall !== 'none')) && (

@@ -8,8 +8,17 @@ import { logger } from '../utils/logger.js';
  * already been applied before doing anything, so this is safe to call on every startup.
  */
 export function runMigrations(db: DatabaseSync): void {
+  if (!db.prepare("SELECT 1 FROM pragma_table_info('users') WHERE name = 'storage'").get()) {
+    db.exec("ALTER TABLE users ADD COLUMN storage TEXT NOT NULL DEFAULT '[]'");
+  }
+  if (!db.prepare("SELECT 1 FROM pragma_table_info('user_server_access') WHERE name = 'config_access'").get()) {
+    db.exec('ALTER TABLE user_server_access ADD COLUMN config_access TEXT');
+  }
   addSteamAppIdColumn(db);
   dropPlatformCheckConstraint(db);
+  if (!db.prepare("SELECT 1 FROM pragma_table_info('servers') WHERE name = 'backup_directory'").get()) {
+    db.exec('ALTER TABLE servers ADD COLUMN backup_directory TEXT');
+  }
   addSteamCmdColumns(db);
   addSuspensionColumns(db);
   addAccessPermissionsColumn(db);

@@ -1,4 +1,12 @@
 export type Role = 'admin' | 'moderator' | 'viewer';
+export type StoragePermission = 'view' | 'mount' | 'automount' | 'format' | 'wipe' | 'partition' | 'encrypt' | 'lvm' | 'resize';
+
+export interface LibvirtSettings { enabled: boolean; uri: string }
+export interface VirtualMachine {
+  uuid: string; name: string; state: string; cpus: number; memoryMb: number;
+  maxMemoryMb: number; autostart: boolean; persistent: boolean;
+}
+export type VmAction = 'start' | 'shutdown' | 'reboot' | 'suspend' | 'resume' | 'destroy';
 
 export type ServerPermission =
   | 'power'
@@ -18,6 +26,7 @@ export interface PublicUser {
   id: string;
   username: string;
   role: Role;
+  storagePermissions?: StoragePermission[];
   created_at: string;
   /** Two-factor sign-in is on for this account. */
   totp_enabled?: 0 | 1;
@@ -27,6 +36,7 @@ export interface PublicUser {
   theme?: string | null;
   serverAccess?: string[];
   /** serverId → explicit permission set, or null for the role's defaults */
+  configAccess?: Record<string, Record<string, boolean>>;
   serverPermissions?: Record<string, ServerPermission[] | null>;
   /** This user's own creation policy, or null when it follows the role's default. */
   creationPolicy?: CreationPolicy | null;
@@ -124,6 +134,7 @@ export interface AutoRestartState {
 export interface ServerRecord {
   id: string;
   name: string;
+  backup_directory: string | null;
   platform: Platform;
   loader: Loader;
   version: string;
@@ -580,8 +591,19 @@ export interface EngineStatus {
 export interface DockerOverview {
   engine: EngineStatus;
   counts: { containers: number; running: number; images: number } | null;
-  containers: { name: string; status: string; image: string; instanceId: string }[];
+  containers: NativeContainer[];
   socket: { path: string | null; hint: string | null } | null;
+}
+
+export interface NativeContainer {
+  id: string; name: string; status: string; state: string; image: string; ports: string;
+  instanceId: string | null; composeProject: string | null;
+  instance: { id: string; name: string; supervised: boolean } | null;
+}
+export interface NativeContainerDetails extends NativeContainer {
+  createdAt: string | null; startedAt: string | null; finishedAt: string | null; autoRemove: boolean;
+  restartPolicy: string; memoryMb: number | null; cpus: number | null; command: string[];
+  mounts: { type: string; source: string; destination: string; writable: boolean }[]; networks: string[];
 }
 
 export interface SandboxStatus {

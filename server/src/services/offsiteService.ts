@@ -7,7 +7,7 @@ import ssh2 from 'ssh2';
 import { prep } from '../db/db.js';
 import { HttpError } from '../utils/asyncHandler.js';
 import { logger } from '../utils/logger.js';
-import { backupDir } from '../utils/paths.js';
+import { backupDir, acquireBackupStorage } from './backupStorageService.js';
 
 /**
  * Off-site backups: every new snapshot is copied to the enabled destinations — S3-compatible
@@ -320,12 +320,15 @@ export async function listRemote(d: Destination, serverId: string): Promise<Remo
 }
 
 async function uploadTo(d: Destination, serverId: string, fileName: string) {
-  const local = path.join(backupDir(serverId), fileName);
-  if (d.type === 's3') return s3Upload(d.config as S3Config, local, `${remoteDir(d, serverId)}${fileName}`);
-  await withSftp(d.config as SftpDestConfig, async (sftp) => {
-    await sftpMkdirp(sftp, remoteDir(d, serverId));
-    await sp<void>((cb) => sftp.fastPut(local, `${remoteDir(d, serverId)}/${fileName}`, cb));
-  });
+  const release = acquireBackupStorage(serverId);
+  try {
+    const local = path.join(backupDir(serverId), fileName);
+    if (d.type === 's3') return await s3Upload(d.config as S3Config, local, `${remoteDir(d, serverId)}${fileName}`);
+    await withSftp(d.config as SftpDestConfig, async (sftp) => {
+      await sftpMkdirp(sftp, remoteDir(d, serverId));
+      await sp<void>((cb) => sftp.fastPut(local, `${remoteDir(d, serverId)}/${fileName}`, cb));
+    });
+  } finally { release(); }
 }
 
 async function deleteRemote(d: Destination, serverId: string, name: string) {
@@ -335,19 +338,22 @@ async function deleteRemote(d: Destination, serverId: string, name: string) {
 
 /** Copies a remote snapshot back into the instance's local snapshots (then it can be restored as usual). */
 export async function fetchRemote(d: Destination, serverId: string, name: string): Promise<string> {
-  if (!/^[\w.\-]+\.zip$/.test(name)) throw new HttpError(400, 'Invalid snapshot name');
-  fs.mkdirSync(backupDir(serverId), { recursive: true });
-  const local = path.join(backupDir(serverId), name);
-  const partial = `${local}.partial`;
+  const release = acquireBackupStorage(serverId);
   try {
-    if (d.type === 's3') await s3Download(d.config as S3Config, `${remoteDir(d, serverId)}${name}`, partial);
-    else await withSftp(d.config as SftpDestConfig, (sftp) => sp<void>((cb) => sftp.fastGet(`${remoteDir(d, serverId)}/${name}`, partial, cb)));
-    fs.renameSync(partial, local);
-  } catch (err) {
-    fs.rmSync(partial, { force: true });
-    throw err;
-  }
-  return name;
+    if (!/^[\w.\-]+\.zip$/.test(name)) throw new HttpError(400, 'Invalid snapshot name');
+    fs.mkdirSync(backupDir(serverId), { recursive: true });
+    const local = path.join(backupDir(serverId), name);
+    const partial = `${local}.partial`;
+    try {
+      if (d.type === 's3') await s3Download(d.config as S3Config, `${remoteDir(d, serverId)}${name}`, partial);
+      else await withSftp(d.config as SftpDestConfig, (sftp) => sp<void>((cb) => sftp.fastGet(`${remoteDir(d, serverId)}/${name}`, partial, cb)));
+      fs.renameSync(partial, local);
+    } catch (err) {
+      fs.rmSync(partial, { force: true });
+      throw err;
+    }
+    return name;
+  } finally { release(); }
 }
 
 /** Uploads and removes a small test file. */
@@ -411,9 +417,9 @@ export function enqueueCopy(serverId: string, fileName: string, onlyDestination?
   for (const d of targets) {
     setCopy(serverId, fileName, d.id, 'pending');
     queue = queue.then(async () => {
-      if (!fs.existsSync(path.join(backupDir(serverId), fileName))) return setCopy(serverId, fileName, d.id, 'failed', 'The local snapshot was deleted before it was copied');
-      setCopy(serverId, fileName, d.id, 'uploading');
       try {
+        if (!fs.existsSync(path.join(backupDir(serverId), fileName))) return setCopy(serverId, fileName, d.id, 'failed', 'The local snapshot was deleted before it was copied');
+        setCopy(serverId, fileName, d.id, 'uploading');
         await uploadTo(d, serverId, fileName);
         setCopy(serverId, fileName, d.id, 'done');
         logger.info(`Off-site: copied ${serverId}/${fileName} to ${d.name}`);

@@ -8,6 +8,8 @@ import { listServers } from './serverService.js';
 import { isRunning } from './processManager.js';
 import { logger } from '../utils/logger.js';
 import { HttpError } from '../utils/asyncHandler.js';
+import { DatabaseSync } from 'node:sqlite';
+import { acquireBackupStorage, backupDir, rewindDir } from './backupStorageService.js';
 
 function timestampSlug(): string {
   return new Date().toISOString().replace(/[:.]/g, '-');
@@ -38,9 +40,24 @@ async function renameWithRetry(from: string, to: string, attempts = 5): Promise<
 export async function exportEnvironment(): Promise<{ filePath: string; fileName: string }> {
   const fileName = `outpost-environment-${timestampSlug()}.zip`;
   const filePath = path.join(os.tmpdir(), fileName);
-  const zip = new AdmZip();
-  zip.addLocalFolder(DATA_DIR, '');
-  await zip.writeZipPromise(filePath);
+  const release: (() => void)[] = [];
+  try {
+    const servers = listServers();
+    for (const server of servers) release.push(acquireBackupStorage(server.id));
+    const zip = new AdmZip();
+    zip.addLocalFolder(DATA_DIR, '');
+    for (const server of servers.filter((s) => s.backup_directory)) {
+      // Export active external archives in the portable default layout, replacing old copies.
+      zip.deleteFile(`backups/${server.id}/`);
+      zip.deleteFile(`rewind/${server.id}/`);
+      const relative = path.relative(DATA_DIR, path.join(server.backup_directory!, server.id));
+      if (!relative.startsWith('..') && !path.isAbsolute(relative)) zip.deleteFile(`${relative.split(path.sep).join('/')}/`);
+      const snapshots = backupDir(server.id), rewind = rewindDir(server.id);
+      if (fs.existsSync(snapshots)) zip.addLocalFolder(snapshots, `backups/${server.id}`);
+      if (fs.existsSync(rewind)) zip.addLocalFolder(rewind, `rewind/${server.id}`);
+    }
+    await zip.writeZipPromise(filePath);
+  } finally { for (const done of release) done(); }
   logger.info(`Exported environment backup: ${filePath} (${fs.statSync(filePath).size} bytes)`);
   return { filePath, fileName };
 }
@@ -120,12 +137,22 @@ export async function importEnvironment(zipPath: string): Promise<{ previousData
   fs.mkdirSync(stagingDir, { recursive: true });
   try {
     new AdmZip(zipPath).extractAllTo(stagingDir, true);
+    resetImportedBackupStoragePaths(stagingDir);
   } catch (err) {
     fs.rmSync(stagingDir, { recursive: true, force: true });
     throw new HttpError(400, `Could not extract the archive (${err instanceof Error ? err.message : err})`);
   }
 
   return swapDataDir(stagingDir, 'pre-import');
+}
+
+/** Exported archives use the default layout, so machine-specific mount paths must be cleared. */
+export function resetImportedBackupStoragePaths(stagingDir: string) {
+  const dbPath = path.join(stagingDir, fs.existsSync(path.join(stagingDir, 'outpost.db')) ? 'outpost.db' : 'multicraft.db');
+  const stagedDb = new DatabaseSync(dbPath);
+  try {
+    if (stagedDb.prepare("SELECT 1 FROM pragma_table_info('servers') WHERE name = 'backup_directory'").get()) stagedDb.exec('UPDATE servers SET backup_directory = NULL');
+  } finally { stagedDb.close(); }
 }
 
 /**
