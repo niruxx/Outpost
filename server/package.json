@@ -16,7 +16,7 @@
     "express": "^4.21.2",
     "mcbe-leveldb-reader": "^5.0.1",
     "multer": "^2.0.1",
-    "mysql2": "^3.11.5",
+    "mysql2": "^3.23.1",
     "node-cron": "^3.0.3",
     "pngjs": "^7.0.0",
     "prismarine-chunk": "^1.41.0",
