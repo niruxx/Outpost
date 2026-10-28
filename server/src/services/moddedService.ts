@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import AdmZip from 'adm-zip';
 import { downloadFile, fetchJson, type LogFn } from '../utils/download.js';
-import { safeJoin } from '../utils/paths.js';
+import { DATA_DIR, safeJoin } from '../utils/paths.js';
 import { pickRuntime } from './javaRuntimeService.js';
 import type { Loader } from '../types/index.js';
 
@@ -335,22 +335,54 @@ interface MrIndex {
   formatVersion: number;
   name: string;
   dependencies: Record<string, string>;
+  versionId?: string;
   files: { path: string; downloads: string[]; env?: { server?: string }; fileSize?: number }[];
+}
+
+export function uploadedModpackPath(id: string): string {
+  if (!/^[0-9a-f-]{36}$/.test(id)) throw new Error('Invalid uploaded modpack ID');
+  return path.join(DATA_DIR, 'modpacks', `${id}.mrpack`);
+}
+
+export function inspectModpack(buffer: Buffer) {
+  const zip = new AdmZip(buffer);
+  const entries = zip.getEntries();
+  if (entries.length > 20000 || entries.reduce((n, e) => n + e.header.size, 0) > 1024 * 1024 * 1024) throw new Error('Modpack expands beyond the 1 GB limit');
+  const entry = zip.getEntry('modrinth.index.json');
+  if (!entry || entry.header.size > 10 * 1024 * 1024) throw new Error('Missing or oversized modrinth.index.json');
+  const index = JSON.parse(zip.readAsText(entry)) as MrIndex;
+  if (index.formatVersion !== 1 || !Array.isArray(index.files) || !index.dependencies || typeof index.name !== 'string') throw new Error('Invalid mrpack manifest');
+  const loaders = [['fabric-loader', 'fabric'], ['quilt-loader', 'quilt'], ['forge', 'forge'], ['neoforge', 'neoforge']] as const;
+  const selected = loaders.filter(([key]) => index.dependencies[key]);
+  if (selected.length !== 1 || !/^[\w.+-]{1,80}$/.test(index.dependencies.minecraft ?? '')) throw new Error('Modpack must specify Minecraft and one supported mod loader');
+  const [key, loader] = selected[0];
+  if (!/^[\w.+-]{1,80}$/.test(index.dependencies[key])) throw new Error('Invalid loader version');
+  for (const file of index.files) {
+    if (typeof file.path !== 'string' || !Array.isArray(file.downloads) || !file.downloads.every(u => typeof u === 'string')) throw new Error('Invalid modpack file entry');
+    safeJoin(path.join(DATA_DIR, 'pack-validation'), file.path);
+  }
+  for (const e of entries) {
+    for (const prefix of ['overrides/', 'server-overrides/']) if (e.entryName.startsWith(prefix)) safeJoin(path.join(DATA_DIR, 'pack-validation'), e.entryName.slice(prefix.length));
+  }
+  return { index, mc: index.dependencies.minecraft, loader, loaderVersion: index.dependencies[key] };
 }
 
 const ALLOWED_HOSTS = /^https:\/\/(cdn\.modrinth\.com|github\.com|raw\.githubusercontent\.com|gitlab\.com|objects\.githubusercontent\.com)\//;
 
 /** Downloads a pack's server files and overrides into the instance. Returns the loader version it wants. */
 export async function installModpack(ref: ModpackRef, dir: string, progress: Progress, onLog?: LogFn): Promise<{ loader: ModdedLoader; mc: string; loaderVersion: string }> {
-  const v = await mrFetch<MrVersion>(`/version/${ref.versionId}`);
-  const file = v.files.find((f) => f.primary) ?? v.files[0];
-  if (!file?.filename.endsWith('.mrpack')) throw new Error('That version has no .mrpack file');
-  const packPath = path.join(dir, '_modpack.mrpack');
-  progress(2, `Downloading ${ref.title} ${ref.versionNumber}`);
-  await downloadFile(file.url, packPath, (p) => progress(2 + Math.round(p * 0.08), 'Downloading the modpack'), onLog);
+  const uploaded = ref.projectId === 'uploaded';
+  const packPath = uploaded ? uploadedModpackPath(ref.versionId) : path.join(dir, '_modpack.mrpack');
+  if (!uploaded) {
+    const v = await mrFetch<MrVersion>(`/version/${ref.versionId}`);
+    const file = v.files.find(f => f.primary) ?? v.files[0];
+    if (!file?.filename.endsWith('.mrpack')) throw new Error('That version has no .mrpack file');
+    progress(2, `Downloading ${ref.title} ${ref.versionNumber}`);
+    await downloadFile(file.url, packPath, p => progress(2 + Math.round(p * 0.08), 'Downloading the modpack'), onLog);
+  }
   try {
     const zip = new AdmZip(packPath);
-    const index = JSON.parse(zip.readAsText('modrinth.index.json')) as MrIndex;
+    const { index } = inspectModpack(fs.readFileSync(packPath));
     const deps = index.dependencies;
     const mc = deps.minecraft;
     const [depKey, loader] = (
@@ -388,6 +420,6 @@ export async function installModpack(ref: ModpackRef, dir: string, progress: Pro
     }
     return { loader, mc, loaderVersion: deps[depKey] };
   } finally {
-    fs.rmSync(packPath, { force: true });
+    if (!uploaded) fs.rmSync(packPath, { force: true });
   }
 }

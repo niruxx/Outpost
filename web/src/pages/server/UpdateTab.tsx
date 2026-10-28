@@ -1,3 +1,4 @@
+import { ModVersionsCard } from './ModVersionsCard.js';
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useServerDetail } from './ServerContext.js';
@@ -24,6 +25,13 @@ export function UpdateTab() {
   const [error, setError] = useState('');
   const [backupFirst, setBackupFirst] = useState(true);
   const [starting, setStarting] = useState(false);
+  const [targetVersion, setTargetVersion] = useState('');
+  const [versions, setVersions] = useState<string[]>([]);
+  useEffect(() => {
+    if (server?.platform !== 'java') return;
+    setTargetVersion('');
+    api.get<{ versions: { version: string }[] }>(`/servers/catalog/versions?loader=${server.loader}`).then(r => setVersions(r.versions.map(v => v.version))).catch(e => setError(e.message));
+  }, [server?.loader, serverId]);
 
   async function runCheck() {
     setChecking(true);
@@ -54,7 +62,7 @@ export function UpdateTab() {
         toast.show('Creating a safety backup before updating…');
         await api.post(`/servers/${serverId}/backups`, { label: 'pre-update' });
       }
-      await api.post(`/servers/${serverId}/update`);
+      await api.post(`/servers/${serverId}/update`, targetVersion ? { targetVersion } : undefined);
       toast.success('Update started — watch progress below');
       await refresh();
     } catch (err) {
@@ -108,6 +116,15 @@ export function UpdateTab() {
         <ErrorText>{error}</ErrorText>
       </Card>
 
+      {server.platform === 'java' && <Card className="space-y-3 p-5">
+        <h2 className="font-medium text-ink-100">Server version</h2>
+        <p className="text-sm text-ink-400">Installed: {server.loader} {server.version}. Select a newer or older Minecraft version, then apply below. Mods must support the selected Minecraft version. Downgrading an existing world can damage it; restore a matching backup when moving backwards.</p>
+        <select aria-label="Target Minecraft version" className="ui-input w-full" value={targetVersion} onChange={e => setTargetVersion(e.target.value)}>
+          <option value="">Current Minecraft version (latest server build)</option>
+          {versions.map(v => <option key={v} value={v}>{v}</option>)}
+        </select>
+      </Card>}
+      <ModVersionsCard />
       <Card className="p-5">
         <h2 className="mb-2 text-base font-medium text-ink-100">What's preserved</h2>
         <p className="mb-2 text-sm text-ink-400">
@@ -134,7 +151,7 @@ export function UpdateTab() {
               Create a backup first (recommended)
             </label>
             <Button variant="primary" disabled={running || starting || isUpdating} onClick={startUpdate}>
-              {starting ? 'Starting…' : isUpdating ? 'Updating…' : 'Update now'}
+              {starting ? 'Starting…' : isUpdating ? 'Updating…' : targetVersion ? `Install Minecraft ${targetVersion}` : 'Update now'}
             </Button>
           </>
         )}

@@ -1,3 +1,7 @@
+import multer from 'multer';
+import { randomUUID } from 'node:crypto';
+import path from 'node:path';
+import { inspectModpack, uploadedModpackPath } from '../services/moddedService.js';
 import { Router, type Request } from 'express';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -242,7 +246,12 @@ serversRouter.get(
 
 serversRouter.post(
   '/',
+  multer({ storage: multer.memoryStorage(), limits: { fileSize: 256 * 1024 * 1024, fields: 1, files: 1, fieldSize: 1024 * 1024 } }).single('mrpack'),
   asyncHandler(async (req, res) => {
+    if (req.file) {
+      if (!req.file.originalname.toLowerCase().endsWith('.mrpack')) throw new HttpError(400, 'Upload a .mrpack file');
+      try { req.body = JSON.parse(req.body.payload); } catch { throw new HttpError(400, 'Invalid server configuration'); }
+    }
     // Creating from a template: its settings (variables filled in) are the defaults; what the
     // person typed (name, port, memory, EULA, Steam login) wins. Everything below still applies.
     let fromTemplate: { tpl: OutpostTemplate; vars: Record<string, string>; inst: TemplateInstance } | null = null;
@@ -274,6 +283,13 @@ serversRouter.post(
       fromTemplate = { tpl, vars, inst };
     }
     let modpackRef: ModpackRef | null = null;
+    if (req.file) {
+      try {
+        const pack = inspectModpack(req.file.buffer);
+        modpackRef = { projectId: 'uploaded', versionId: randomUUID(), title: pack.index.name, versionNumber: pack.index.versionId ?? 'uploaded' };
+        req.body = { ...req.body, platform: 'java', loader: pack.loader, version: pack.mc, modpack: undefined };
+      } catch (err) { throw new HttpError(400, err instanceof Error ? err.message : 'Invalid mrpack archive'); }
+    }
     if (req.body?.modpack && typeof req.body.modpack === 'object') {
       let pack: Awaited<ReturnType<typeof resolveModpack>>;
       try {
@@ -407,6 +423,11 @@ serversRouter.post(
     });
 
     if (modpackRef) {
+      if (req.file) {
+        const destination = uploadedModpackPath(modpackRef.versionId);
+        fs.mkdirSync(path.dirname(destination), { recursive: true });
+        fs.writeFileSync(destination, req.file.buffer);
+      }
       setModpack(record.id, JSON.stringify(modpackRef));
       record.modpack = JSON.stringify(modpackRef);
       appendLine(record.id, `[Outpost] Modpack: ${modpackRef.title} ${modpackRef.versionNumber} (Modrinth)`);

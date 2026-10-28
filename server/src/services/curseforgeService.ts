@@ -167,14 +167,18 @@ export function createCurseForge(deps: { fetch: FetchFn; getKey: () => string | 
   }
 
   /** The newest downloadable file, preferring releases and (for Java) the server's Minecraft version. */
-  async function resolveFile(modId: number, gameVersion: string | null, target?: CfTarget): Promise<CfResolvedFile> {
+  async function resolveFile(modId: number, gameVersion: string | null, target?: CfTarget, fileId?: number): Promise<CfResolvedFile> {
     const { data: mod } = await cf<{ data: CfMod }>(`/v1/mods/${modId}`);
     if (mod.allowModDistribution === false) {
       throw new HttpError(409, `“${mod.name}”’s author only allows downloads from the CurseForge website — download it there and upload it here`);
     }
     const loaderType = target ? MOD_LOADER_TYPE[target] : undefined;
     const { data: files } = await cf<{ data: CfFile[] }>(`/v1/mods/${modId}/files?pageSize=50${loaderType ? `&modLoaderType=${loaderType}` : ''}`);
-    const usable = files
+    const candidates = fileId ? [(await cf<{ data: CfFile }>(`/v1/mods/${modId}/files/${fileId}`)).data] : files;
+    if (fileId && loaderType && !candidates[0].gameVersions.some(v => v.toLowerCase() === target!.slice(4))) {
+      throw new HttpError(400, 'Selected mod version does not support this loader');
+    }
+    const usable = candidates
       .filter((f) => f.downloadUrl && f.isAvailable !== false)
       .sort((a, b) => a.releaseType - b.releaseType || Date.parse(b.fileDate) - Date.parse(a.fileDate));
     if (!usable.length) throw new HttpError(409, `No downloadable file for “${mod.name}”`);
@@ -207,6 +211,13 @@ export function createCurseForge(deps: { fetch: FetchFn; getKey: () => string | 
     };
   }
 
+  async function versions(modId: number, gameVersion: string, target: CfTarget) {
+    const params = new URLSearchParams({ gameVersion, pageSize: '50' });
+    if (MOD_LOADER_TYPE[target]) params.set('modLoaderType', String(MOD_LOADER_TYPE[target]));
+    const { data } = await cf<{ data: CfFile[] }>(`/v1/mods/${modId}/files?${params}`);
+    return data.filter(f => f.downloadUrl && f.isAvailable !== false && f.gameVersions.includes(gameVersion)).map(f => ({ id: String(f.id), name: f.displayName }));
+  }
+
   /** Confirms a key works before it's saved. */
   async function checkKey(key: string): Promise<void> {
     const res = await deps.fetch(`${API}/v1/games?pageSize=1`, { headers: { 'x-api-key': key, Accept: 'application/json' }, signal: AbortSignal.timeout(15_000) });
@@ -214,7 +225,7 @@ export function createCurseForge(deps: { fetch: FetchFn; getKey: () => string | 
     if (!res.ok) throw new HttpError(502, `CurseForge answered ${res.status}`);
   }
 
-  return { classes, search, resolveFile, resolveLink, checkKey, reset: () => (gameIds.clear(), classCache.clear()) };
+  return { classes, search, resolveFile, resolveLink, versions, checkKey, reset: () => (gameIds.clear(), classCache.clear()) };
 }
 
 export const curseforge = createCurseForge({

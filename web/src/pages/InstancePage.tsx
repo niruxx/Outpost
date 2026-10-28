@@ -79,7 +79,7 @@ function InstanceNav({ server, onNavigate }: { server: ServerRecord; onNavigate:
       {world && <NavItem to="whitelist" icon="checklist" label="Whitelist" onClick={onNavigate} />}
       {world && <NavItem to="maps" icon="map" label="Map" onClick={onNavigate} />}
       {world && <NavItem to="rewind" icon="refresh" label="World Rewind" onClick={onNavigate} />}
-      <NavItem to="update" icon="update" label="Update" onClick={onNavigate} />
+      <NavItem to="update" icon="update" label="Versions & updates" onClick={onNavigate} />
     </nav>
     </LayoutGroup>
   );

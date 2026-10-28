@@ -103,6 +103,8 @@ export async function resolvePluginVersion(
   if (versionId) {
     const v = await modrinthFetch<ModrinthVersion>(`/version/${encodeURIComponent(versionId)}`);
     if (!v.game_versions.includes(gameVersion) || !v.loaders.some(l => loadersFor(catalog).includes(l))) throw new Error(`Required version of ${slug} is incompatible with this instance`);
+    const project = await modrinthFetch<{ id: string }>(`/project/${encodeURIComponent(slug)}`);
+    if (project.id !== v.project_id) throw new Error('Selected version does not belong to this mod project');
     const file = pickFile(v);
     if (!file) throw new Error(`No downloadable file for ${slug}`);
     return { projectId: v.project_id, dependencies: dependencyRefs(v), versionNumber: v.version_number, fileName: file.filename, downloadUrl: file.url, sizeBytes: file.size, versionMismatchWarning: false };
@@ -150,4 +152,10 @@ function dependencyRefs(v: ModrinthVersion) {
 }
 export async function modrinthProjectTitle(id: string): Promise<string> {
   return (await modrinthFetch<{ title: string }>(`/project/${encodeURIComponent(id)}`)).title;
+}
+
+export async function listModVersions(project: string, catalog: AddonCatalog, gameVersion: string) {
+  const params = new URLSearchParams({ loaders: JSON.stringify(loadersFor(catalog)), game_versions: JSON.stringify([gameVersion]) });
+  const versions = await modrinthFetch<(ModrinthVersion & { id: string })[]>(`/project/${encodeURIComponent(project)}/version?${params}`);
+  return versions.filter(v => pickFile(v)).map(v => ({ id: v.id, name: v.version_number }));
 }

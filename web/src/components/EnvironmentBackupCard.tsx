@@ -1,3 +1,5 @@
+import { UploadTracker } from './UploadTracker.js';
+import type { UploadProgress } from '../api/client.js';
 import { useRef, useState } from 'react';
 import { api, ApiError, downloadUrl } from '../api/client.js';
 import { useToast } from './Toast.js';
@@ -9,6 +11,7 @@ export function EnvironmentBackupCard() {
   const confirm = useConfirm();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [exporting, setExporting] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
   const [importing, setImporting] = useState(false);
   const [restarting, setRestarting] = useState(false);
 
@@ -51,7 +54,7 @@ export function EnvironmentBackupCard() {
     const formData = new FormData();
     formData.append('archive', file);
     try {
-      const res = await api.upload<{ message: string }>('/environment/import', formData);
+      const res = await api.upload<{ message: string }>('/environment/import', formData, setUploadProgress);
       toast.success(res.message);
       setRestarting(true);
     } catch (err) {
@@ -65,6 +68,7 @@ export function EnvironmentBackupCard() {
       }
     } finally {
       setImporting(false);
+      setUploadProgress(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   }
@@ -88,6 +92,7 @@ export function EnvironmentBackupCard() {
 
   return (
     <Card className="mb-6 p-4">
+      <UploadTracker progress={uploadProgress} />
       <h2 className="text-base font-medium text-ink-100">Environment backup &amp; restore</h2>
       <p className="mt-1 mb-4 text-xs text-ink-500">
         Exports everything Outpost manages — the database, every server's files and worlds, and all backups — as

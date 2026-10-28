@@ -1,3 +1,5 @@
+import { UploadTracker } from './UploadTracker.js';
+import type { UploadProgress } from '../api/client.js';
 import { useEffect, useState } from 'react';
 import { api, ApiError } from '../api/client.js';
 import { isProxyLoader, type LaunchConfig, type Loader, type Platform, type ServerRecord, type SteamGameOption, type VersionOption } from '../api/types.js';
@@ -60,6 +62,8 @@ export function CreateServerModal({
   const [platform, setPlatform] = useState<Platform>('java');
   const [loader, setLoader] = useState<Loader>('vanilla');
   const isModpack = (loader as string) === 'modpack';
+  const [packFile, setPackFile] = useState<File | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
   const [packQuery, setPackQuery] = useState('');
   const [packs, setPacks] = useState<ModpackHit[]>([]);
   const [pack, setPack] = useState<ModpackHit | null>(null);
@@ -155,7 +159,7 @@ export function CreateServerModal({
     setError('');
     if (!name.trim()) return setError('Instance name is required');
     if (platform === 'custom' && !launch.executable?.trim()) return setError('Enter the executable, script or command to launch');
-    if (isModpack && !pack) return setError('Pick a modpack');
+    if (isModpack && !pack && !packFile) return setError('Pick a modpack');
     if (platform !== 'custom' && !isModpack && !version) return setError('Choose a version');
     if (platform === 'java' && !acceptEula) return setError("You must accept Mojang's EULA");
     if (memoryCap && maxMemoryMb > memoryCap) return setError(`Max memory is limited to ${memoryCap} MB per instance for your account`);
@@ -165,7 +169,7 @@ export function CreateServerModal({
     }
     setSubmitting(true);
     try {
-      const { server } = await api.post<{ server: ServerRecord }>('/servers', {
+      const payload = {
         name: name.trim(),
         platform,
         loader,
@@ -180,9 +184,17 @@ export function CreateServerModal({
         steamLogin: platform === 'steam' ? steamLogin.trim() || 'anonymous' : undefined,
         steamExtraFlags: platform === 'steam' ? steamExtraFlags.trim() : undefined,
         launch: platform === 'custom' ? cleanLaunchConfig(launch) : undefined,
-        modpack: isModpack && pack ? { projectId: pack.projectId } : undefined,
+        modpack: isModpack && !packFile && pack ? { projectId: pack.projectId } : undefined,
         wine: platform === 'steam' && !selectedSteamGame && windowsBuild ? true : undefined,
-      });
+      };
+      let result: { server: ServerRecord };
+      if (isModpack && packFile) {
+        const form = new FormData();
+        form.append('payload', JSON.stringify(payload));
+        form.append('mrpack', packFile);
+        result = await api.upload<{ server: ServerRecord }>('/servers', form, setUploadProgress);
+      } else result = await api.post<{ server: ServerRecord }>('/servers', payload);
+      const { server } = result;
       onCreated(server);
       onClose();
       setName('');
@@ -191,6 +203,7 @@ export function CreateServerModal({
       setError(err instanceof ApiError ? err.message : 'Failed to create instance');
     } finally {
       setSubmitting(false);
+      setUploadProgress(null);
     }
   }
 
@@ -348,6 +361,12 @@ export function CreateServerModal({
 
         {isModpack && (
           <div className="space-y-2">
+            <label className="block space-y-2 text-sm text-ink-300">
+              <span>Upload a Modrinth modpack (.mrpack, up to 256 MB)</span>
+              <input type="file" accept=".mrpack" disabled={submitting} onChange={e => { setPackFile(e.target.files?.[0] ?? null); setPack(null); }} />
+            </label>
+            {packFile && <p className="text-xs text-ink-400">{packFile.name} selected. Minecraft and the mod loader are detected from the archive.</p>}
+            <UploadTracker progress={uploadProgress} />
             <Input value={packQuery} onChange={(e) => setPackQuery(e.target.value)} placeholder="Search Modrinth modpacks (Fabric, Quilt, Forge, NeoForge)…" />
             <div className="max-h-60 space-y-1 overflow-y-auto rounded-2xl bg-surface-900 p-1.5">
               {packLoading && packs.length === 0 ? (
@@ -357,7 +376,7 @@ export function CreateServerModal({
                   <button
                     key={p.projectId}
                     type="button"
-                    onClick={() => setPack(p)}
+                    onClick={() => { setPack(p); setPackFile(null); }}
                     className={`state-layer flex w-full items-center gap-3 rounded-xl px-2 py-1.5 text-left ${pack?.projectId === p.projectId ? 'bg-secondary-container' : ''}`}
                   >
                     {p.iconUrl ? <img src={p.iconUrl} alt="" className="h-9 w-9 shrink-0 rounded-lg object-cover" loading="lazy" /> : <span className="h-9 w-9 shrink-0 rounded-lg bg-surface-700" />}

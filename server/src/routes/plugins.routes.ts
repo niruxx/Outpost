@@ -1,3 +1,5 @@
+import { isRunning } from '../services/processManager.js';
+import { listModVersions } from '../services/pluginRegistryService.js';
 import { resolveModPlan } from '../services/modDependencyService.js';
 import { Router } from 'express';
 import type { CfTarget } from '../services/curseforgeService.js';
@@ -60,6 +62,24 @@ pluginsRouter.get(
   })
 );
 
+pluginsRouter.post('/versions', asyncHandler(async (req, res) => {
+  requirePermission(req, 'plugins');
+  const server = requireServer(req.params.serverId);
+  const profile = requireAddonProfile(server);
+  if (!profile.catalog?.startsWith('mod:')) throw new HttpError(400, 'Version selection is available for Minecraft mods');
+  const source = req.body?.source === 'curseforge' ? 'curseforge' : 'modrinth';
+  let ref = String(req.body?.project ?? '').trim();
+  if (!ref || ref.length > 2048) throw new HttpError(400, 'Enter a mod project slug or CurseForge project link');
+  if (source === 'curseforge') {
+    if (ref.startsWith('https://')) ref = String((await curseforge.resolveLink(ref)).id);
+    if (!/^[1-9]\d*$/.test(ref)) throw new HttpError(400, 'Enter a CurseForge mod project link or project ID');
+  }
+  const versions = source === 'curseforge'
+    ? await curseforge.versions(Number(ref), server.version, profile.catalog as CfTarget)
+    : await listModVersions(ref, profile.catalog, server.version);
+  res.json({ ref, versions });
+}));
+
 pluginsRouter.post(
   '/dependencies',
   asyncHandler(async (req, res) => {
@@ -70,7 +90,7 @@ pluginsRouter.post(
     const source = req.body?.source === 'curseforge' ? 'curseforge' : 'modrinth';
     const ref = source === 'curseforge' ? String(req.body?.modId ?? '') : req.body?.slug;
     if (typeof ref !== 'string' || !ref.trim() || (source === 'curseforge' && !/^[1-9]\d*$/.test(ref))) throw new HttpError(400, 'A valid mod reference is required');
-    res.json(await resolveModPlan(source, ref, profile.catalog, server.version));
+    res.json(await resolveModPlan(source, ref, profile.catalog, server.version, typeof req.body?.versionId === 'string' ? req.body.versionId : undefined));
   })
 );
 
@@ -86,7 +106,11 @@ pluginsRouter.post(
       const source = req.body?.source === 'curseforge' ? 'curseforge' : 'modrinth';
       const ref = source === 'curseforge' ? String(req.body?.modId ?? '') : req.body?.slug;
       if (typeof ref !== 'string' || !ref.trim() || (source === 'curseforge' && !/^[1-9]\d*$/.test(ref))) throw new HttpError(400, 'A valid mod reference is required');
-      const plan = await resolveModPlan(source, ref, profile.catalog, server.version);
+      if (isRunning(server.id) || ['installing', 'updating'].includes(server.status)) throw new HttpError(409, 'Stop the server and wait for installation to finish before changing mods');
+      const replaceFile = req.body?.replaceFile;
+      const oldMod = typeof replaceFile === 'string' ? listPlugins(server).find(p => p.fileName === replaceFile && p.enabled) : undefined;
+      if (replaceFile !== undefined && !oldMod) throw new HttpError(400, 'Select an installed, enabled mod to replace');
+      const plan = await resolveModPlan(source, ref, profile.catalog, server.version, typeof req.body?.versionId === 'string' ? req.body.versionId : undefined);
       const required = plan.dependencies.filter(d => d.required);
       if (req.body?.includeDependencies === true && required.some(d => d.error || !d.resolved)) {
         throw new HttpError(409, 'Some required dependencies cannot be downloaded. Review the dependency list before installing.');
@@ -98,6 +122,7 @@ pluginsRouter.post(
         await installPluginFile(server, file.downloadUrl, file.fileName, line => appendLine(server.id, line));
         installed.push(file.fileName);
       }
+      if (oldMod && !installed.includes(oldMod.fileName)) setPluginEnabled(server, oldMod.fileName, false);
       appendLine(server.id, `[Outpost] Installed ${installed.join(', ')} - restart the server to apply`);
       logAudit(req.auth!.sub, req.auth!.username, 'plugin.install', server.id, installed.join(', '));
       return res.status(201).json({ plugins: listPlugins(server), installed, resolved: plan.resolved });

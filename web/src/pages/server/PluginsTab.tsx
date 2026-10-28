@@ -1,3 +1,5 @@
+import { UploadTracker } from '../../components/UploadTracker.js';
+import type { UploadProgress } from '../../api/client.js';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useServerDetail } from './ServerContext.js';
 import { api, ApiError } from '../../api/client.js';
@@ -34,6 +36,7 @@ export function PluginsTab() {
   const [browsing, setBrowsing] = useState(false);
   const [busyFile, setBusyFile] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -79,13 +82,14 @@ export function PluginsTab() {
     Array.from(files).forEach((f) => form.append('files', f));
     setUploading(true);
     try {
-      const res = await api.upload<{ installed: string[]; plugins: InstalledPlugin[] }>(`/servers/${serverId}/plugins/upload`, form);
+      const res = await api.upload<{ installed: string[]; plugins: InstalledPlugin[] }>(`/servers/${serverId}/plugins/upload`, form, setUploadProgress);
       setPlugins(res.plugins);
       toast.success(`Installed ${res.installed.join(', ')}`);
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : 'Upload failed');
     } finally {
       setUploading(false);
+      setUploadProgress(null);
       if (fileInput.current) fileInput.current.value = '';
     }
   }
@@ -150,6 +154,7 @@ export function PluginsTab() {
         {actions}
       </div>
 
+      <UploadTracker progress={uploadProgress} />
       {profile.warning && <Notice tone="warning">{profile.warning}</Notice>}
       {profile.notes.length > 0 && (
         <Notice tone="info">

@@ -11,7 +11,7 @@ export interface ModDependency {
 }
 
 /** Resolve the complete required graph before downloading anything. Optional mods are shown only. */
-export async function resolveModPlan(source: string, ref: string, catalog: AddonCatalog, gameVersion: string) {
+export async function resolveModPlan(source: string, ref: string, catalog: AddonCatalog, gameVersion: string, rootVersionId?: string) {
   const dependencies: ModDependency[] = [];
   const seen = new Set<string>();
   const projects = new Map<string, string>();
@@ -26,7 +26,7 @@ export async function resolveModPlan(source: string, ref: string, catalog: Addon
       let refs: { id: string; required: boolean; versionId?: string }[];
       let resolved: ResolvedPluginVersion;
       if (source === 'curseforge') {
-        const file = await curseforge.resolveFile(Number(id), gameVersion, catalog as CfTarget);
+        const file = await curseforge.resolveFile(Number(id), gameVersion, catalog as CfTarget, versionId ? Number(versionId) : undefined);
         row.title = file.title;
         resolved = { versionNumber: file.versionLabel, fileName: file.fileName, downloadUrl: file.downloadUrl, sizeBytes: file.sizeBytes, versionMismatchWarning: file.versionMismatchWarning };
         refs = file.dependencies.filter(d => [2, 3].includes(d.relationType)).map(d => ({ id: String(d.modId), required: d.relationType === 3 }));
@@ -54,6 +54,6 @@ export async function resolveModPlan(source: string, ref: string, catalog: Addon
       row.error = err instanceof Error ? err.message : 'Could not resolve dependency';
     }
   }
-  const resolved = await visit(ref, true, undefined, true);
+  const resolved = await visit(ref, true, rootVersionId, true);
   return { resolved: resolved!, dependencies };
 }

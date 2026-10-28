@@ -1,3 +1,5 @@
+import { UploadTracker } from '../../components/UploadTracker.js';
+import type { UploadProgress } from '../../api/client.js';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { SftpConnectInfo } from '../../components/SftpCard.js';
 import { useServerDetail } from './ServerContext.js';
@@ -32,6 +34,7 @@ export function FilesTab() {
   const [editorContent, setEditorContent] = useState('');
   const [editorDirty, setEditorDirty] = useState(false);
   const [editorSaving, setEditorSaving] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(
@@ -119,16 +122,17 @@ export function FilesTab() {
   }
 
   async function onUpload(files: FileList | null) {
-    if (!files || files.length === 0) return;
+    if (!files || files.length === 0 || uploadProgress) return;
     const formData = new FormData();
     formData.append('path', path);
     Array.from(files).forEach((f) => formData.append('files', f));
     try {
-      await api.upload(`/servers/${serverId}/files/upload`, formData);
+      await api.upload(`/servers/${serverId}/files/upload`, formData, setUploadProgress);
       await load(path);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Upload failed');
     } finally {
+      setUploadProgress(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   }
@@ -199,12 +203,13 @@ export function FilesTab() {
         {canWrite && (
           <div className="flex gap-2">
             <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(e) => onUpload(e.target.files)} />
-            <Button onClick={() => fileInputRef.current?.click()}>Upload</Button>
+            <Button disabled={!!uploadProgress} onClick={() => fileInputRef.current?.click()}>Upload</Button>
             <Button onClick={createFolder}>New folder</Button>
           </div>
         )}
       </div>
 
+      <UploadTracker progress={uploadProgress} />
       <ErrorText>{error}</ErrorText>
 
       <Card className="divide-y divide-surface-800">
