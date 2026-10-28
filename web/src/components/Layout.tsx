@@ -98,10 +98,12 @@ function MainNav({ onNavigate }: { onNavigate?: () => void }) {
     // treat their highlights as one element and re-animate it on every render.
     <LayoutGroup id="main-nav">
     <nav className="space-y-1">
+      <NavSectionLabel>Workspace</NavSectionLabel>
       <NavItem to="/" end icon="instances" label="Instances" onClick={onNavigate} />
-      <NavItem to="/configuration" icon="configuration" label="Configuration" onClick={onNavigate} />
       <NavItem to="/files" icon="folder" label="File Management" onClick={onNavigate} />
       <NavItem to="/docker" icon="container" label="Docker" onClick={onNavigate} />
+      <NavSectionLabel>Administration</NavSectionLabel>
+      <NavItem to="/configuration" icon="configuration" label="Configuration" onClick={onNavigate} />
       {user?.role === 'admin' && <NavItem to="/users" icon="users" label="Users" onClick={onNavigate} />}
       {(user?.role === 'admin' || (user?.firewall && user.firewall !== 'none')) && (
         <NavItem to="/firewall" icon="shieldCheck" label="Firewall" onClick={onNavigate} />
@@ -217,7 +219,7 @@ export function Layout({
         <motion.div whileHover={{ rotate: -8, scale: 1.06 }} transition={{ type: 'spring', stiffness: 400, damping: 15 }}>
           <Logo className="h-8 w-8 shrink-0 rounded-lg" />
         </motion.div>
-        <span className="text-lg font-medium tracking-tight text-ink-50">Outpost</span>
+        <div><span className="text-xl font-semibold tracking-tight text-ink-50">Outpost</span><p className="text-[11px] text-ink-400">{t('Your server workspace')}</p></div>
       </div>
       <motion.div
         className="min-h-0 flex-1 overflow-y-auto"
@@ -284,10 +286,10 @@ export function Layout({
 /** Standard page header for top-level pages. */
 export function PageHeader({ title, subtitle, action }: { title: string; subtitle?: string; action?: ReactNode }) {
   return (
-    <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} className="mb-6 flex flex-wrap items-end justify-between gap-4">
+    <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} className="ui-page-header mb-8 flex flex-wrap items-end justify-between gap-4">
       <div>
-        <h1 className="ui-page-title text-[28px] font-normal leading-9 text-ink-50">{t(title)}</h1>
-        {subtitle && <p className="mt-1 text-sm text-ink-400">{t(subtitle)}</p>}
+        <h1 className="ui-page-title text-4xl font-semibold leading-tight tracking-tight text-ink-50">{t(title)}</h1>
+        {subtitle && <p className="mt-2 max-w-2xl text-sm leading-relaxed text-ink-400">{t(subtitle)}</p>}
       </div>
       {action}
     </motion.div>

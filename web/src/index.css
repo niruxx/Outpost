@@ -1254,3 +1254,59 @@ body {
   content-visibility: auto;
   contain-intrinsic-size: auto 20px;
 }
+/* Material 3 Expressive: a quiet shell, generous shapes and clear tonal hierarchy.
+   Scoped to Outpost so user-selected retro themes keep their own visual language. */
+:root[data-theme='outpost'] {
+  --surface-1000: 10 15 15;
+  --surface-950: 15 21 21;
+  --surface-900: 21 29 28;
+  --surface-850: 28 37 35;
+  --surface-800: 35 46 43;
+  --surface-700: 46 58 54;
+  --surface-600: 64 78 72;
+  --accent-400: 181 232 155;
+  --accent-500: 158 212 132;
+  --accent-on: 25 54 16;
+  --accent-container: 48 77 35;
+  --accent-on-container: 207 246 183;
+  --secondary-container: 51 72 62;
+  --secondary-on-container: 211 235 217;
+}
+[data-theme='outpost'] .ui-sidebar {
+  background: rgb(var(--surface-950));
+}
+[data-theme='outpost'] .ui-main {
+  background: rgb(var(--surface-900));
+  border-radius: 0;
+  margin-top: 0;
+}
+[data-theme='outpost'] .ui-nav-item { height: 48px; margin-bottom: 3px; }
+[data-theme='outpost'] .ui-sidebar nav > p {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .12em;
+  padding-top: 24px;
+  padding-bottom: 10px;
+}
+[data-theme='outpost'] .ui-sidebar-panel { background: rgb(var(--surface-850)); border-radius: 24px; }
+[data-theme='outpost'] .ui-card { border-radius: 28px; }
+[data-theme='outpost'] .ui-card-title { font-weight: 600; letter-spacing: -.02em; }
+[data-theme='outpost'] .ui-btn { min-height: 40px; padding-inline: 20px; }
+[data-theme='outpost'] .ui-btn-primary { min-height: 48px; font-weight: 600; border-radius: 18px; }
+[data-theme='outpost'] .ui-input { border-radius: 14px; min-height: 42px; }
+[data-theme='outpost'] .ui-instance-card {
+  background: rgb(var(--surface-850));
+  border: 1px solid rgb(var(--surface-600) / .25);
+  min-height: 152px;
+}
+[data-theme='outpost'] .ui-instance-card:hover { border-color: rgb(var(--accent-400) / .45); }
+[data-theme='outpost'] .ui-instance-tools { background: rgb(var(--surface-800) / .55); }
+[data-theme='outpost'] .ui-page-header { padding-bottom: 24px; border-bottom: 1px solid rgb(var(--surface-600) / .35); }
+:where(button, a, input, select, textarea):focus-visible {
+  outline: 2px solid rgb(var(--accent-400));
+  outline-offset: 4px;
+}
+@media (max-width: 767px) {
+  [data-theme='outpost'] .ui-main { margin-top: 0; border-radius: 0; }
+  .ui-page-title { font-size: 30px; }
+}

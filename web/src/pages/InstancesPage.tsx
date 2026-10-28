@@ -5,7 +5,7 @@ import { Link } from 'react-router-dom';
 import { AnimatePresence, LayoutGroup, motion } from 'framer-motion';
 import { Layout, PageHeader } from '../components/Layout.js';
 import { StatusBadge, SuspendedBadge } from '../components/StatusBadge.js';
-import { Button, Card, Notice, Skeleton } from '../components/ui.js';
+import { Button, Card, Input, Select, Notice, Skeleton } from '../components/ui.js';
 import { NewInstanceModal } from '../components/NewInstanceModal.js';
 import { GameTile, gameKindOf, gameLabel, instanceCategory, type InstanceCategory } from '../components/GameArt.js';
 import { HostOverview, formatBytes, formatDuration } from '../components/HostOverview.js';
@@ -210,7 +210,7 @@ function GridCard(props: RowProps) {
   const { server } = props;
   const f = useInstanceFigures(props);
   return (
-    <Card hover className="relative flex h-full flex-col gap-3 p-4">
+    <Card hover className="ui-instance-card relative flex h-full flex-col gap-5 p-5">
       <StretchedLink server={server} />
         <div className="flex items-center gap-3">
           <GameTile kind={gameKindOf(server)} className="h-12 w-12" running={server.status === 'running'} />
@@ -292,7 +292,7 @@ function BoxCard(props: RowProps) {
 
 const CONTAINER: Record<ViewMode, string> = {
   list: 'flex flex-col gap-1 rounded-3xl bg-surface-850 p-2',
-  grid: 'grid grid-cols-1 gap-3 md:grid-cols-2 2xl:grid-cols-3',
+  grid: 'grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-3',
   box: 'grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4',
 };
 
@@ -306,6 +306,8 @@ export function InstancesPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [view, setView] = useState<ViewMode>(readView);
+  const [query, setQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
   const [filter, setFilter] = useState<'all' | InstanceCategory>(readFilter);
 
   function changeFilter(next: 'all' | InstanceCategory) {
@@ -371,11 +373,15 @@ export function InstancesPage() {
   }, {});
   // If the remembered filter no longer matches anything, fall back to everything.
   const activeFilter = filter !== 'all' && !counts[filter] ? 'all' : filter;
-  const visible = (servers ?? []).filter((s) => activeFilter === 'all' || instanceCategory(s) === activeFilter);
+  const visible = (servers ?? []).filter((s) =>
+    (activeFilter === 'all' || instanceCategory(s) === activeFilter) &&
+    (statusFilter === 'all' || (statusFilter === 'running' ? s.status === 'running' : s.status !== 'running')) &&
+    `${s.name} ${subtitle(s)}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()),
+  );
 
   return (
     <Layout>
-      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-8">
+      <div className="ui-dashboard mx-auto max-w-7xl px-4 py-8 sm:px-8 sm:py-10">
         <PageHeader
           title="Instances"
           subtitle="Games, apps, containers and services on this host — at a glance."
@@ -405,7 +411,28 @@ export function InstancesPage() {
           </div>
         )}
 
-        <HostOverview />
+        <section aria-label={t('Host overview')} className="mb-8">
+          <div className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-widest text-ink-400">
+            <Icon name="cpu" className="h-4 w-4" />{t('Host overview')}
+          </div>
+          <HostOverview />
+        </section>
+
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-xl font-semibold tracking-tight text-ink-50">{t('Your instances')}</h2>
+          <span className="text-xs text-ink-400" aria-live="polite">{visible.length} / {servers?.length ?? 0} {t('instances')}</span>
+        </div>
+        <div className="ui-instance-tools mb-4 flex flex-col gap-3 rounded-3xl bg-surface-850 p-3 sm:flex-row">
+          <div className="relative min-w-0 flex-1">
+            <Icon name="search" className="pointer-events-none absolute left-4 top-3.5 h-4 w-4 text-ink-400" />
+            <Input type="search" aria-label={t('Search instances')} placeholder={t('Search by name, game or port?')} value={query} onChange={(e) => setQuery(e.target.value)} className="!rounded-full !border-transparent !bg-surface-900 !py-3 !pl-11" />
+          </div>
+          <Select aria-label={t('Filter by status')} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="!w-auto !rounded-full !border-transparent !px-4 !py-3">
+            <option value="all">{t('All statuses')}</option>
+            <option value="running">{t('Running')}</option>
+            <option value="offline">{t('Not running')}</option>
+          </Select>
+        </div>
 
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Filter instances">
@@ -459,6 +486,13 @@ export function InstancesPage() {
                 Create your first instance
               </Button>
             )}
+          </Card>
+        ) : visible.length === 0 ? (
+          <Card className="p-10 text-center">
+            <Icon name="search" className="mx-auto mb-3 h-8 w-8 text-ink-400" />
+            <h3 className="mb-2 text-lg font-medium text-ink-100">{t('No matching instances')}</h3>
+            <p className="mb-5 text-sm text-ink-400">{t('Try another search or clear your filters.')}</p>
+            <Button onClick={() => { setQuery(''); setStatusFilter('all'); changeFilter('all'); }}>{t('Clear filters')}</Button>
           </Card>
         ) : (
           <LayoutGroup>
