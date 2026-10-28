@@ -67,7 +67,7 @@ import { wantsWindowsBuild, wineStatus } from '../services/wineService.js';
 import { instancePortProtocol } from '../services/portProtocol.js';
 import { STEAM_GAME_PRESETS, findPreset, findPresetById, findPresetFor } from '../services/steamGames.js';
 import { latestQuery } from '../services/browserStatsService.js';
-import { ALL_LOADERS, isMinecraftPlatform, type Loader, type Platform, type ServerRecord } from '../types/index.js';
+import { ALL_LOADERS, isMinecraftPlatform, isProxyLoader, type Loader, type Platform, type ServerRecord } from '../types/index.js';
 import { sanitizeLaunchConfig, launchConfigOf, launchVariables, resolveExecutable, ensureExecutable } from '../services/launchConfig.js';
 import { getOnlinePlayers } from '../services/playerService.js';
 import { dockerConfigOf, enforceContainerPolicy, getEngineStatus, pullImage, sanitizeDockerConfig } from '../services/containerService.js';
@@ -723,6 +723,9 @@ serversRouter.patch(
       restartMaxAttempts,
       isolation,
     } = req.body ?? {};
+    if (serverPort !== undefined && (!Number.isInteger(Number(serverPort)) || Number(serverPort) < 1 || Number(serverPort) > 65535)) {
+      throw new HttpError(400, 'serverPort must be between 1 and 65535');
+    }
     if (isolation !== undefined) {
       if (isolation !== 'inherit' && isolation !== 'off') throw new HttpError(400, 'isolation must be inherit or off');
       if (isolation === 'off' && req.auth!.role !== 'admin') throw new HttpError(403, 'Only admins can turn off sandboxing for an instance');
@@ -747,6 +750,9 @@ serversRouter.patch(
       restartDelaySec: clampInt(restartDelaySec, 1, 3600),
       restartMaxAttempts: clampInt(restartMaxAttempts, 0, 10_000),
     });
+    if (serverPort !== undefined && isMinecraftPlatform(server.platform) && !isProxyLoader(server.loader)) {
+      writeServerProperties(server.id, server.platform, { 'server-port': String(Number(serverPort)) });
+    }
     if (restartPolicy === 'never') cancelAutoRestart(server.id);
     logAudit(req.auth!.sub, req.auth!.username, 'server.update', server.id);
     res.json({ server: getServer(server.id) });
@@ -893,10 +899,36 @@ serversRouter.put(
     const server = getServer(req.params.serverId);
     if (!server) throw new HttpError(404, 'Server not found');
     const { updates } = req.body ?? {};
-    if (!updates || typeof updates !== 'object') throw new HttpError(400, 'updates object is required');
+    if (!updates || typeof updates !== 'object' || Array.isArray(updates)) throw new HttpError(400, 'updates object is required');
+    for (const [key, value] of Object.entries(updates)) {
+      if (!/^[a-zA-Z0-9_.-]+$/.test(key) || typeof value !== 'string' || /[\r\n\0]/.test(value)) {
+        throw new HttpError(400, 'Property keys must be simple names and values must be single-line strings');
+      }
+    }
+    if (updates['server-port'] !== undefined && !/^(?:[1-9]\d{0,4})$/.test(updates['server-port'])) {
+      throw new HttpError(400, 'server-port must be between 1 and 65535');
+    }
+    if (Number(updates['server-port']) > 65535) throw new HttpError(400, 'server-port must be between 1 and 65535');
+    const liveQueued: string[] = [];
+    const restartRequired: string[] = [];
+    const commands: Record<string, (value: string) => string | null> = {
+      difficulty: (v) => /^(peaceful|easy|normal|hard)$/.test(v) ? `difficulty ${v}` : null,
+      gamemode: (v) => /^(survival|creative|adventure|spectator)$/.test(v) ? `defaultgamemode ${v}` : null,
+      'white-list': (v) => /^(true|false)$/.test(v) ? `whitelist ${v === 'true' ? 'on' : 'off'}` : null,
+      'player-idle-timeout': (v) => /^\d{1,9}$/.test(v) ? `setidletimeout ${v}` : null,
+    };
     writeServerProperties(server.id, server.platform, updates);
+    if (isMinecraftPlatform(server.platform) && updates['server-port'] !== undefined) updateServerRecord(server.id, { serverPort: Number(updates['server-port']) });
+    for (const [key, value] of Object.entries(updates)) {
+      const command = server.platform === 'java' && !isProxyLoader(server.loader) && isRunning(server.id)
+        ? commands[key]?.(value as string) : null;
+      if (command) {
+        sendCommand(server.id, command);
+        liveQueued.push(key);
+      } else restartRequired.push(key);
+    }
     logAudit(req.auth!.sub, req.auth!.username, 'server.properties.update', server.id);
-    res.json({ properties: readServerProperties(server.id, server.platform) });
+    res.json({ properties: readServerProperties(server.id, server.platform), liveQueued, restartRequired });
   })
 );
 

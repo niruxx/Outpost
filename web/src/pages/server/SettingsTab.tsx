@@ -54,7 +54,9 @@ export function SettingsTab() {
         .then((res) => setServerIp(res.properties.find((p) => p.key === 'server-ip')?.value ?? ''))
         .catch(() => {});
     }
-  }, [server]);
+    // Polling replaces the server object every three seconds; only initialize on instance changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [server?.id]);
 
   async function saveGeneral() {
     setSaving(true);
@@ -249,6 +251,7 @@ function PropertiesEditor({ serverId, canWrite }: { serverId: string; canWrite: 
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [feedback, setFeedback] = useState('');
 
   async function load() {
     try {
@@ -271,9 +274,13 @@ function PropertiesEditor({ serverId, canWrite }: { serverId: string; canWrite: 
     setError('');
     setSaved(false);
     try {
-      const res = await api.put<{ properties: PropertyEntry[] }>(`/servers/${serverId}/properties`, { updates: edited });
+      const res = await api.put<{ properties: PropertyEntry[]; liveQueued: string[]; restartRequired: string[] }>(`/servers/${serverId}/properties`, { updates: edited });
       setProperties(res.properties);
       setEdited({});
+      setFeedback([
+        res.liveQueued.length ? `Live commands sent for: ${res.liveQueued.join(', ')}. Check Console for results.` : '',
+        res.restartRequired.length ? `Applies on next start: ${res.restartRequired.join(', ')}.` : '',
+      ].filter(Boolean).join(' '));
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (err) {
@@ -289,7 +296,7 @@ function PropertiesEditor({ serverId, canWrite }: { serverId: string; canWrite: 
     <Card className="p-5">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-base font-medium text-ink-100">server.properties</h2>
-        <p className="text-xs text-ink-500">Restart the server for changes to take effect.</p>
+        <p className="text-xs text-ink-500">Supported Java settings apply through the live console; other settings apply on next start.</p>
       </div>
 
       <div className="max-h-96 overflow-y-auto rounded-md border border-surface-700">
@@ -301,8 +308,8 @@ function PropertiesEditor({ serverId, canWrite }: { serverId: string; canWrite: 
                 <td className="px-3 py-1.5">
                   <input
                     className="w-full rounded bg-transparent px-1 py-0.5 font-mono text-xs text-ink-100 focus:bg-surface-800 focus:outline-none"
-                    defaultValue={p.value}
-                    disabled={!canWrite}
+                    value={edited[p.key] ?? p.value}
+                    disabled={!canWrite || saving}
                     onChange={(e) => setEdited((prev) => ({ ...prev, [p.key]: e.target.value }))}
                   />
                 </td>
@@ -324,7 +331,7 @@ function PropertiesEditor({ serverId, canWrite }: { serverId: string; canWrite: 
             onClick={() => {
               if (!newKey.trim()) return;
               setEdited((prev) => ({ ...prev, [newKey.trim()]: newValue }));
-              setProperties((prev) => [...(prev ?? []), { key: newKey.trim(), value: newValue }]);
+              setProperties((prev) => prev?.some((p) => p.key === newKey.trim()) ? prev : [...(prev ?? []), { key: newKey.trim(), value: newValue }]);
               setNewKey('');
               setNewValue('');
             }}
@@ -335,6 +342,7 @@ function PropertiesEditor({ serverId, canWrite }: { serverId: string; canWrite: 
       )}
 
       <ErrorText>{error}</ErrorText>
+      {feedback && <p className="mt-3 text-sm text-ink-400">{feedback}</p>}
 
       {canWrite && (
         <div className="mt-4 flex items-center gap-3">
