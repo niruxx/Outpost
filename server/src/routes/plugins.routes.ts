@@ -1,3 +1,4 @@
+import { resolveModPlan } from '../services/modDependencyService.js';
 import { Router } from 'express';
 import type { CfTarget } from '../services/curseforgeService.js';
 import multer from 'multer';
@@ -60,12 +61,47 @@ pluginsRouter.get(
 );
 
 pluginsRouter.post(
+  '/dependencies',
+  asyncHandler(async (req, res) => {
+    requirePermission(req, 'plugins');
+    const server = requireServer(req.params.serverId);
+    const profile = requireAddonProfile(server);
+    if (!profile.catalog?.startsWith('mod:')) throw new HttpError(400, 'Dependencies are available for Minecraft mods');
+    const source = req.body?.source === 'curseforge' ? 'curseforge' : 'modrinth';
+    const ref = source === 'curseforge' ? String(req.body?.modId ?? '') : req.body?.slug;
+    if (typeof ref !== 'string' || !ref.trim() || (source === 'curseforge' && !/^[1-9]\d*$/.test(ref))) throw new HttpError(400, 'A valid mod reference is required');
+    res.json(await resolveModPlan(source, ref, profile.catalog, server.version));
+  })
+);
+
+pluginsRouter.post(
   '/install',
   asyncHandler(async (req, res) => {
     requirePermission(req, 'plugins');
     const server = requireServer(req.params.serverId);
     const profile = requireAddonProfile(server);
     if (!profile.catalog) throw new HttpError(400, `${profile.label} for this instance can only be uploaded, not installed from a catalog`);
+
+    if (profile.catalog.startsWith('mod:')) {
+      const source = req.body?.source === 'curseforge' ? 'curseforge' : 'modrinth';
+      const ref = source === 'curseforge' ? String(req.body?.modId ?? '') : req.body?.slug;
+      if (typeof ref !== 'string' || !ref.trim() || (source === 'curseforge' && !/^[1-9]\d*$/.test(ref))) throw new HttpError(400, 'A valid mod reference is required');
+      const plan = await resolveModPlan(source, ref, profile.catalog, server.version);
+      const required = plan.dependencies.filter(d => d.required);
+      if (req.body?.includeDependencies === true && required.some(d => d.error || !d.resolved)) {
+        throw new HttpError(409, 'Some required dependencies cannot be downloaded. Review the dependency list before installing.');
+      }
+      const files = req.body?.includeDependencies === true ? [...required.map(d => d.resolved!), plan.resolved] : [plan.resolved];
+      const installed: string[] = [];
+      for (const file of files) {
+        if (installed.includes(file.fileName)) continue;
+        await installPluginFile(server, file.downloadUrl, file.fileName, line => appendLine(server.id, line));
+        installed.push(file.fileName);
+      }
+      appendLine(server.id, `[Outpost] Installed ${installed.join(', ')} - restart the server to apply`);
+      logAudit(req.auth!.sub, req.auth!.username, 'plugin.install', server.id, installed.join(', '));
+      return res.status(201).json({ plugins: listPlugins(server), installed, resolved: plan.resolved });
+    }
 
     if (req.body?.source === 'curseforge') {
       if (profile.catalog.startsWith('proxy:')) throw new HttpError(400, 'Proxy plugins install from Modrinth or by upload');

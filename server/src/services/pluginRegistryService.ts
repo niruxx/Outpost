@@ -69,6 +69,8 @@ export async function searchPlugins(query: string, limit = 24, catalog: AddonCat
 }
 
 export interface ResolvedPluginVersion {
+  projectId?: string;
+  dependencies?: { projectId: string | null; versionId: string | null; required: boolean }[];
   versionNumber: string;
   fileName: string;
   downloadUrl: string;
@@ -78,6 +80,9 @@ export interface ResolvedPluginVersion {
 }
 
 interface ModrinthVersion {
+  project_id: string;
+  loaders: string[];
+  dependencies?: { project_id: string | null; version_id: string | null; dependency_type: string }[];
   version_number: string;
   version_type: string;
   game_versions: string[];
@@ -92,8 +97,16 @@ function pickFile(version: ModrinthVersion) {
 export async function resolvePluginVersion(
   slug: string,
   catalog: AddonCatalog,
-  gameVersion: string
+  gameVersion: string,
+  versionId?: string
 ): Promise<ResolvedPluginVersion> {
+  if (versionId) {
+    const v = await modrinthFetch<ModrinthVersion>(`/version/${encodeURIComponent(versionId)}`);
+    if (!v.game_versions.includes(gameVersion) || !v.loaders.some(l => loadersFor(catalog).includes(l))) throw new Error(`Required version of ${slug} is incompatible with this instance`);
+    const file = pickFile(v);
+    if (!file) throw new Error(`No downloadable file for ${slug}`);
+    return { projectId: v.project_id, dependencies: dependencyRefs(v), versionNumber: v.version_number, fileName: file.filename, downloadUrl: file.url, sizeBytes: file.size, versionMismatchWarning: false };
+  }
   const loadersParam = JSON.stringify(loadersFor(catalog));
 
   // Proxy plugins aren't tied to a Minecraft version (the proxy's own version is unrelated).
@@ -110,6 +123,8 @@ export async function resolvePluginVersion(
     const file = pickFile(best);
     if (!file) return null;
     return {
+      projectId: best.project_id,
+      dependencies: dependencyRefs(best),
       versionNumber: best.version_number,
       fileName: file.filename,
       downloadUrl: file.url,
@@ -128,4 +143,11 @@ export async function resolvePluginVersion(
   if (fallbackMatch) return fallbackMatch;
 
   throw new Error(`No downloadable version of "${slug}" was found for this instance type.`);
+}
+
+function dependencyRefs(v: ModrinthVersion) {
+  return (v.dependencies ?? []).filter(d => ['required', 'optional'].includes(d.dependency_type)).map(d => ({ projectId: d.project_id, versionId: d.version_id, required: d.dependency_type === 'required' }));
+}
+export async function modrinthProjectTitle(id: string): Promise<string> {
+  return (await modrinthFetch<{ title: string }>(`/project/${encodeURIComponent(id)}`)).title;
 }

@@ -288,6 +288,25 @@ function InstallTargetModal({
   const [selected, setSelected] = useState<string | undefined>(defaultServerId);
   const [installing, setInstalling] = useState(false);
   const [error, setError] = useState('');
+  const isMod = catalog.startsWith('mod:');
+  const [includeDependencies, setIncludeDependencies] = useState(true);
+  const [plan, setPlan] = useState<{ dependencies: { id: string; title: string; required: boolean; resolved?: ResolvedPluginVersion; error?: string }[] } | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [planError, setPlanError] = useState('');
+  useEffect(() => {
+    if (!isMod || !selected) return;
+    let active = true;
+    setPlan(null);
+    setPlanError('');
+    setChecking(true);
+    const body = source === 'curseforge' ? { source, modId: plugin.id } : { slug: plugin.slug };
+    api.post<NonNullable<typeof plan>>(`/servers/${selected}/plugins/dependencies`, body)
+      .then(result => { if (active) setPlan(result); })
+      .catch(err => { if (active) setPlanError(err instanceof ApiError ? err.message : 'Could not check dependencies'); })
+      .finally(() => { if (active) setChecking(false); });
+    return () => { active = false; };
+  }, [isMod, selected, source, plugin.id, plugin.slug]);
+
 
   useEffect(() => {
     api
@@ -307,7 +326,7 @@ function InstallTargetModal({
     setError('');
     try {
       const body = source === 'curseforge' ? { source: 'curseforge', modId: plugin.id } : { slug: plugin.slug };
-      const res = await api.post<{ resolved: ResolvedPluginVersion }>(`/servers/${selected}/plugins/install`, body);
+      const res = await api.post<{ resolved: ResolvedPluginVersion }>(`/servers/${selected}/plugins/install`, { ...body, includeDependencies });
       if (res.resolved.versionMismatchWarning) {
         toast.show(`Installed ${res.resolved.fileName} — no build listed for this exact Minecraft version, used the latest instead.`);
       } else {
@@ -354,12 +373,33 @@ function InstallTargetModal({
           </div>
         )}
         {catalog === 'bedrock' && <p className="text-xs text-ink-500">Behavior and resource packs are activated for the world automatically. Restart the server to apply.</p>}
+        {isMod && (
+          <div className="space-y-2 rounded-lg border border-surface-600 p-3 text-sm">
+            <p className="font-semibold text-ink-200">Mod dependencies</p>
+            {checking ? <p className="flex items-center gap-2"><Spinner /> Checking required mods...</p> : null}
+            <ErrorText>{planError}</ErrorText>
+            {plan && <>
+              {plan.dependencies.length === 0 && <p className="text-ink-400">No dependencies listed by the author.</p>}
+              <div className="max-h-48 space-y-2 overflow-y-auto">
+                {plan.dependencies.map((dep, index) => <div key={`${dep.id}-${index}`}>
+                  <p>{dep.title} <span className="text-xs text-ink-500">{dep.required ? 'Required' : 'Optional'}</span></p>
+                  <p className="text-xs text-ink-400">{dep.error ?? dep.resolved?.fileName}</p>
+                </div>)}
+              </div>
+              {plan.dependencies.some(d => d.required) && <label className="flex items-center gap-2">
+                <input type="checkbox" checked={includeDependencies} onChange={e => setIncludeDependencies(e.target.checked)} />
+                Download required dependencies with this mod
+              </label>}
+              {!includeDependencies && <p className="text-xs text-ink-400">Install required dependencies yourself before starting the server.</p>}
+            </>}
+          </div>
+        )}
         <ErrorText>{error}</ErrorText>
         <div className="flex justify-end gap-2">
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button variant="primary" disabled={!selected || installing} onClick={confirmInstall}>
+          <Button variant="primary" disabled={!selected || installing || (isMod && (checking || !plan || (includeDependencies && plan.dependencies.some(d => d.required && !!d.error))))} onClick={confirmInstall}>
             {installing ? 'Installing…' : 'Install'}
           </Button>
         </div>

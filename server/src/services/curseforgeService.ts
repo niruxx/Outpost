@@ -41,6 +41,8 @@ export interface CfResult {
 }
 
 export interface CfResolvedFile {
+  title: string;
+  dependencies: { modId: number; relationType: number }[];
   fileName: string;
   downloadUrl: string;
   versionLabel: string;
@@ -63,6 +65,7 @@ interface CfMod {
 }
 
 interface CfFile {
+  dependencies?: { modId: number; relationType: number }[];
   id: number;
   displayName: string;
   fileName: string;
@@ -178,6 +181,8 @@ export function createCurseForge(deps: { fetch: FetchFn; getKey: () => string | 
     const matching = gameVersion ? usable.filter((f) => f.gameVersions.includes(gameVersion)) : [];
     const pick = matching[0] ?? usable[0];
     return {
+      title: mod.name,
+      dependencies: pick.dependencies ?? [],
       fileName: pick.fileName,
       downloadUrl: pick.downloadUrl!,
       versionLabel: pick.displayName,
