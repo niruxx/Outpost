@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/banner.svg" alt="Outpost — self-hosted control panel for Minecraft, Steam and custom game servers" width="100%">
+  <img src="docs/banner.svg" alt="Outpost: self-hosted workspace for games, apps and containers" width="100%">
 </p>
 
 <p align="center">
@@ -11,28 +11,51 @@
   <img alt="Linux · Windows · macOS" src="https://img.shields.io/badge/Linux%20·%20Windows%20·%20macOS-ecc65c?style=flat-square&labelColor=1d211b">
 </p>
 
-<h3 align="center">🧭 One self-hosted panel for your servers, apps, containers and games.</h3>
+<h3 align="center">Your self-hosted workspace for games, apps and containers.</h3>
 
 <p align="center">
-  📦 Web apps &amp; databases &nbsp;·&nbsp; 🧭 Portainer &nbsp;·&nbsp; 🐳 any Docker / Podman image &nbsp;·&nbsp; 🎮 Minecraft &amp; Steam game servers &nbsp;·&nbsp; ⌨️ your own scripts
+  Deploy instances, watch host health, and manage day-to-day operations from one browser tab.<br>
+  Minecraft and Steam servers &middot; Docker and Podman &middot; Web apps and databases &middot; Custom processes
 </p>
 
 <p align="center">
-  <a href="#-quick-start"><b>🚀 Quick start</b></a> &nbsp;•&nbsp;
-  <a href="#-features"><b>✨ Features</b></a> &nbsp;•&nbsp;
-  <a href="#-what-you-can-run"><b>🧰 What you can run</b></a> &nbsp;•&nbsp;
-  <a href="#-guides"><b>📚 Guides</b></a> &nbsp;•&nbsp;
-  <a href="#%EF%B8%8F-operations"><b>🛠️ Operations</b></a> &nbsp;•&nbsp;
-  <a href="#%EF%B8%8F-roadmap"><b>🗺️ Roadmap</b></a>
+  <a href="#overview">Overview</a> &middot;
+  <a href="#screenshots">Screenshots</a> &middot;
+  <a href="#-quick-start">Quick start</a> &middot;
+  <a href="#features">Features</a> &middot;
+  <a href="#-what-you-can-run">Supported workloads</a> &middot;
+  <a href="#-guides">Guides</a> &middot;
+  <a href="#%EF%B8%8F-operations">Operations</a>
 </p>
 
-<br>
+## Overview
+
+Outpost is a self-hosted control panel for running game servers, applications, containers and custom processes on your own hardware. Create an instance from the catalog or configure it yourself, then manage its console, files, updates and backups in the same place.
+
+The redesigned interface takes inspiration from **Material Design 3 Expressive**: soft tonal surfaces, clear headings, grouped navigation and prominent actions. The dashboard brings host CPU, memory, storage and throughput together with instance status. Search by name, game or port, filter by category and running state, and switch between list, grid and box views to suit your setup.
+
+Built with **React, TypeScript and Node.js**, Outpost uses built-in SQLite for panel data. Start with a single host, assign access to other users as needed, and link additional Outpost hosts to transfer instances. Container workloads require Docker or Podman; game runtimes depend on the platform you choose.
+
+## Screenshots
+
+### Desktop workspace
+
+![Outpost desktop dashboard showing host health, grouped navigation, search and instance controls](docs/screenshots/dashboard-desktop.png)
+
+Host health at the top, searchable instances below, and workspace and administration tools in the sidebar.
+
+<details>
+<summary><b>Mobile dashboard</b></summary>
 
 <p align="center">
-  <img src="docs/preview.svg" alt="Illustration of the Outpost dashboard" width="92%">
-  <br>
-  <sub><i>Illustration of the dashboard — navigation drawer, live host gauges, and instances with per-instance metrics.</i></sub>
+  <img src="docs/screenshots/dashboard-mobile.png" alt="Outpost mobile dashboard with stacked host metrics and a navigation menu" width="360">
 </p>
+
+The dashboard adapts to smaller screens with stacked cards and a navigation drawer.
+
+</details>
+
+*Actual UI captures using illustrative host metrics and sample instances. No live server or account data is shown.*
 
 ---
 
@@ -70,120 +93,20 @@ Open **http://localhost:8642** — the first visit walks you through creating th
 
 ---
 
-## ✨ Features
+## Features
 
-<table>
-  <tr>
-    <td width="33%" valign="top">
-      <h4>🏗️ One-click installs</h4>
-      Pick a platform and version from the live catalog — Outpost downloads and installs it. Spigot builds from source via BuildTools.
-    </td>
-    <td width="33%" valign="top">
-      <h4>🚀 Launch control</h4>
-      Choose the exact binary or jar, arguments, env vars, ready-detection and stop/restart behaviour — per instance.
-    </td>
-    <td width="33%" valign="top">
-      <h4>⌨️ Custom servers</h4>
-      Run any Linux server binary or shell script, with <code>{{PORT}}</code>-style variables and process-group shutdown.
-    </td>
-  </tr>
-  <tr>
-    <td valign="top">
-      <h4>🖥️ Live console</h4>
-      Real-time output over WebSocket, command history (↑/↓), and streamed install/update progress.
-    </td>
-    <td valign="top">
-      <h4>📊 Metrics everywhere</h4>
-      Host gauges and throughput on the dashboard; per-instance CPU, RAM, network, disk I/O and uptime.
-    </td>
-    <td valign="top">
-      <h4>🧩 Plugins &amp; mods</h4>
-      One-click installs from Modrinth and CurseForge — plugins, data packs, and Bedrock add-ons &amp; texture packs — plus uploads for BepInEx and <code>.pak</code> mods.
-    </td>
-  </tr>
-  <tr>
-    <td valign="top">
-      <h4>📸 Snapshots</h4>
-      Manual or scheduled, with retention. Restore everything — or diff one file against live and restore just that.
-    </td>
-    <td valign="top">
-      <h4>👥 Fine-grained access</h4>
-      Roles plus per-instance permissions, any number of instances per user — enforced by the API, not just the UI.
-    </td>
-    <td valign="top">
-      <h4>🛑 Suspension</h4>
-      Stop and lock an instance (non-payment, TOS). Owners lose panel and API access until it's lifted.
-    </td>
-  </tr>
-  <tr>
-    <td valign="top">
-      <h4>🌐 Multi-node</h4>
-      Link other Outpost hosts and transfer an instance's files and settings between them.
-    </td>
-    <td valign="top">
-      <h4>🔌 UPnP port forwarding</h4>
-      Forward ports and ranges on your router straight from the panel, then test the forward step by step — including from the internet.
-    </td>
-  </tr>
-  <tr>
-    <td valign="top">
-      <h4>♻️ Auto-restart</h4>
-      Bring an instance back when it crashes — or whenever it stops — with a delay and an optional attempt limit.
-    </td>
-    <td valign="top">
-      <h4>🐳 Docker &amp; Podman</h4>
-      Run any game image in a container that only sees its own folder — with presets for popular game images.
-    </td>
-  </tr>
-  <tr>
-    <td valign="top">
-      <h4>🛡️ Sandboxed by default</h4>
-      Game processes are confined to their own folder with bubblewrap; the panel never follows a symlink out of one.
-    </td>
-    <td valign="top">
-      <h4>👤 Players &amp; operators</h4>
-      Op, kick, ban, whitelist/allowlist, broadcasts, time, weather and difficulty — from one page.
-    </td>
-    <td valign="top">
-      <h4>🎨 Themes</h4>
-      Material 3 dark by default, or <b>Windows XP</b>, <b>Windows Vista / 7</b>, <b>Frutiger Aero</b> or <b>Minecraft</b> — each with its own animated (or still) wallpaper. Admins can give each account its own theme.
-    </td>
-  </tr>
-  <tr>
-    <td valign="top">
-      <h4>⏰ Scheduled tasks</h4>
-      Restart nightly with an in-game warning first, send console commands, or start and stop instances on a cron schedule.
-    </td>
-    <td valign="top">
-      <h4>🔔 Discord &amp; webhook alerts</h4>
-      Get told when an instance starts, stops or crashes, or a scheduled snapshot or task fails — as Discord embeds or plain JSON.
-    </td>
-    <td valign="top">
-      <h4>🔐 Two-factor sign-in &amp; audit log</h4>
-      Authenticator-app codes with recovery codes, and a searchable log of who signed in and changed what.
-    </td>
-  </tr>
-  <tr>
-    <td valign="top">
-      <h4>🧱 Firewall</h4>
-      Open and close ports through UFW or firewalld, per-user access levels, and SSH / the panel are never cut off by accident.
-    </td>
-    <td valign="top">
-      <h4>🔫 Counter-Strike 2 tab</h4>
-      Game modes, surf / bhop / practice presets, Workshop map library, live map changes, admin setup — and one-click Metamod + CounterStrikeSharp plugins (speedometer &amp; keys HUD, timers, admin menus).
-    </td>
-  </tr>
-</table>
+| Area | What you can do |
+|---|---|
+| **Deploy and organize** | Create games, catalog apps, Docker/Podman containers and custom processes. Use templates and configure ports, environment variables, launch commands and resource limits. |
+| **Monitor and control** | Check host and instance metrics, start or stop instances, follow live console output, send commands, and browse retained console history. |
+| **Manage games** | Install Minecraft loaders, plugins and mods; manage supported Steam Workshop content; configure players, maps and game-specific settings. |
+| **Protect your data** | Create manual or scheduled snapshots, restore individual files, configure off-site backups, or export the whole environment. |
+| **Automate operations** | Schedule commands and restarts, configure automatic game updates and crash recovery, and send Discord or webhook notifications. |
+| **Share access** | Assign roles and per-instance permissions, set creation limits, enable authenticator-based two-factor sign-in, and review the audit log. |
+| **Manage the host** | Browse files, configure SFTP and database hosts, manage supported host firewalls and UPnP forwarding, and transfer instances between linked hosts. |
+| **Make it yours** | Use the Material-inspired dark theme or select Windows XP, Vista / 7, Frutiger Aero or Minecraft themes. Reduce effects when you prefer less motion. |
 
-<details>
-<summary><b>…and the rest</b> 📁 files · ⬆️ updates · 💾 environment backup · 🧹 factory reset</summary>
-<br>
-
-- 📁 **File management** — browse, edit, upload, download, rename and delete (path-traversal safe).
-- ⬆️ **Updates** — update a server in place while keeping worlds, `server.properties` and permission files.
-- 💾 **Environment backup** — export/import the whole install as one zip.
-- 🧹 **Factory reset** — wipe everything behind a multi-step confirmation (your old data is kept aside).
-</details>
+Platform-specific capabilities and setup requirements are covered in the guides below.
 
 ---
 
