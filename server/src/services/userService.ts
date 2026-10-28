@@ -1,3 +1,4 @@
+import { vmGrants } from './vmAccessService.js';
 import crypto from 'node:crypto';
 import { prep, db } from '../db/db.js';
 import { hashPassword, verifyPassword } from '../auth/password.js';
@@ -6,7 +7,7 @@ import type { PublicUser, Role, User, StoragePermission } from '../types/index.j
 
 function toPublic(user: User): PublicUser {
   const { password_hash, password_salt, totp_secret, totp_last_step, totp_recovery, storage, ...rest } = user;
-  return { ...rest, storagePermissions: storagePermissionsOf(user) };
+  return { ...rest, storagePermissions: storagePermissionsOf(user), vmAccess: vmGrants(user.id) };
 }
 
 export const STORAGE_PERMISSIONS: StoragePermission[] = ['view', 'mount', 'automount', 'format', 'wipe', 'partition', 'encrypt', 'lvm', 'resize'];

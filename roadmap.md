@@ -29,9 +29,9 @@ Planned features inspired by AMP and other game panels. These are development go
 
 - [x] Libvirt VM inventory, power controls, next-boot configuration and domain XML import/editing.
 - [x] Read-only display preview with automatic refresh and fullscreen.
-- [ ] Interactive VNC/SPICE console.
-- [ ] VM snapshots, storage pools, virtual networks, disk creation and migration.
-- [ ] Delegated per-user VM permissions.
+- [x] Interactive browser VNC/SPICE consoles with authenticated local/SSH transport.
+- [x] Offline internal VM snapshots, directory storage pools, virtual networks, disk creation/attachment and live/offline migration jobs.
+- [x] Delegated per-user VM permissions scoped to connection and domain UUID.
 
 ## Host administration
 
@@ -60,7 +60,7 @@ Additional repository gaps include email-based password reset, per-user Steam ac
 
 For a self-hosted community, prioritize OIDC/passkeys and event-driven automation. For commercial hosting, prioritize central node/allocation management and billing lifecycle integration. Outpost already covers many core panel tasks: games and containers, console/files/SFTP, snapshots/off-site backups, schedules, plugins/mods, API keys, TOTP, audit logs and per-user instance permissions.
 
-The new [libvirt integration](docs/libvirt.md) adds VM lifecycle management, next-boot configuration, domain XML import/editing and read-only display previews. It does not yet provide interactive VNC/SPICE, VM snapshots, storage-pool/network provisioning, disk creation, migration, or delegated per-user VM access.
+The new [libvirt integration](docs/libvirt.md) adds VM lifecycle management, next-boot configuration, domain XML import/editing and read-only display previews. It also provides interactive browser VNC/SPICE, offline internal snapshots, directory-pool and virtual-network provisioning, disk creation/attachment, migration jobs and delegated per-user VM access. See the guide for transport, storage and migration requirements.
 
 Sources:
 

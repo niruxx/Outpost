@@ -102,10 +102,10 @@ function MainNav({ onNavigate }: { onNavigate?: () => void }) {
       <NavItem to="/" end icon="instances" label="Instances" onClick={onNavigate} />
       <NavItem to="/files" icon="folder" label="File Management" onClick={onNavigate} />
       <NavItem to="/docker" icon="container" label="Docker" onClick={onNavigate} />
-      {user?.role === 'admin' && <>
+      {(user?.role === 'admin' || !!user?.vmAccess?.length) && <>
         <NavSectionLabel>Virtualization</NavSectionLabel>
         <NavItem to="/libvirt" end icon="monitor" label="Virtual Machines" onClick={onNavigate} />
-        <NavItem to="/libvirt/configuration" icon="configuration" label="Libvirt Configuration" onClick={onNavigate} />
+        {user?.role === 'admin' && <NavItem to="/libvirt/configuration" icon="configuration" label="Libvirt Configuration" onClick={onNavigate} />}
       </>}
       <NavSectionLabel>Administration</NavSectionLabel>
       {(user?.role === 'admin' || !!user?.storagePermissions?.length) && <NavItem to="/storage" icon="storage" label="Storage" onClick={onNavigate} />}

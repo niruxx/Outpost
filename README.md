@@ -50,7 +50,7 @@ Admins can also discover and manage containers created by Docker CLI/Compose/Por
 
 ## Screenshots
 
-Administrators can also manage QEMU/KVM guests from **Virtual Machines** and **Libvirt Configuration** in the sidebar: start/stop/pause guests, configure CPU/memory/autostart, import or edit domain XML, and open a refreshing read-only display preview. Supports local libvirt and remote SSH connections. See the [libvirt setup guide](docs/libvirt.md) and [roadmap and comparison with AMP and other panels](roadmap.md).
+Administrators can also manage QEMU/KVM guests from **Virtual Machines** and **Libvirt Configuration** in the sidebar: start/stop/pause guests, configure CPU/memory/autostart, import or edit domain XML, and open read-only previews or interactive browser VNC/SPICE consoles. Includes offline snapshots, directory storage pools, virtual disks, NAT/isolated/bridged networks, migration jobs and per-user VM permissions. Supports local libvirt and remote SSH connections. See the [libvirt setup guide](docs/libvirt.md) and [roadmap and comparison with AMP and other panels](roadmap.md).
 
 ### Desktop workspace
 

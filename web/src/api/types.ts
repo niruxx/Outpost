@@ -1,10 +1,12 @@
 export type Role = 'admin' | 'moderator' | 'viewer';
 export type StoragePermission = 'view' | 'mount' | 'automount' | 'format' | 'wipe' | 'partition' | 'encrypt' | 'lvm' | 'resize';
 
+export type VmPermission = 'view' | 'power' | 'console' | 'configure' | 'snapshots';
+export interface VmGrant { uri: string; uuid: string; permissions: VmPermission[] }
 export interface LibvirtSettings { enabled: boolean; uri: string }
 export interface VirtualMachine {
   uuid: string; name: string; state: string; cpus: number; memoryMb: number;
-  maxMemoryMb: number; autostart: boolean; persistent: boolean;
+  maxMemoryMb: number; autostart: boolean; persistent: boolean; permissions: VmPermission[];
 }
 export type VmAction = 'start' | 'shutdown' | 'reboot' | 'suspend' | 'resume' | 'destroy';
 
@@ -27,6 +29,7 @@ export interface PublicUser {
   username: string;
   role: Role;
   storagePermissions?: StoragePermission[];
+  vmAccess?: VmGrant[];
   created_at: string;
   /** Two-factor sign-in is on for this account. */
   totp_enabled?: 0 | 1;

@@ -37,7 +37,7 @@ export function saveLibvirtSettings(input: unknown) {
 
 export const runVirsh: VirshRunner = (uri, args) => new Promise((resolve, reject) => {
   execFile('virsh', ['--connect', uri, ...args], {
-    timeout: 20_000, maxBuffer: 4 * 1024 * 1024, windowsHide: true,
+    timeout: args[0] === 'migrate' ? 0 : 120_000, maxBuffer: 4 * 1024 * 1024, windowsHide: true,
     env: { ...process.env, LC_ALL: 'C', LANG: 'C' },
   }, (error, stdout, stderr) => {
     if (error) {
@@ -51,6 +51,11 @@ export function validateVmUuid(uuid: string) {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(uuid)) throw new HttpError(400, 'A valid VM UUID is required');
   return uuid;
 }
+export function resourceName(input: unknown): string {
+  if (typeof input !== 'string' || !/^[a-zA-Z0-9_][a-zA-Z0-9_.-]{0,127}$/.test(input)) throw new HttpError(400, 'Use a name of 1-128 letters, digits, dots, underscores or hyphens');
+  return input;
+}
+export function xmlEscape(value: string) { return value.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }[c]!)); }
 export function parseDomainInfo(text: string): VirtualMachine {
   const fields = Object.fromEntries(text.split(/\r?\n/).map((line) => {
     const colon = line.indexOf(':');
@@ -97,6 +102,148 @@ export function screenshotToPng(data: Buffer): Buffer {
 
 export class LibvirtClient {
   constructor(readonly uri: string, private readonly run: VirshRunner = runVirsh) {}
+  async snapshots(uuid: string) {
+    return (await this.run(this.uri, ['snapshot-list', validateVmUuid(uuid), '--name'])).split(/\r?\n/).filter(Boolean);
+  }
+  async snapshot(uuid: string, action: string, name: unknown) {
+    validateVmUuid(uuid); const snapshot = resourceName(name);
+    if (!['create', 'revert', 'delete'].includes(action)) throw new HttpError(400, 'Unknown snapshot action');
+    const vm = await this.info(uuid);
+    if (vm.state !== 'shut off' || !vm.persistent) throw new HttpError(409, 'Shut down a persistent VM before snapshot operations');
+    if (action === 'create') {
+      if ((await this.snapshots(uuid)).includes(snapshot)) throw new HttpError(409, 'Snapshot already exists');
+      await this.run(this.uri, ['snapshot-create-as', uuid, '--name', snapshot, '--atomic']);
+    } else {
+      if (!(await this.snapshots(uuid)).includes(snapshot)) throw new HttpError(404, 'Snapshot not found');
+      if (action === 'revert') {
+        const metadata = await this.run(this.uri, ['snapshot-dumpxml', uuid, '--snapshotname', snapshot]);
+        if (!/<state>shutoff<\/state>/.test(metadata)) throw new HttpError(409, 'Restore only snapshots captured while the VM was shut off; running-state snapshots need native libvirt tools');
+      }
+      // No --force, --children or metadata-only deletion: libvirt must accept the safe default.
+      await this.run(this.uri, [action === 'revert' ? 'snapshot-revert' : 'snapshot-delete', uuid, '--snapshotname', snapshot]);
+    }
+  }
+  async infrastructure() {
+    const pools = (await this.run(this.uri, ['pool-list', '--all', '--name'])).split(/\r?\n/).filter(Boolean);
+    const networks = (await this.run(this.uri, ['net-list', '--all', '--name'])).split(/\r?\n/).filter(Boolean);
+    const poolDetails = [];
+    for (const name of pools) {
+      const info = await this.run(this.uri, ['pool-info', name]);
+      const active = /^State:\s+running\s*$/m.test(info);
+      const volumes = active ? (await this.run(this.uri, ['vol-list', '--pool', name, '--name'])).split(/\r?\n/).filter(Boolean) : [];
+      poolDetails.push({ name, active, info, volumes });
+    }
+    const networkDetails = [];
+    for (const name of networks) networkDetails.push({ name, info: await this.run(this.uri, ['net-info', name]), xml: await this.run(this.uri, ['net-dumpxml', name]) });
+    return { pools: poolDetails, networks: networkDetails };
+  }
+  async createPool(input: { name?: unknown; target?: unknown }) {
+    const name = resourceName(input?.name), target = input?.target;
+    if (typeof target !== 'string' || !target.startsWith('/') || target.length > 4096 || /[\x00-\x1f]/.test(target) || target.split('/').includes('..')) throw new HttpError(400, 'Provide an absolute hypervisor directory without parent traversal');
+    const existing = (await this.run(this.uri, ['pool-list', '--all', '--name'])).split(/\r?\n/);
+    if (existing.includes(name)) throw new HttpError(409, 'Pool already exists');
+    // Define only: starting it is a separate explicit action. Never formats a host disk.
+    await this.run(this.uri, ['pool-define-as', name, '--type', 'dir', '--target', target]);
+  }
+  async poolAction(name: string, action: string, enabled?: boolean) {
+    resourceName(name);
+    if (!['start', 'stop', 'refresh', 'autostart', 'undefine'].includes(action)) throw new HttpError(400, 'Unknown pool action');
+    if (action === 'autostart' && typeof enabled !== 'boolean') throw new HttpError(400, 'enabled is required');
+    await this.run(this.uri, [`pool-${action === 'stop' ? 'destroy' : action}`, name, ...(action === 'autostart' && !enabled ? ['--disable'] : [])]);
+  }
+  async createDisk(pool: string, input: { name?: unknown; sizeMb?: unknown; format?: unknown }) {
+    resourceName(pool); const name = resourceName(input?.name);
+    if (!Number.isInteger(input?.sizeMb) || Number(input.sizeMb) < 16 || Number(input.sizeMb) > 16_777_216 || !['raw', 'qcow2'].includes(String(input.format))) throw new HttpError(400, 'Provide sizeMb (16-16777216) and raw or qcow2 format');
+    const xml = await this.run(this.uri, ['pool-dumpxml', pool]);
+    if (!/<pool\s[^>]*type=['"]dir['"]/.test(xml)) throw new HttpError(400, 'Disk creation is limited to directory pools');
+    if ((await this.run(this.uri, ['vol-list', '--pool', pool, '--name'])).split(/\r?\n/).includes(name)) throw new HttpError(409, 'Volume already exists');
+    await this.run(this.uri, ['vol-create-as', pool, name, `${input.sizeMb}MiB`, '--format', String(input.format)]);
+  }
+  async attachDisk(uuid: string, input: { pool?: unknown; volume?: unknown; target?: unknown }) {
+    validateVmUuid(uuid); const pool = resourceName(input?.pool), volume = resourceName(input?.volume);
+    if (typeof input.target !== 'string' || !/^vd[a-z]{1,2}$/.test(input.target)) throw new HttpError(400, 'Use a virtio disk target such as vdb');
+    const vmInfo = await this.info(uuid);
+    if (vmInfo.state !== 'shut off' || !vmInfo.persistent) throw new HttpError(409, 'Shut down a persistent VM before attaching a disk');
+    const xml = await this.run(this.uri, ['vol-dumpxml', volume, '--pool', pool]);
+    const format = xml.match(/<format\s+type=['"](raw|qcow2)['"]\s*\//)?.[1];
+    if (!format || !/<volume\s[^>]*type=['"]file['"]/.test(xml)) throw new HttpError(400, 'Select a raw or qcow2 file volume');
+    const diskPath = xml.match(/<path>([^<]+)<\/path>/)?.[1];
+    if (!diskPath) throw new HttpError(422, 'Volume path is missing');
+    for (const vm of await this.list()) {
+      const definitions = [await this.run(this.uri, ['dumpxml', vm.uuid])];
+      if (vm.persistent && vm.state !== 'shut off') definitions.push(await this.run(this.uri, ['dumpxml', vm.uuid, '--inactive']));
+      for (const definition of definitions) {
+        if (vm.uuid === uuid && [...definition.matchAll(/<target\b[^>]*\bdev=['"]([^'"]+)['"]/g)].some(m => m[1] === input.target)) throw new HttpError(409, 'That guest disk target is already in use');
+        for (const source of definition.matchAll(/<(?:source|backingStore)\b[^>]*>/g)) {
+          const attr = (key: string) => source[0].match(new RegExp(`\\b${key}=['"]([^'"]*)['"]`))?.[1];
+          if (attr('file') === diskPath || (attr('pool') === xmlEscape(pool) && attr('volume') === xmlEscape(volume))) throw new HttpError(409, `Disk is already referenced by ${vm.name}; shared writable disk attachment is refused`);
+        }
+      }
+    }
+    // Volume references avoid interpreting paths from form input.
+    await this.withXml(`<disk type='volume' device='disk'><driver name='qemu' type='${format}'/><source pool='${xmlEscape(pool)}' volume='${xmlEscape(volume)}'/><target dev='${input.target}' bus='virtio'/></disk>`, file => this.run(this.uri, ['attach-device', uuid, file, '--config']));
+  }
+  async createNetwork(input: { name?: unknown; mode?: unknown; bridge?: unknown; address?: unknown; prefix?: unknown; dhcpStart?: unknown; dhcpEnd?: unknown }) {
+    const name = resourceName(input?.name);
+    if (!['nat', 'isolated', 'bridge'].includes(String(input.mode))) throw new HttpError(400, 'Use nat, isolated or bridge mode');
+    let body: string;
+    if (input.mode === 'bridge') {
+      const bridge = resourceName(input.bridge);
+      if (bridge.length > 15) throw new HttpError(400, 'Bridge interface names are at most 15 characters');
+      body = `<forward mode='bridge'/><bridge name='${bridge}'/>`;
+    } else {
+      const ipv4 = (v: unknown) => typeof v === 'string' && /^(\d{1,3}\.){3}\d{1,3}$/.test(v) && v.split('.').every(n => Number(n) <= 255);
+      if (!ipv4(input.address) || !Number.isInteger(input.prefix) || Number(input.prefix) < 8 || Number(input.prefix) > 30 || !ipv4(input.dhcpStart) || !ipv4(input.dhcpEnd)) throw new HttpError(400, 'Provide valid IPv4 gateway, prefix (8-30), and DHCP start/end');
+      const number = (v: unknown) => String(v).split('.').reduce((sum, n) => sum * 256 + Number(n), 0);
+      const size = 2 ** (32 - Number(input.prefix)), base = Math.floor(number(input.address) / size) * size;
+      const start = number(input.dhcpStart), end = number(input.dhcpEnd), gateway = number(input.address);
+      if (start <= base || end >= base + size - 1 || start > end || (gateway >= start && gateway <= end) || gateway <= base || gateway >= base + size - 1) throw new HttpError(400, 'DHCP range must be inside the subnet and exclude the gateway/network/broadcast');
+      body = `${input.mode === 'nat' ? "<forward mode='nat'/>" : ''}<ip address='${input.address}' prefix='${input.prefix}'><dhcp><range start='${input.dhcpStart}' end='${input.dhcpEnd}'/></dhcp></ip>`;
+    }
+    if ((await this.run(this.uri, ['net-list', '--all', '--name'])).split(/\r?\n/).includes(name)) throw new HttpError(409, 'Network already exists');
+    await this.withXml(`<network><name>${name}</name>${body}</network>`, file => this.run(this.uri, ['net-define', file, '--validate']));
+  }
+  async attachNetwork(uuid: string, network: unknown) {
+    validateVmUuid(uuid); const name = resourceName(network);
+    const vm = await this.info(uuid);
+    if (vm.state !== 'shut off' || !vm.persistent) throw new HttpError(409, 'Shut down a persistent VM before attaching a network');
+    await this.run(this.uri, ['net-info', name]);
+    await this.run(this.uri, ['attach-interface', uuid, '--type', 'network', '--source', name, '--model', 'virtio', '--config']);
+  }
+  async networkAction(name: string, action: string, enabled?: boolean) {
+    resourceName(name);
+    if (!['start', 'stop', 'autostart', 'undefine'].includes(action)) throw new HttpError(400, 'Unknown network action');
+    if (action === 'autostart' && typeof enabled !== 'boolean') throw new HttpError(400, 'enabled is required');
+    await this.run(this.uri, [`net-${action === 'stop' ? 'destroy' : action}`, name, ...(action === 'autostart' && !enabled ? ['--disable'] : [])]);
+  }
+  async migrationArgs(uuid: string, input: { destination?: unknown; live?: unknown; copyStorage?: unknown; undefineSource?: unknown }) {
+    validateVmUuid(uuid);
+    const destination = validateLibvirtSettings({ enabled: true, uri: input?.destination }).uri;
+    if (!destination.startsWith('qemu+ssh://') || destination === this.uri) throw new HttpError(400, 'Use a different qemu+ssh destination');
+    if (typeof input.live !== 'boolean' || typeof input.copyStorage !== 'boolean' || typeof input.undefineSource !== 'boolean') throw new HttpError(400, 'Provide live, copyStorage and undefineSource booleans');
+    const vm = await this.info(uuid);
+    if (!vm.persistent || (input.live ? vm.state !== 'running' : vm.state !== 'shut off')) throw new HttpError(409, 'Live migration needs a running persistent VM; offline migration needs a stopped persistent VM');
+    if (!input.live && input.copyStorage) throw new HttpError(400, 'Offline migration transfers definitions only; shared or pre-copied storage is required');
+    // Managed migration uses client connections at both ends, retaining SSH host verification.
+    return ['migrate', uuid, destination, '--persistent', ...(input.live ? ['--live', '--timeout', '3600', '--timeout-suspend'] : ['--offline']), ...(input.copyStorage ? ['--copy-storage-all'] : []), ...(input.undefineSource ? ['--undefinesource'] : [])];
+  }
+  async migrate(uuid: string, input: Parameters<LibvirtClient['migrationArgs']>[1]) { await this.run(this.uri, await this.migrationArgs(uuid, input)); }
+  async abortMigration(uuid: string) { await this.run(this.uri, ['domjobabort', validateVmUuid(uuid)]); }
+  async display(uuid: string, protocol: 'vnc' | 'spice') {
+    validateVmUuid(uuid);
+    if (protocol === 'vnc') {
+      const display = await this.run(this.uri, ['vncdisplay', uuid]);
+      const match = display.match(/^(?:127\.0\.0\.1|localhost|\[::1\]|0\.0\.0\.0|\[::\])?:(\d+)$/);
+      if (!match || Number(match[1]) > 59635) throw new HttpError(422, 'VNC console requires a TCP display on the hypervisor loopback/wildcard address');
+      return { host: display.startsWith('[::1]') ? '::1' : '127.0.0.1', port: 5900 + Number(match[1]) };
+    }
+    const display = new URL(await this.run(this.uri, ['domdisplay', uuid, '--type', 'spice']));
+    if (display.protocol !== 'spice:' || !['localhost', '127.0.0.1', '[::1]', '0.0.0.0', '[::]'].includes(display.hostname) || !display.port || display.search || display.username || display.password) throw new HttpError(422, 'SPICE console requires a plain TCP display on the hypervisor loopback/wildcard address');
+    return { host: display.hostname === '[::1]' ? '::1' : '127.0.0.1', port: Number(display.port) };
+  }
+  private async withXml<T>(xml: string, use: (file: string) => Promise<T>) {
+    return this.withTemp(async dir => { const file = path.join(dir, 'resource.xml'); await fs.writeFile(file, xml, { mode: 0o600 }); return use(file); });
+  }
   async list(): Promise<VirtualMachine[]> {
     const ids = (await this.run(this.uri, ['list', '--all', '--uuid'])).split(/\s+/).filter(Boolean);
     const machines: VirtualMachine[] = [];

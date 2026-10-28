@@ -1,3 +1,4 @@
+import { registerVmConsole } from './services/vmConsoleService.js';
 import express from 'express';
 import { initPanelVersion } from './services/panelVersionService.js';
 import { DATA_DIR } from './utils/paths.js';
@@ -166,10 +167,11 @@ app.use((err: unknown, _req: express.Request, res: express.Response, _next: expr
 const httpServer = http.createServer(app);
 const wss = new WebSocketServer({ noServer: true });
 registerHostTerminal(httpServer);
+registerVmConsole(httpServer);
 
 httpServer.on('upgrade', (req, socket, head) => {
   const url = new URL(req.url ?? '', 'http://localhost');
-  if (url.pathname === '/ws/host-terminal') return; // handled by the host terminal upgrader
+  if (url.pathname === '/ws/host-terminal' || url.pathname === '/ws/vm-console') return; // handled by the host terminal upgrader
   const match = url.pathname.match(/^\/ws\/console\/([^/]+)$/);
   if (!match) {
     socket.destroy();

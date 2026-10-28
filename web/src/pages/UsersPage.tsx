@@ -1,3 +1,5 @@
+import { VmAccessEditor } from '../components/VmAccessEditor.js';
+import type { VmGrant } from '../api/types.js';
 import { useEffect, useState } from 'react';
 import { Layout, PageHeader } from '../components/Layout.js';
 import { Badge, Button, Card, ErrorText, Field, Input, Modal, Select } from '../components/ui.js';
@@ -230,6 +232,7 @@ function EditUserModal({
   const [creation, setCreation] = useState<CreationPolicy | null>(null);
   const [firewall, setFirewall] = useState<FirewallAccess>('none');
   const [storagePermissions, setStoragePermissions] = useState<StoragePermission[]>([]);
+  const [vmAccess, setVmAccess] = useState<VmGrant[]>([]);
   const [theme, setTheme] = useState<string>('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -241,6 +244,7 @@ function EditUserModal({
     setRole(user.role);
     setFirewall(user.firewall ?? 'none');
     setStoragePermissions(user.storagePermissions ?? []);
+    setVmAccess(user.vmAccess ?? []);
     setTheme(user.theme ?? '');
     setPassword('');
     setAccess(Object.fromEntries((user.serverAccess ?? []).map((id) => [id, user.serverPermissions?.[id] ?? null])));
@@ -258,7 +262,7 @@ function EditUserModal({
         password: password || undefined,
         serverAccess: Object.entries(access).map(([serverId, permissions]) => ({ serverId, permissions, configAccess: configAccess[serverId] ?? {} })),
         theme: theme || null,
-        ...(role === 'admin' ? {} : { creation, firewall, storagePermissions }),
+        ...(role === 'admin' ? {} : { creation, firewall, storagePermissions, vmAccess }),
       });
       toast.success(`Updated "${user.username}"`);
       onSaved();
@@ -314,6 +318,7 @@ function EditUserModal({
           </label>)}</div>
           <p className="text-xs text-ink-500">Any change permission also grants disk viewing. Grant these only to trusted host operators.</p>
         </div>}
+        {role !== 'admin' && <VmAccessEditor value={vmAccess} onChange={setVmAccess} />}
         {role !== 'admin' && <AccessEditor role={role} servers={servers} access={access} onChange={setAccess} configAccess={configAccess} onConfigChange={setConfigAccess} />}
         <ErrorText>{error}</ErrorText>
         <div className="flex justify-end gap-2">

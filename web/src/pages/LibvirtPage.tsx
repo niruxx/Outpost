@@ -1,3 +1,6 @@
+import { useAuth } from '../state/AuthContext.js';
+import { VmConsole, VmSnapshots, VmMigration } from './VmTools.js';
+import { VmInfrastructure } from './VmInfrastructure.js';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Layout, PageHeader } from '../components/Layout.js';
@@ -14,11 +17,13 @@ const textareaClass = 'min-h-80 w-full rounded-xl border border-surface-600 bg-s
 
 export function LibvirtPage() {
   const location = useLocation();
-  const configuration = location.pathname === '/libvirt/configuration';
+  const { user } = useAuth();
+  const admin = user?.role === 'admin';
+  const configuration = admin && location.pathname === '/libvirt/configuration';
   return <Layout><div className="mx-auto max-w-7xl p-4 sm:p-8">
     <PageHeader title={configuration ? 'Libvirt Configuration' : 'Virtual Machines'} subtitle={configuration ? 'Connect Outpost to a local or remote QEMU/KVM hypervisor.' : 'All guests on this libvirt connection, including VMs created with Cockpit, virt-manager or virsh.'}
-      action={<Link to={configuration ? '/libvirt' : '/libvirt/configuration'}><Button>{configuration ? 'Virtual machines' : 'Connection settings'}</Button></Link>} />
-    {configuration ? <ConnectionSettings /> : <VirtualMachines />}
+      action={admin ? <Link to={configuration ? '/libvirt' : '/libvirt/configuration'}><Button>{configuration ? 'Virtual machines' : 'Connection settings'}</Button></Link> : undefined} />
+    {configuration ? <><ConnectionSettings /><div className="mt-6"><VmInfrastructure /></div></> : <VirtualMachines />}
   </div></Layout>;
 }
 
@@ -56,11 +61,13 @@ function ConnectionSettings() {
     <p className="text-sm text-ink-300">Install the libvirt client tools so <code>virsh</code> is on the Outpost service’s PATH. The selected hypervisor must already have QEMU/KVM and libvirt configured. Outpost uses the same operating system account as its service to connect.</p>
     <p className="text-sm text-ink-300">For a local system connection, grant that account libvirt access using your host’s group or polkit policy, then restart Outpost. A session connection sees only that account’s VMs.</p>
     <p className="text-sm text-ink-300">For SSH, configure key-based authentication and a verified known-host entry for the service account first. Test the URI with virsh from that account. On Windows, use a virsh client with the SSH transport available to reach a Linux hypervisor.</p>
-    <p className="text-sm text-ink-300">The preview uses libvirt screenshots and needs a guest with a supported graphical display. It is read-only and does not expose VNC or SPICE ports. CPU/memory changes require a stopped persistent VM; disk, network, boot and device settings are available in the XML editor.</p>
+    <p className="text-sm text-ink-300">The preview uses libvirt screenshots and needs a guest with a supported graphical display. It is read-only and does not expose VNC or SPICE ports. CPU/memory changes require a stopped persistent VM; Pool, disk and network forms are below; boot and advanced device settings remain available in the XML editor. Interactive VNC/SPICE controls are separate from the screenshot preview.</p>
   </Card></div>;
 }
 
 function VirtualMachines() {
+  const { user } = useAuth();
+  const admin = user?.role === 'admin';
   const [machines, setMachines] = useState<VirtualMachine[]>([]);
   const [connection, setConnection] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -94,7 +101,7 @@ function VirtualMachines() {
   return <div className="space-y-5">
     <p className="text-sm text-ink-400">Existing VMs are discovered automatically, including stopped and transient guests. No import is needed. If a Cockpit VM is missing, select the same host and system/session URI in Libvirt Configuration.</p>
     {connection && <p className="break-all font-mono text-xs text-ink-500">Connection: {connection}</p>}
-    <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-ink-400">{machines.length} virtual machine(s) · refreshes every 10 seconds</p><div className="flex gap-2"><Button disabled={loading} onClick={load}><Icon name="refresh" className="h-4 w-4" />Refresh</Button><Button variant="primary" onClick={() => { setImportError(''); setImportOpen(true); }}>Define VM from XML</Button></div></div>
+    <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-ink-400">{machines.length} virtual machine(s) · refreshes every 10 seconds</p><div className="flex gap-2"><Button disabled={loading} onClick={load}><Icon name="refresh" className="h-4 w-4" />Refresh</Button>{admin && <Button variant="primary" onClick={() => { setImportError(''); setImportOpen(true); }}>Define VM from XML</Button>}</div></div>
     {error && <Notice tone="warning"><p>{error}</p><Link className="mt-2 inline-block underline" to="/libvirt/configuration">Open libvirt configuration</Link></Notice>}
     {loading && <Spinner />}
     {!loading && !error && machines.length === 0 && <Card className="p-8 text-center"><Icon name="monitor" className="mx-auto mb-3 h-10 w-10 text-ink-400" /><h2 className="text-lg text-ink-100">No virtual machines found</h2><p className="mt-2 text-sm text-ink-400">Connect to the correct libvirt URI or define a VM using existing domain XML and disk images.</p></Card>}
@@ -106,6 +113,9 @@ function VirtualMachines() {
 }
 
 function VmDetail({ vm, onRefresh }: { vm: VirtualMachine; onRefresh: () => Promise<void> }) {
+  const { user } = useAuth();
+  const admin = user?.role === 'admin';
+  const can = (permission: string) => admin || vm.permissions?.some(p => p === permission);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [memory, setMemory] = useState(vm.memoryMb);
@@ -147,16 +157,19 @@ function VmDetail({ vm, onRefresh }: { vm: VirtualMachine; onRefresh: () => Prom
     catch (err) { setError(errorMessage(err)); } finally { setBusy(false); }
   }
   return <div className="min-w-0 space-y-5"><Card className="p-5"><div className="mb-4 flex flex-wrap items-center gap-3"><h2 className="min-w-0 break-words text-xl font-medium text-ink-100">{vm.name}</h2><Badge tone={vm.state === 'running' ? 'green' : 'neutral'}>{vm.state}</Badge>{vm.autostart && <Badge tone="blue">Autostart</Badge>}</div><p className="mb-4 break-all font-mono text-xs text-ink-400">{vm.uuid}</p><div className="flex flex-wrap gap-2">
-    <Button variant="primary" disabled={busy || !stopped} onClick={() => action('start')}>Start</Button>
-    <Button disabled={busy || stopped} onClick={() => action('shutdown')}>Shut down</Button>
-    <Button disabled={busy || vm.state !== 'running'} onClick={() => action('reboot')}>Reboot</Button>
-    <Button disabled={busy || !['running', 'paused'].includes(vm.state)} onClick={() => action(vm.state === 'paused' ? 'resume' : 'suspend')}>{vm.state === 'paused' ? 'Resume' : 'Pause'}</Button>
-    <Button variant="danger" disabled={busy || stopped} onClick={() => action('destroy')}>Force off</Button>
+    <Button variant="primary" disabled={busy || !stopped || !can('power')} onClick={() => action('start')}>Start</Button>
+    <Button disabled={busy || stopped || !can('power')} onClick={() => action('shutdown')}>Shut down</Button>
+    <Button disabled={busy || vm.state !== 'running' || !can('power')} onClick={() => action('reboot')}>Reboot</Button>
+    <Button disabled={busy || !['running', 'paused'].includes(vm.state) || !can('power')} onClick={() => action(vm.state === 'paused' ? 'resume' : 'suspend')}>{vm.state === 'paused' ? 'Resume' : 'Pause'}</Button>
+    <Button variant="danger" disabled={busy || stopped || !can('power')} onClick={() => action('destroy')}>Force off</Button>
   </div><ErrorText>{error}</ErrorText></Card>
-  {!vm.persistent && <Notice tone="warning"><p>This is a transient guest. Shutting it down can remove its definition from libvirt. Keep its definition to retain it after shutdown and enable next-boot configuration.</p><Button className="mt-3" disabled={busy} onClick={keepDefinition}>Keep VM definition</Button></Notice>}
+  {admin && !vm.persistent && <Notice tone="warning"><p>This is a transient guest. Shutting it down can remove its definition from libvirt. Keep its definition to retain it after shutdown and enable next-boot configuration.</p><Button className="mt-3" disabled={busy} onClick={keepDefinition}>Keep VM definition</Button></Notice>}
   <VmPreview uuid={vm.uuid} active={['running', 'paused', 'in shutdown', 'pmsuspended'].includes(vm.state)} />
-  <Card className="space-y-4 p-5"><h3 className="font-medium text-ink-100">Next-boot configuration</h3><p className="text-xs text-ink-400">Shut down a persistent VM to edit. Increase CPU or memory ceilings in XML if necessary.</p><div className="grid gap-4 sm:grid-cols-2"><Field label="Memory (MB)"><Input type="number" min={128} max={vm.maxMemoryMb} value={memory} disabled={busy || !stopped || !vm.persistent} onChange={(e) => setMemory(Number(e.target.value))} /></Field><Field label="Virtual CPUs"><Input type="number" min={1} max={4096} value={cpus} disabled={busy || !stopped || !vm.persistent} onChange={(e) => setCpus(Number(e.target.value))} /></Field></div><label className="flex items-center gap-2 text-sm text-ink-200"><input type="checkbox" checked={autostart} disabled={busy || !stopped || !vm.persistent} onChange={(e) => setAutostart(e.target.checked)} />Start with the hypervisor</label><Button variant="primary" disabled={busy || !stopped || !vm.persistent} onClick={save}>{busy ? 'Working…' : 'Save configuration'}</Button></Card>
-  <Card className="space-y-4 p-5"><div className="flex items-center justify-between gap-3"><h3 className="font-medium text-ink-100">Domain XML</h3><Button disabled={busy || xmlLoading} onClick={loadXml}>{xmlLoading ? 'Loading…' : xml === null ? 'Load XML' : 'Reload XML'}</Button></div><p className="text-xs text-ink-400">Advanced disk, network, boot and device configuration. The VM must be stopped to save. Keep its UUID unchanged. No disks are created or deleted.</p>{xml !== null && <><textarea aria-label="VM domain XML" className={textareaClass} spellCheck={false} value={xml} onChange={(e) => { setXml(e.target.value); setXmlDirty(true); }} disabled={busy || !stopped || !vm.persistent} /><Button variant="primary" disabled={busy || !stopped || !vm.persistent || !xmlDirty} onClick={saveXml}>Save XML</Button></>}</Card>
+  {can('console') && <VmConsole uuid={vm.uuid} active={['running', 'paused'].includes(vm.state)} />}
+  {can('snapshots') && <VmSnapshots uuid={vm.uuid} stopped={stopped && vm.persistent} onRefresh={onRefresh} />}
+  {can('configure') && <Card className="space-y-4 p-5"><h3 className="font-medium text-ink-100">Next-boot configuration</h3><p className="text-xs text-ink-400">Shut down a persistent VM to edit. Increase CPU or memory ceilings in XML if necessary.</p><div className="grid gap-4 sm:grid-cols-2"><Field label="Memory (MB)"><Input type="number" min={128} max={vm.maxMemoryMb} value={memory} disabled={busy || !stopped || !vm.persistent} onChange={(e) => setMemory(Number(e.target.value))} /></Field><Field label="Virtual CPUs"><Input type="number" min={1} max={4096} value={cpus} disabled={busy || !stopped || !vm.persistent} onChange={(e) => setCpus(Number(e.target.value))} /></Field></div><label className="flex items-center gap-2 text-sm text-ink-200"><input type="checkbox" checked={autostart} disabled={busy || !stopped || !vm.persistent} onChange={(e) => setAutostart(e.target.checked)} />Start with the hypervisor</label><Button variant="primary" disabled={busy || !stopped || !vm.persistent} onClick={save}>{busy ? 'Working…' : 'Save configuration'}</Button></Card>}
+  {admin && <Card className="space-y-4 p-5"><div className="flex items-center justify-between gap-3"><h3 className="font-medium text-ink-100">Domain XML</h3><Button disabled={busy || xmlLoading} onClick={loadXml}>{xmlLoading ? 'Loading…' : xml === null ? 'Load XML' : 'Reload XML'}</Button></div><p className="text-xs text-ink-400">Advanced disk, network, boot and device configuration. The VM must be stopped to save. Keep its UUID unchanged. No disks are created or deleted.</p>{xml !== null && <><textarea aria-label="VM domain XML" className={textareaClass} spellCheck={false} value={xml} onChange={(e) => { setXml(e.target.value); setXmlDirty(true); }} disabled={busy || !stopped || !vm.persistent} /><Button variant="primary" disabled={busy || !stopped || !vm.persistent || !xmlDirty} onClick={saveXml}>Save XML</Button></>}</Card>}
+  {admin && <><VmInfrastructure uuid={vm.uuid} stopped={stopped && vm.persistent} /><VmMigration uuid={vm.uuid} /></>}
   </div>;
 }
 

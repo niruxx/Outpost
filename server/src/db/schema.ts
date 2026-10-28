@@ -204,6 +204,13 @@ CREATE TABLE IF NOT EXISTS audit_log (
   ip TEXT, -- the client's address (and X-Forwarded-For, when a proxy sent one)
   user_agent TEXT -- the client's browser / tool
 );
+CREATE TABLE IF NOT EXISTS vm_access (
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  uri TEXT NOT NULL,
+  uuid TEXT NOT NULL,
+  permissions TEXT NOT NULL,
+  PRIMARY KEY (user_id, uri, uuid)
+);
 CREATE INDEX IF NOT EXISTS audit_log_created_at ON audit_log (created_at);
 
 -- Server-browser (A2S) player counts, sampled once a minute while a Steam instance runs.

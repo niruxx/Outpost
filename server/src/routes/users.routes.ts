@@ -1,3 +1,4 @@
+import { setVmGrants, vmGrants } from '../services/vmAccessService.js';
 import { Router } from 'express';
 import { asyncHandler, HttpError } from '../utils/asyncHandler.js';
 import { requireAuth, requireRole } from '../auth/middleware.js';
@@ -44,6 +45,7 @@ usersRouter.get(
   asyncHandler(async (_req, res) => {
     const users = listUsers().map((u) => ({
       ...u,
+      vmAccess: vmGrants(u.id),
       serverAccess: getUserServerAccess(u.id),
       serverPermissions: Object.fromEntries(getUserServerAccessDetailed(u.id).map((a) => [a.serverId, a.permissions])),
       configAccess: Object.fromEntries(getUserServerAccessDetailed(u.id).map((a) => [a.serverId, a.configAccess ?? {}])),
@@ -79,6 +81,7 @@ usersRouter.patch(
   asyncHandler(async (req, res) => {
     const target = getUserById(req.params.id);
     if (!target) throw new HttpError(404, 'User not found');
+    if (req.body?.vmAccess !== undefined) setVmGrants(target.id, req.body.vmAccess);
     const { role, password, serverAccess } = req.body ?? {};
     if (req.body?.storagePermissions !== undefined) {
       const permissions = req.body.storagePermissions;
