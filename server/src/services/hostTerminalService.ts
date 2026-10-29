@@ -9,6 +9,7 @@ import { authenticate } from '../auth/tokens.js';
 import { getUserById, logAudit } from './userService.js';
 import { HttpError } from '../utils/asyncHandler.js';
 import { envVar } from '../utils/env.js';
+import { probeTerminalBackend } from './hostSetupService.js';
 
 export interface TerminalOptions { mode: 'service' | 'root' | 'user'; username?: string; cols: number; rows: number }
 interface Ticket { token: string; userId: string; options: TerminalOptions; expires: number }
@@ -39,12 +40,7 @@ export function terminalIdentity(token: string) {
 }
 
 export async function terminalStatus() {
-  let available = true, error: string | null = null;
-  const moduleName = 'node-pty';
-  try { await import(moduleName); } catch {
-    available = false;
-    error = 'The native terminal backend is unavailable. Install optional dependencies and rebuild node-pty for this host.';
-  }
+  const { available, error } = await probeTerminalBackend();
   const account = os.userInfo();
   return { available, error, platform: process.platform, serviceUser: account.username, isRoot: process.getuid?.() === 0, idleMinutes: IDLE_MS / 60_000, maxSessionsPerAdmin: MAX_USER_SESSIONS };
 }

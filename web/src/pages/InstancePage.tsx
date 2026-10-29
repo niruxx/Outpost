@@ -60,7 +60,7 @@ function InstanceNav({ server, onNavigate }: { server: ServerRecord; onNavigate:
       <NavItem to="status" icon="status" label="Status" onClick={onNavigate} />
       <NavItem to="console" icon="console" label="Console" onClick={onNavigate} />
       <NavItem to="backups" icon="backup" label="Backup Schedule" onClick={onNavigate} />
-      <NavItem to="tasks" icon="clock" label="Scheduled Tasks" onClick={onNavigate} />
+      <NavItem to="tasks" icon="clock" label="Tasks & Automation" onClick={onNavigate} />
       <NavItem to="configuration" icon="configuration" label="Configuration" onClick={onNavigate} />
       <NavItem to="files" icon="folder" label="File Management" onClick={onNavigate} />
       <NavItem to="upnp" icon="router" label="UPnP" onClick={onNavigate} />

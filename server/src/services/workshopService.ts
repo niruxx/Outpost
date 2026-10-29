@@ -276,7 +276,9 @@ export function setLogin(server: ServerRecord, login: unknown): WorkshopState {
   requireSupport(server);
   const state = workshopStateOf(server);
   if (login === null || login === '') state.login = null;
+  else if (typeof login === 'string' && /^account:[0-9a-f-]{36}$/i.test(login)) state.login = login;
   else {
+    if (typeof login === 'string' && login.startsWith('account:')) throw new HttpError(400, 'Choose a saved Steam account without a manual password');
     if (typeof login !== 'string' || !/^\S{2,64}\s+\S.{0,200}$/.test(login.trim())) throw new HttpError(400, 'Enter the Steam username and password');
     state.login = login.trim();
   }

@@ -1,3 +1,5 @@
+import { localInventory } from '../services/fleetService.js';
+import { provisionOnNode, nodeProvisionIdentity } from './operations.routes.js';
 import { Router } from 'express';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { localNodeInfo, receiveTransfer, requireNodeKey } from '../services/nodeService.js';
@@ -30,3 +32,6 @@ nodeLinkRouter.post(
     res.status(201).json({ serverId: server.id });
   })
 );
+
+nodeLinkRouter.get('/inventory', (_req, res) => res.json(localInventory()));
+nodeLinkRouter.post('/provision', asyncHandler(async (req, res) => { nodeProvisionIdentity(req); await provisionOnNode(req, res); }));

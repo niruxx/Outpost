@@ -50,6 +50,10 @@ Admins can also discover and manage containers created by Docker CLI/Compose/Por
 
 ## Screenshots
 
+Configuration includes [Linux system Java defaults](docs/java-defaults.md) for Debian, Fedora and Arch. Host Console explains missing dependencies in a popup with automatic native-backend repair; see the [host console guide](docs/host-console.md). Admins can remove stopped VM entries while retaining their disks and firmware/TPM state.
+
+**Operations** adds fleet inventory and instance placement across registered hosts, primary IP/port allocation pools, personal Steam accounts with Steam Guard, and CurseForge server modpack installation. Instance **Tasks & Automation** supports player/state rules and authenticated incoming webhooks; the CS2 tab includes match plans, rotation, SourceTV demos and player kick/ban controls. See the [operations guide](docs/operations.md) for setup and supported limits.
+
 Administrators can also manage QEMU/KVM guests from **Virtual Machines** and **Libvirt Configuration** in the sidebar: start/stop/pause guests, configure CPU/memory/autostart, import or edit domain XML, and open read-only previews or interactive browser VNC/SPICE consoles. Includes offline snapshots, directory storage pools, virtual disks, NAT/isolated/bridged networks, migration jobs and per-user VM permissions. Supports local libvirt and remote SSH connections. See the [libvirt setup guide](docs/libvirt.md) and [roadmap and comparison with AMP and other panels](roadmap.md).
 
 ### Desktop workspace

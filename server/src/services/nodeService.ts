@@ -60,6 +60,7 @@ export interface NodeInfo {
   arch: string;
   instances: number;
   running: number;
+  totalMemoryMb: number; freeMemoryMb: number; reservedMemoryMb: number; cpus: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -94,6 +95,7 @@ export function requireNodeKey(req: Request): void {
 export function localNodeInfo(): NodeInfo {
   const servers = listServers();
   return {
+    totalMemoryMb: Math.floor(os.totalmem() / 1048576), freeMemoryMb: Math.floor(os.freemem() / 1048576), reservedMemoryMb: servers.reduce((n,s) => n + s.max_memory_mb, 0), cpus: os.cpus().length,
     hostname: os.hostname(),
     platform: process.platform,
     arch: process.arch,
@@ -114,7 +116,7 @@ export function listNodes(): PublicNode[] {
   return (prep('SELECT * FROM nodes ORDER BY created_at ASC').all() as unknown as NodeRecord[]).map(toPublic);
 }
 
-function getNode(id: string): NodeRecord {
+export function getNode(id: string): NodeRecord {
   const node = prep('SELECT * FROM nodes WHERE id = ?').get(id) as NodeRecord | undefined;
   if (!node) throw new HttpError(404, 'Node not found');
   return node;
@@ -263,7 +265,7 @@ export function startTransfer(serverId: string, nodeId: string, deleteSource: bo
     steam_app_id: server.steam_app_id,
     steam_preset: server.steam_preset,
     workshop: server.workshop,
-    steam_login: server.steam_login,
+    steam_login: server.steam_login.startsWith('account:') ? 'anonymous' : server.steam_login,
     steam_extra_flags: server.steam_extra_flags,
     launch_config: server.launch_config,
     docker_config: server.docker_config,

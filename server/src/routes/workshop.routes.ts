@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { ownSteamAccount } from '../services/steamAccountService.js';
 import { asyncHandler, HttpError } from '../utils/asyncHandler.js';
 import { requireAuth, requirePermission, requireServerAccess } from '../auth/middleware.js';
 import { getServer } from '../services/serverService.js';
@@ -16,12 +17,12 @@ import {
   zomboidIniInfo,
 } from '../services/workshopService.js';
 import { workshopStateOf } from '../services/workshopState.js';
-import { logAudit } from '../services/userService.js';
+import { getUserById, logAudit } from '../services/userService.js';
 import type { ServerRecord } from '../types/index.js';
 
 /** Steam Workshop mods for one instance. Viewing needs instance access; changing needs "plugins". */
 export const workshopRouter = Router({ mergeParams: true });
-workshopRouter.use(requireAuth, requireServerAccess());
+workshopRouter.use(requireAuth, (req, res, next) => { const user = getUserById(req.auth!.sub); if (!user) return res.status(403).json({ error: 'Current account required' }); req.auth!.role = user.role; next(); }, requireServerAccess());
 
 function requireServer(id: string): ServerRecord {
   const server = getServer(id);
@@ -106,7 +107,8 @@ workshopRouter.put(
     const server = requireServer(req.params.serverId);
     const user = typeof req.body?.username === 'string' ? req.body.username.trim() : '';
     const pass = typeof req.body?.password === 'string' ? req.body.password : '';
-    setLogin(server, user && pass ? `${user} ${pass}` : null);
+    const login = user.startsWith('account:') ? ownSteamAccount(req.auth!.sub, user.slice(8)) : user && pass ? `${user} ${pass}` : null;
+    setLogin(server, login);
     logAudit(req.auth!.sub, req.auth!.username, 'plugin.workshop_login', server.id, user ? `account ${user}` : 'removed');
     res.json(view(server.id));
   })

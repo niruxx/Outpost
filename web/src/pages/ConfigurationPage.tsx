@@ -1,3 +1,4 @@
+import { SystemJavaDefaultCard } from '../components/SystemJavaDefaultCard.js';
 import { useEffect, useState } from 'react';
 import { saveEffects, useEffectsMode } from '../lib/perf.js';
 import { DbHostsCard } from '../components/DbHostsCard.js';
@@ -473,7 +474,7 @@ export function ConfigurationPage() {
           <>
             <SecurityCard />
             <WineCard />
-            <JavaRuntimesCard />
+            <SystemJavaDefaultCard /><JavaRuntimesCard />
             <NotificationsCard />
             <AuditRetentionCard />
             <ConsoleLogRetentionCard />

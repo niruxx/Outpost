@@ -1,3 +1,6 @@
+import { getSetting as matchSetting } from './systemSettingsService.js';
+const getMatchEnabled = (id: string) => !!matchSetting(`cs2_match:${id}`);
+import { matchPlan, writeMatchFiles } from './cs2MatchService.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { prep } from '../db/db.js';
@@ -333,6 +336,7 @@ export function cs2LaunchArgs(server: ServerRecord): string[] {
     ...(s.gslt ? ['+sv_setsteamaccount', s.gslt] : []),
     ...(s.lan ? ['+sv_lan', '1'] : []),
     ...(s.vacOff ? ['-insecure'] : []),
+    ...(matchPlan(server.id).rotation.length ? ['+mapgroup', 'outpost_rotation'] : []),
   ];
 }
 
@@ -381,6 +385,7 @@ export function writeCs2Configs(server: ServerRecord): string {
 
   const modeFile = path.join(cfgDir, `${MODES[s.mode].cfg}_server.cfg`);
   writeIfOurs(modeFile, `${MARK}\nexec outpost\n`);
+  if (getMatchEnabled(server.id)) { writeMatchFiles(server.id); fs.appendFileSync(path.join(cfgDir, 'outpost.cfg'), 'exec outpost_match\n'); }
   writeAdmins(server, s);
   return `CS2: ${MODES[s.mode].label}${s.preset ? ` (${PRESETS.find((p) => p.id === s.preset)?.label ?? s.preset} preset)` : ''}, ${s.workshopMap ? `Workshop map ${s.workshopMap}` : s.map}`;
 }

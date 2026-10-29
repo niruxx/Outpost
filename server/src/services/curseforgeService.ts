@@ -14,7 +14,7 @@ import { clearSetting, getSetting, setSetting } from './systemSettingsService.js
 export const SETTING_CURSEFORGE_KEY = 'curseforge_api_key';
 const API = 'https://api.curseforge.com';
 
-export type CfTarget = 'bedrock' | 'plugin' | 'datapack' | 'mod:fabric' | 'mod:quilt' | 'mod:forge' | 'mod:neoforge';
+export type CfTarget = 'bedrock' | 'plugin' | 'datapack' | 'mod:fabric' | 'mod:quilt' | 'mod:forge' | 'mod:neoforge' | 'modpack';
 
 /** CurseForge's modLoaderType numbers. */
 const MOD_LOADER_TYPE: Record<string, number> = { 'mod:forge': 1, 'mod:fabric': 4, 'mod:quilt': 5, 'mod:neoforge': 6 };
@@ -82,6 +82,7 @@ type FetchFn = (url: string, init: { headers: Record<string, string>; signal?: A
 /** Which game and which classes each target searches. Names are matched case-insensitively. */
 const TARGETS: Record<CfTarget, { gameSlug: string; fallbackGameId: number; classes: string[] }> = {
   // Maps (.mcworld) and skins aren't server add-ons, so they're left out.
+  modpack: { gameSlug: 'minecraft', fallbackGameId: 432, classes: ['modpacks'] },
   bedrock: { gameSlug: 'minecraft-bedrock', fallbackGameId: 78022, classes: ['addons', 'texture packs', 'scripts'] },
   plugin: { gameSlug: 'minecraft', fallbackGameId: 432, classes: ['bukkit plugins'] },
   datapack: { gameSlug: 'minecraft', fallbackGameId: 432, classes: ['data packs'] },
@@ -225,7 +226,21 @@ export function createCurseForge(deps: { fetch: FetchFn; getKey: () => string | 
     if (!res.ok) throw new HttpError(502, `CurseForge answered ${res.status}`);
   }
 
-  return { classes, search, resolveFile, resolveLink, versions, checkKey, reset: () => (gameIds.clear(), classCache.clear()) };
+  async function packFile(modId: number, fileId: number) {
+    if (!Number.isSafeInteger(modId) || modId < 1 || !Number.isSafeInteger(fileId) || fileId < 1) throw new HttpError(400, 'Use numeric CurseForge project/file IDs');
+    const { data: mod } = await cf<{ data: CfMod }>(`/v1/mods/${modId}`);
+    if (mod.allowModDistribution === false) throw new HttpError(409, 'Author has disabled third-party downloads');
+    if (!(await classes('modpack')).some(c => c.id === mod.classId)) throw new HttpError(400, 'Select a Minecraft modpack project');
+    const { data: file } = await cf<{ data: CfFile & { serverPackFileId?: number; isServerPack?: boolean; hashes?: { algo: number; value: string }[] } }>(`/v1/mods/${modId}/files/${fileId}`);
+    if (!file.downloadUrl || file.isAvailable === false) throw new HttpError(409, 'This file cannot be downloaded through the CurseForge API');
+    return { mod, file };
+  }
+  async function packVersions(modId: number) {
+    if (!Number.isSafeInteger(modId) || modId < 1) throw new HttpError(400, 'Use a numeric project ID');
+    const { data } = await cf<{ data: CfFile[] }>(`/v1/mods/${modId}/files?pageSize=50`);
+    return data.filter(f => f.isAvailable !== false && f.downloadUrl).map(f => ({ id: f.id, name: f.displayName, fileName: f.fileName }));
+  }
+  return { packVersions, packFile, classes, search, resolveFile, resolveLink, versions, checkKey, reset: () => (gameIds.clear(), classCache.clear()) };
 }
 
 export const curseforge = createCurseForge({

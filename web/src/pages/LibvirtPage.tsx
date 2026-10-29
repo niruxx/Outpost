@@ -125,6 +125,7 @@ function VmDetail({ vm, onRefresh }: { vm: VirtualMachine; onRefresh: () => Prom
   const [xmlDirty, setXmlDirty] = useState(false);
   const [xmlLoading, setXmlLoading] = useState(false);
   const confirm = useConfirm(); const toast = useToast();
+  const [deleteOpen, setDeleteOpen] = useState(false), [deleteName, setDeleteName] = useState(''), [removeSnapshotMetadata, setRemoveSnapshotMetadata] = useState(false);
   const stopped = vm.state === 'shut off';
   // Only reinitialize fields when persisted values change, preserving drafts during polling.
   useEffect(() => { setMemory(vm.memoryMb); setCpus(vm.cpus); setAutostart(vm.autostart); }, [vm.memoryMb, vm.cpus, vm.autostart]);
@@ -162,7 +163,9 @@ function VmDetail({ vm, onRefresh }: { vm: VirtualMachine; onRefresh: () => Prom
     <Button disabled={busy || vm.state !== 'running' || !can('power')} onClick={() => action('reboot')}>Reboot</Button>
     <Button disabled={busy || !['running', 'paused'].includes(vm.state) || !can('power')} onClick={() => action(vm.state === 'paused' ? 'resume' : 'suspend')}>{vm.state === 'paused' ? 'Resume' : 'Pause'}</Button>
     <Button variant="danger" disabled={busy || stopped || !can('power')} onClick={() => action('destroy')}>Force off</Button>
+    {admin && <Button variant="danger" disabled={busy || !stopped || !vm.persistent} onClick={() => { setDeleteName(''); setRemoveSnapshotMetadata(false); setError(''); setDeleteOpen(true); }}>Delete VM entry</Button>}
   </div><ErrorText>{error}</ErrorText></Card>
+  <Modal title={`Delete VM entry: ${vm.name}`} open={deleteOpen} onClose={() => !busy && setDeleteOpen(false)}><div className="space-y-4"><p className="text-sm text-ink-300">Remove this stopped VM's persistent libvirt definition? Its disk volumes, UEFI NVRAM and TPM state are retained. Save its XML first if you plan to register it again. Any Outpost access grants for this connection/VM will be removed.</p><Field label={`Type ${vm.name} to confirm`}><Input value={deleteName} onChange={e => setDeleteName(e.target.value)} disabled={busy} /></Field><label className="flex items-start gap-2 text-xs text-ink-300"><input type="checkbox" checked={removeSnapshotMetadata} onChange={e => setRemoveSnapshotMetadata(e.target.checked)} disabled={busy} /> Also remove libvirt snapshot metadata (required if it blocks deletion; snapshot data in disk files remains)</label><ErrorText>{error}</ErrorText><div className="flex justify-end gap-2"><Button disabled={busy} onClick={() => setDeleteOpen(false)}>Cancel</Button><Button variant="danger" disabled={busy || deleteName !== vm.name} onClick={async () => { setBusy(true); setError(''); try { await api.delete(`/libvirt/vms/${vm.uuid}`, { confirmName: deleteName, removeSnapshotMetadata }); setDeleteOpen(false); toast.success('VM entry removed; disk files retained'); await onRefresh(); } catch (err) { setError(errorMessage(err)); } finally { setBusy(false); } }}>Delete entry and retain disks</Button></div></div></Modal>
   {admin && !vm.persistent && <Notice tone="warning"><p>This is a transient guest. Shutting it down can remove its definition from libvirt. Keep its definition to retain it after shutdown and enable next-boot configuration.</p><Button className="mt-3" disabled={busy} onClick={keepDefinition}>Keep VM definition</Button></Notice>}
   <VmPreview uuid={vm.uuid} active={['running', 'paused', 'in shutdown', 'pmsuspended'].includes(vm.state)} />
   {can('console') && <VmConsole uuid={vm.uuid} active={['running', 'paused'].includes(vm.state)} />}

@@ -1,3 +1,4 @@
+import { SteamAccountSelect } from './SteamAccountSelect.js';
 import { UploadTracker } from './UploadTracker.js';
 import type { UploadProgress } from '../api/client.js';
 import { useEffect, useState } from 'react';
@@ -81,6 +82,9 @@ export function CreateServerModal({
   const [windowsBuild, setWindowsBuild] = useState(false);
   const [customExecutable, setCustomExecutable] = useState('');
   const [steamLogin, setSteamLogin] = useState('anonymous');
+  const [allocationPoolId, setAllocationPoolId] = useState('');
+  const [allocationPools, setAllocationPools] = useState<{ id: string; name: string; protocol: string }[]>([]);
+  useEffect(() => { if (open) api.get<{ pools: typeof allocationPools }>('/operations/allocations').then(r => setAllocationPools(r.pools)).catch(() => {}); }, [open]);
   const [steamExtraFlags, setSteamExtraFlags] = useState('');
   const [showSteamAdvanced, setShowSteamAdvanced] = useState(false);
   const [error, setError] = useState('');
@@ -177,6 +181,7 @@ export function CreateServerModal({
         minMemoryMb,
         maxMemoryMb,
         serverPort,
+        allocationPoolId: ['java', 'bedrock', 'steam'].includes(platform) && allocationPoolId ? allocationPoolId : undefined,
         acceptEula,
         steamAppId: platform === 'steam' ? (selectedSteamGame ? selectedSteamGame.appId : customAppId.trim()) : undefined,
         steamPreset: platform === 'steam' && selectedSteamGame ? selectedSteamGame.id : undefined,
@@ -295,6 +300,7 @@ export function CreateServerModal({
 
         {platform === 'steam' && (
           <div>
+            <SteamAccountSelect value={steamLogin} onChange={setSteamLogin} />
             <button
               type="button"
               className="text-xs text-accent-500 hover:underline"
@@ -340,6 +346,7 @@ export function CreateServerModal({
           </div>
         )}
 
+        {['java', 'bedrock', 'steam'].includes(platform) && allocationPools.length > 0 && <Field label="Primary port assignment"><Select value={allocationPoolId} onChange={e => setAllocationPoolId(e.target.value)}><option value="">Use the manual/default port</option><option value="auto">Automatic compatible pool</option>{allocationPools.map(p => <option key={p.id} value={p.id}>{p.name} ({p.protocol})</option>)}</Select></Field>}
         {(platform === 'java' || platform === 'bedrock') && !isModpack && (
           <Field label="Version">
             {loadingVersions ? (

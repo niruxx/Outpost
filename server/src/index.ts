@@ -1,3 +1,5 @@
+import { operationsRouter, automationRouter, hooksRouter } from './routes/operations.routes.js';
+import { initAutomation } from './services/automationService.js';
 import { registerVmConsole } from './services/vmConsoleService.js';
 import express from 'express';
 import { initPanelVersion } from './services/panelVersionService.js';
@@ -128,6 +130,9 @@ app.use('/api/servers/:serverId/cs2', cs2Router);
 app.use('/api/database-hosts', dbHostsRouter);
 app.use('/api/servers/:serverId/databases', serverDatabasesRouter);
 app.use('/api/servers/:serverId/sftp', instanceSftpRouter);
+app.use('/api/operations', operationsRouter);
+app.use('/api/hooks', hooksRouter);
+app.use('/api/servers/:serverId/automation', automationRouter);
 app.use('/api/servers', serversRouter);
 app.use('/api/plugins', pluginRegistryRouter);
 app.use('/api/system', systemRouter);
@@ -164,6 +169,7 @@ app.use((err: unknown, _req: express.Request, res: express.Response, _next: expr
   res.status(status).json({ error: message });
 });
 
+initAutomation();
 const httpServer = http.createServer(app);
 const wss = new WebSocketServer({ noServer: true });
 registerHostTerminal(httpServer);

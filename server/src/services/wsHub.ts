@@ -1,4 +1,5 @@
 import type { WebSocket } from 'ws';
+import { instanceEvents } from './instanceEvents.js';
 
 type Topic = string; // `console:<serverId>`
 
@@ -19,6 +20,7 @@ export function unsubscribe(topic: Topic, socket: WebSocket) {
 }
 
 export function publish(topic: Topic, data: unknown) {
+  if (topic.startsWith('console:') && data && typeof data === 'object' && ['status', 'player'].includes((data as { type: string }).type)) instanceEvents.emit('event', topic.slice(8), data);
   const set = subscribers.get(topic);
   if (!set || set.size === 0) return;
   const payload = JSON.stringify(data);

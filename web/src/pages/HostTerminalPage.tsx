@@ -1,3 +1,4 @@
+import { TerminalDependenciesModal } from '../components/TerminalDependenciesModal.js';
 import { useEffect, useRef, useState } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
@@ -21,13 +22,15 @@ export function HostTerminalPage() {
   const [session, setSession] = useState<SessionRequest | null>(null);
   const [connection, setConnection] = useState<ConnectionState>('closed');
   const [loading, setLoading] = useState(true);
+  const [dependenciesOpen, setDependenciesOpen] = useState(false);
+  const explained = useRef(false);
   const endSession = useRef<() => void>(() => {});
   const clear = useRef<() => void>(() => {});
   const fullscreen = useRef<HTMLDivElement>(null);
   const active = connection !== 'closed';
   async function load() {
     setLoading(true); setError('');
-    try { setStatus(await api.get<TerminalStatus>('/terminal')); }
+    try { const next = await api.get<TerminalStatus>('/terminal'); setStatus(next); if (!next.available && !explained.current) { explained.current = true; setDependenciesOpen(true); } }
     catch (err) { setError(err instanceof Error ? err.message : 'Unable to load terminal'); }
     finally { setLoading(false); }
   }
@@ -38,12 +41,13 @@ export function HostTerminalPage() {
   }
   return <Layout><div className="flex min-h-full flex-col gap-5 p-4 sm:p-8">
     <PageHeader title="Host Console" subtitle="Open an interactive terminal on the Outpost host, outside any game instance." />
+    <TerminalDependenciesModal open={dependenciesOpen} onClose={() => setDependenciesOpen(false)} onReady={() => { void load(); }} />
     <ErrorText>{error}</ErrorText>
     {loading && <Spinner />}
     {status && <Card className="space-y-4 p-5">
       <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="font-medium text-ink-100">New terminal session</h2><Badge tone={connection === 'connected' ? 'green' : 'neutral'}>{connection === 'connecting' ? 'Connecting' : connection === 'connected' ? 'Connected' : 'Disconnected'}</Badge></div>
       <p className="text-sm text-ink-300">Outpost runs as <strong>{status.serviceUser}</strong>{status.isRoot ? ' (root)' : ''}. This terminal can manage host files, services and software with the selected OS account’s permissions.</p>
-      {!status.available && <Notice tone="warning">{status.error}<div className="mt-2"><Button onClick={load}>Check again</Button></div></Notice>}
+      {!status.available && <Notice tone="warning">{status.error}<div className="mt-2"><Button onClick={() => setDependenciesOpen(true)}>Dependencies & automatic repair</Button><Button onClick={load}>Check again</Button></div></Notice>}
       <div className="flex flex-wrap items-end gap-3"><div className="min-w-60 flex-1"><Field label="Run as"><Select value={mode} onChange={(e) => setMode(e.target.value as SessionRequest['mode'])} disabled={active}>
         <option value="service">Service account ({status.serviceUser})</option>
         {status.platform !== 'win32' && <><option value="root">Root{status.isRoot ? '' : ' (via sudo)'}</option><option value="user">Named operating system user</option></>}

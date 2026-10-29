@@ -74,6 +74,10 @@ try {
   await assert.rejects(client.migrate(uuid, { destination: 'qemu+ssh://user@dest/system', live: false, copyStorage: true, undefineSource: false }), { status: 400 });
   state = 'running'; await client.migrate(uuid, { destination: 'qemu+ssh://user@dest/system', live: true, copyStorage: true, undefineSource: true }); assert(calls.at(-1).includes('--copy-storage-all')); assert(!calls.at(-1).includes('--unsafe'));
   await client.abortMigration(uuid); assert.deepEqual(calls.at(-1), ['domjobabort', uuid]); state = 'shut off';
+  await assert.rejects(client.removeEntry(uuid, { confirmName: 'wrong name', removeSnapshotMetadata: false }), { status: 400 });
+  state = 'running'; await assert.rejects(client.removeEntry(uuid, { confirmName: 'Test VM', removeSnapshotMetadata: false }), { status: 409 }); state = 'shut off';
+  await client.removeEntry(uuid, { confirmName: 'Test VM', removeSnapshotMetadata: false }); assert.deepEqual(calls.at(-1), ['undefine', uuid, '--keep-nvram', '--keep-tpm']);
+  await client.removeEntry(uuid, { confirmName: 'Test VM', removeSnapshotMetadata: true }); assert(calls.at(-1).includes('--snapshots-metadata')); assert(!calls.at(-1).includes('--remove-all-storage'));
   assert.deepEqual(await client.display(uuid, 'vnc'), { host: '127.0.0.1', port: 5902 });
   assert.equal((await client.display(uuid, 'spice')).port, 5905);
   assert(consoleService.sshConsoleArgs('qemu+ssh://user@[::1]:2222/system', 5900).includes('StrictHostKeyChecking=yes'));
@@ -92,6 +96,7 @@ try {
   LibvirtClient.prototype.action = async function(id, action) { calls.push([action, id]); };
   LibvirtClient.prototype.snapshots = async () => ['baseline'];
   LibvirtClient.prototype.list = async () => [info(uuid), info(other)];
+  LibvirtClient.prototype.removeEntry = async function(id) { calls.push(['undefine', id, '--keep-nvram', '--keep-tpm']); };
   let finishMigration;
   LibvirtClient.prototype.migrate = () => new Promise(resolve => { finishMigration = resolve; });
   LibvirtClient.prototype.migrationArgs = async () => [];
@@ -137,6 +142,10 @@ try {
   const { createKey } = await import('../dist/services/apiKeyService.js'); const key = createKey(admin.id, { name: 'vm-test', readOnly: false }).key;
   assert.equal((await request(`/vms/${uuid}/console-ticket`, { protocol: 'vnc' }, key)).status, 403);
   assert.equal((await request(`/vms/${uuid}/action`, { action: 'start' }, key)).status, 403);
+  assert.equal((await request(`/vms/${uuid}`, { confirmName: 'Test VM', removeSnapshotMetadata: false }, token, 'DELETE')).status, 403);
+  access.setVmGrants(viewer.id, [{ uri: client.uri, uuid, permissions: ['console'] }, { uri: 'qemu:///session', uuid, permissions: ['view'] }]);
+  assert.equal((await request(`/vms/${uuid}`, { confirmName: 'Test VM', removeSnapshotMetadata: false }, adminToken, 'DELETE')).status, 200);
+  assert.deepEqual(access.vmGrants(viewer.id).map(g => g.uri), ['qemu:///session']);
   users.updateUserRole(admin.id, 'viewer'); assert.equal((await request('/settings', undefined, adminToken)).status, 403);
   console.log('VM snapshots, pools/disks/networks, migration arguments/jobs, delegated authorization, binary console bridge, SPICE multichannel and live revocation passed; no hypervisor changed');
 } finally {

@@ -1,8 +1,11 @@
+import fs from 'node:fs';
+import { rconCommand } from '../services/rconService.js';
+import { matchPlan, saveMatch, matchCommands, demoName, demoDirectory, demoPath, demos, playerCommands, parseCs2Status, writeMatchFiles } from '../services/cs2MatchService.js';
 import { Router } from 'express';
 import { asyncHandler, HttpError } from '../utils/asyncHandler.js';
 import { requireAuth, requirePermission, requireServerAccess } from '../auth/middleware.js';
 import { getServer } from '../services/serverService.js';
-import { getServerPermissions, logAudit } from '../services/userService.js';
+import { getServerPermissions, getUserById, logAudit } from '../services/userService.js';
 import { isRunning, sendCommand } from '../services/processManager.js';
 import { appendLine } from '../services/consoleLogService.js';
 import { rconConfigOf, saveRcon } from '../services/rconService.js';
@@ -30,7 +33,11 @@ import type { ServerRecord } from '../types/index.js';
 
 /** Counter-Strike 2 controls for one instance. Viewing needs access; changes need "settings"; live actions need "console". */
 export const cs2Router = Router({ mergeParams: true });
-cs2Router.use(requireAuth, requireServerAccess());
+cs2Router.use(requireAuth, (req, res, next) => {
+  const user = getUserById(req.auth!.sub);
+  if (!user) return res.status(403).json({ error: 'Current account required' });
+  req.auth!.role = user.role; next();
+}, requireServerAccess());
 
 function requireCs2(id: string): ServerRecord {
   const server = getServer(id);
@@ -331,3 +338,14 @@ cs2Router.delete(
     res.json(pluginView(getServer(server.id)!));
   }),
 );
+
+cs2Router.get('/match', asyncHandler(async (req, res) => { const server = requireCs2(req.params.serverId); res.json({ plan: matchPlan(server.id) }); }));
+cs2Router.put('/match', asyncHandler(async (req, res) => { requirePermission(req, 'settings'); const server = requireCs2(req.params.serverId); const plan = saveMatch(server.id, req.body); writeCs2Configs(getServer(server.id)!); logAudit(req.auth!.sub, req.auth!.username, 'cs2.match.save', server.id); res.json({ plan }); }));
+cs2Router.post('/match/action', asyncHandler(async (req, res) => { requirePermission(req, 'console'); const server = requireCs2(req.params.serverId); const commands = matchCommands(req.body?.action); writeMatchFiles(server.id); const output = []; for (const command of commands) output.push(await rconCommand(server.id, command)); logAudit(req.auth!.sub, req.auth!.username, 'cs2.match.action', server.id, req.body?.action); res.json({ output }); }));
+cs2Router.get('/demos', asyncHandler(async (req, res) => { requirePermission(req, 'files.read'); res.json({ demos: demos(requireCs2(req.params.serverId).id) }); }));
+cs2Router.post('/demos/record', asyncHandler(async (req, res) => { requirePermission(req, 'console'); const server = requireCs2(req.params.serverId); const name = demoName(req.body?.name); demoDirectory(server.id); if (demos(server.id).some(d => d.name === `${name}.dem`)) throw new HttpError(409, 'Demo already exists'); const output = await rconCommand(server.id, `tv_record outpost_demos/${name}`); logAudit(req.auth!.sub, req.auth!.username, 'cs2.demo.record', server.id, name); res.json({ output }); }));
+cs2Router.post('/demos/stop', asyncHandler(async (req, res) => { requirePermission(req, 'console'); const server = requireCs2(req.params.serverId); const output = await rconCommand(server.id, 'tv_stoprecord'); logAudit(req.auth!.sub, req.auth!.username, 'cs2.demo.stop', server.id); res.json({ output }); }));
+cs2Router.get('/demos/:name/download', asyncHandler(async (req, res) => { requirePermission(req, 'files.read'); const server = requireCs2(req.params.serverId); res.download(demoPath(server.id, req.params.name), req.params.name); }));
+cs2Router.delete('/demos/:name', asyncHandler(async (req, res) => { requirePermission(req, 'files.write'); const server = requireCs2(req.params.serverId); if (isRunning(server.id)) throw new HttpError(409, 'Stop the server before deleting demos'); fs.unlinkSync(demoPath(server.id, req.params.name)); logAudit(req.auth!.sub, req.auth!.username, 'cs2.demo.delete', server.id, req.params.name); res.status(204).end(); }));
+cs2Router.get('/players/status', asyncHandler(async (req, res) => { requirePermission(req, 'players'); const server = requireCs2(req.params.serverId); const raw = await rconCommand(server.id, 'status'); res.json({ players: parseCs2Status(raw), raw }); }));
+cs2Router.post('/players/action', asyncHandler(async (req, res) => { requirePermission(req, 'players'); const server = requireCs2(req.params.serverId); const commands = playerCommands(req.body); const output = []; for (const command of commands) output.push(await rconCommand(server.id, command)); logAudit(req.auth!.sub, req.auth!.username, 'cs2.player.action', server.id, JSON.stringify({ action: req.body?.action, userId: req.body?.userId, steamId: req.body?.steamId })); res.json({ output }); }));

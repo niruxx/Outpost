@@ -10,20 +10,20 @@ Planned features inspired by AMP and other game panels. These are development go
 
 ## Automation
 
-- [ ] Rules triggered by in-game events: player joins/leaves, first-time joins and application state.
-- [ ] Incoming webhook triggers for authenticated commands, backups and settings changes.
+- [x] Permission-checked rules for supported player join/leave/first-observed-join logs and application state.
+- [x] Authenticated, deduplicated incoming webhook triggers for fixed commands, backups and settings changes.
 
 ## Multi-host operations and commercial hosting
 
-- [ ] Central node inventory, provisioning and placement across hosts.
-- [ ] IP/port allocation pools and automatic assignment.
+- [x] Central inventory, instance provisioning and memory/tag-based placement across registered Outpost hosts.
+- [x] Host IPv4/primary-port allocation pools, transactional reservations and automatic assignment.
 - [ ] Billing integration and provisioning/suspension lifecycle with WHMCS or Paymenter.
 
 ## Game management
 
-- [ ] Per-user Steam accounts and Steam Guard support.
-- [ ] CurseForge server modpack installation.
-- [ ] CS2 match setup, map rotation, demos and deeper player administration.
+- [x] Encrypted per-user Steam accounts, isolated SteamCMD sessions and one-use Steam Guard codes.
+- [x] Pinned CurseForge modpack installation with author server-pack support and manifest fallback.
+- [x] CS2 match plans/live controls, managed map rotation, SourceTV demos and native kick/ban administration.
 
 ## Virtual machines
 
@@ -32,8 +32,12 @@ Planned features inspired by AMP and other game panels. These are development go
 - [x] Interactive browser VNC/SPICE consoles with authenticated local/SSH transport.
 - [x] Offline internal VM snapshots, directory storage pools, virtual networks, disk creation/attachment and live/offline migration jobs.
 - [x] Delegated per-user VM permissions scoped to connection and domain UUID.
+- [x] Admin VM entry deletion with typed confirmation and retained disks/NVRAM/TPM state.
 
 ## Host administration
+
+- [x] Distro-aware default Java selection for Debian, Fedora and Arch environments.
+- [x] Host-console dependency explanation and automatic native-backend repair with optional Linux build-tool installation.
 
 - [x] Admin-only interactive host console with service-account, root and named-user sessions on Unix; service-account PowerShell on Windows.
 - [x] Per-instance backup directories for external drives/partitions, covering snapshots, scheduled backups, World Rewind and file undo copies.
@@ -53,12 +57,12 @@ Reviewed October 28, 2026. This assumes “xmp” refers to CubeCoders AMP. Thes
 | OIDC single sign-on | AMP supports OIDC identity providers such as Authentik. | Central identity, account lifecycle and access across services. |
 | Passkeys / WebAuthn security keys | AMP documents WebAuthn alongside TOTP. Outpost currently has TOTP and recovery codes. | Hardware-backed and passwordless sign-in options. |
 | Automation triggered by in-game events | AMP can schedule actions in response to player/application events. Outpost has timed tasks, updates and notifications. | Trigger workflows when players join/leave or particular game events occur. |
-| Central node provisioning and IP/port allocation pools | Pterodactyl manages Wings nodes and their allocations. Outpost links hosts and transfers instances, but has no comparable central allocation/provisioning interface. | Operate a fleet and assign server capacity from one panel. |
+| Unattended bare-host provisioning and auxiliary-port allocation bundles | Pterodactyl manages Wings nodes and their allocations. Outpost now inventories registered hosts and provisions instances with primary-port pools; bare-host installation and auxiliary-port bundles remain open. | Operate a fleet and assign server capacity from one panel. |
 | Hosting-provider billing integration | AMP's Enterprise features include billing integration. Outpost lists WHMCS/Paymenter integration as unfinished. | Automate paid provisioning, quotas, renewals and suspension. |
 
-Additional repository gaps include email-based password reset, per-user Steam accounts, CurseForge server modpack installation, and deeper title-specific tools such as CS2 match setup/demo management. These are useful development candidates, not assertions that every other panel implements them.
+Additional repository gaps include email-based password reset, unattended installation of new Outpost hosts, auxiliary-port allocation bundles and tournament/veto orchestration. Core Steam accounts, CurseForge packs, event/webhook rules, fleet placement and CS2 match/demo/player controls are now available; see [operations setup and supported limits](docs/operations.md). These are useful development candidates, not assertions that every other panel implements them.
 
-For a self-hosted community, prioritize OIDC/passkeys and event-driven automation. For commercial hosting, prioritize central node/allocation management and billing lifecycle integration. Outpost already covers many core panel tasks: games and containers, console/files/SFTP, snapshots/off-site backups, schedules, plugins/mods, API keys, TOTP, audit logs and per-user instance permissions.
+Remaining priorities include OIDC/passkeys, unattended fleet expansion and billing lifecycle integration. Outpost already covers many core panel tasks: games and containers, console/files/SFTP, snapshots/off-site backups, schedules, plugins/mods, API keys, TOTP, audit logs and per-user instance permissions.
 
 The new [libvirt integration](docs/libvirt.md) adds VM lifecycle management, next-boot configuration, domain XML import/editing and read-only display previews. It also provides interactive browser VNC/SPICE, offline internal snapshots, directory-pool and virtual-network provisioning, disk creation/attachment, migration jobs and delegated per-user VM access. See the guide for transport, storage and migration requirements.
 

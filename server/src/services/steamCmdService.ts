@@ -1,3 +1,6 @@
+import crypto from 'node:crypto';
+import os from 'node:os';
+import { resolveSteamAccount, steamAccountBusy } from './steamAccountService.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
@@ -33,23 +36,69 @@ function isUrl(value: string): boolean {
  *  success line rather than trusting the exit code alone. */
 /** Runs steamcmd and resolves with everything it printed. Its input is closed, so a prompt it can't
  *  answer (a Steam Guard code, a password) fails instead of hanging forever. */
-function runSteamCmd(exePath: string, args: string[], cwd: string, onLog?: LogFn): Promise<string> {
+const accountBusy = steamAccountBusy;
+export async function runSteamCmd(exePath: string, args: string[], cwd: string, onLog?: LogFn, runner: typeof runSteamProcess = runSteamProcess): Promise<string> {
+  const index = args.indexOf('+login');
+  if (index >= 0 && accountBusy.has((args[index + 1] ?? '').replace(/^account:/, ''))) throw new Error('This Steam account is already in use');
+  const account = index >= 0 ? resolveSteamAccount(args[index + 1] ?? '') : null;
+  if (!account) return runner(exePath, args, cwd, onLog);
+  if (accountBusy.has(account.id)) throw new Error('This Steam account is already in use; wait for its download to finish');
+  accountBusy.add(account.id);
+  let script: string | undefined;
+  let scriptDirectory: string | undefined;
+  try {
+    fs.mkdirSync(account.directory, { recursive: true, mode: 0o700 });
+    const client = path.join(account.directory, 'client');
+    if (!fs.existsSync(path.join(client, path.basename(exePath)))) {
+      const source = path.dirname(exePath);
+      // Copy runtime files, never another account's cached credentials/session/config.
+      fs.cpSync(source, client, { recursive: true, filter: file => {
+        const relative = path.relative(source, file), top = relative.split(path.sep)[0];
+        return !relative || ['linux32', 'linux64', 'package', 'public', 'resource', 'bin'].includes(top) || (!relative.includes(path.sep) && /(?:\.(exe|dll|so|dylib)|^steamcmd\.sh)$/i.test(top));
+      } });
+    }
+    exePath = path.join(client, path.basename(exePath));
+    let loginEnd = index + 2;
+    while (loginEnd < args.length && !args[loginEnd].startsWith('+')) loginEnd++;
+    const suppliedGuard = args.slice(index + 2, loginEnd);
+    if (suppliedGuard.length > 1 || (suppliedGuard.length && !/^[A-Za-z0-9]{5,8}$/.test(suppliedGuard[0]))) throw new Error('Saved-account login accepts only an optional Steam Guard code');
+    const guard = account.guard ?? suppliedGuard[0];
+    const expanded = [...args.slice(0, index + 1), account.username, account.password, ...(guard ? [guard] : []), ...args.slice(loginEnd)];
+    const lines: string[] = ['@ShutdownOnFailedCommand 1', '@NoPromptForPassword 1'];
+    let line: string[] = [];
+    for (const token of expanded) {
+      if (token.startsWith('+')) { if (line.length) lines.push(line.join(' ')); line = [token.slice(1)]; }
+      else { if (/["\r\n\x00]/.test(token)) throw new Error('SteamCMD script values cannot contain quotes or line breaks'); line.push(`"${token}"`); }
+    }
+    if (line.length) lines.push(line.join(' '));
+    // Outside DATA_DIR so an environment backup cannot capture a live login/Guard script.
+    scriptDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'outpost-steam-login-'));
+    script = path.join(scriptDirectory, `request-${crypto.randomUUID()}.txt`);
+    fs.writeFileSync(script, lines.join('\n') + '\n', { mode: 0o600, flag: 'wx' });
+    const redact = (text: string) => text.replaceAll(account.password, '[redacted]').replaceAll(guard ?? '\x00-never', '[redacted]');
+    try { return redact(await runner(exePath, ['+runscript', script], cwd, text => onLog?.(redact(text)), { ...process.env, HOME: account.directory, USERPROFILE: account.directory })); }
+    catch (error) { const clean = new Error(redact(error instanceof Error ? error.message : String(error))) as Error & { output?: string }; clean.output = redact((error as { output?: string }).output ?? ''); throw clean; }
+  } finally { try { if (scriptDirectory) fs.rmSync(scriptDirectory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }); } finally { accountBusy.delete(account.id); } }
+}
+function runSteamProcess(exePath: string, args: string[], cwd: string, onLog?: LogFn, env = process.env): Promise<string> {
   return new Promise((resolve, reject) => {
-    const child = spawn(exePath, args, { cwd, windowsHide: true });
+    const child = spawn(exePath, args, { cwd, env, windowsHide: true });
     child.stdin.end();
     let captured = '';
     child.stdout.setEncoding('utf8');
     child.stderr.setEncoding('utf8');
-    child.stdout.on('data', (chunk: string) => {
+    const tails = { stdout: '', stderr: '' };
+    const consume = (stream: 'stdout' | 'stderr', chunk: string) => {
       captured += chunk;
-      for (const line of chunk.split(/\r?\n/)) if (line.length) onLog?.(`  ${line}`);
-    });
-    child.stderr.on('data', (chunk: string) => {
-      captured += chunk;
-      for (const line of chunk.split(/\r?\n/)) if (line.length) onLog?.(`  ${line}`);
-    });
+      const lines = (tails[stream] + chunk).split(/\r?\n/); tails[stream] = lines.pop() ?? '';
+      for (const line of lines) if (line) onLog?.(`  ${line}`);
+      if (captured.length > 8 * 1024 * 1024) captured = captured.slice(-4 * 1024 * 1024);
+    };
+    child.stdout.on('data', (chunk: string) => consume('stdout', chunk));
+    child.stderr.on('data', (chunk: string) => consume('stderr', chunk));
     child.on('error', (err) => reject(err));
-    child.on('exit', (code) => {
+    child.on('close', (code) => {
+      for (const tail of Object.values(tails)) if (tail) onLog?.(`  ${tail}`);
       if (code === 0) return resolve(captured);
       if (STEAMCMD_SUCCESS_MARKER.test(captured)) {
         onLog?.(
@@ -205,7 +254,8 @@ export async function steamAppUpdate(
   const isFirstInstall = !fs.existsSync(manifestPath);
 
   onLog?.(`==> ${commandLog}`);
-  await runSteamCmd(steamCmdPath, args, instanceDir, onLog);
+  const output = await runSteamCmd(steamCmdPath, args, instanceDir, onLog);
+  if (!STEAMCMD_SUCCESS_MARKER.test(output)) throw new Error(explainLoginFailure(output) ?? 'SteamCMD did not confirm a successful app installation; inspect the install log');
 
   if (isFirstInstall) {
     onLog?.(
@@ -213,7 +263,8 @@ export async function steamAppUpdate(
         'finish, so running it again to make sure everything actually downloaded'
     );
     onLog?.(`==> ${commandLog}`);
-    await runSteamCmd(steamCmdPath, args, instanceDir, onLog);
+    const second = await runSteamCmd(steamCmdPath, args, instanceDir, onLog);
+    if (!STEAMCMD_SUCCESS_MARKER.test(second)) throw new Error(explainLoginFailure(second) ?? 'SteamCMD did not confirm the second installation pass');
   }
 }
 

@@ -1,3 +1,4 @@
+import { Cs2MatchCard } from './Cs2MatchCard.js';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { setVisibleInterval } from '../../lib/perf.js';
 import { formatBytes } from './StatusTab.js';
@@ -123,7 +124,7 @@ export function Cs2Tab() {
 
   return (
     <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_22rem]">
-      <div className="min-w-0 space-y-5">
+      <div className="min-w-0 space-y-5"><Cs2MatchCard />
         {/* Presets */}
         <Card className="p-5">
           <CardTitle action={draft.preset && <Badge tone="green">{v.presets.find((p) => p.id === draft.preset)?.label ?? draft.preset}</Badge>}>Server presets</CardTitle>

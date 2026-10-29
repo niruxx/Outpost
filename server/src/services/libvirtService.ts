@@ -269,6 +269,13 @@ export class LibvirtClient {
     if (!VM_ACTIONS.includes(action)) throw new HttpError(400, 'Unknown VM action');
     await this.run(this.uri, [action, uuid]);
   }
+  async removeEntry(uuid: string, input: { confirmName?: unknown; removeSnapshotMetadata?: unknown }) {
+    const vm = await this.info(validateVmUuid(uuid));
+    if (!vm.persistent || vm.state !== 'shut off') throw new HttpError(409, 'Shut down a persistent VM before deleting its entry');
+    if (input?.confirmName !== vm.name || typeof input.removeSnapshotMetadata !== 'boolean') throw new HttpError(400, 'Type the VM name and specify whether to remove snapshot metadata');
+    // Definition only. Never pass storage deletion, NVRAM deletion or managed-save removal flags.
+    await this.run(this.uri, ['undefine', uuid, '--keep-nvram', '--keep-tpm', ...(input.removeSnapshotMetadata ? ['--snapshots-metadata'] : [])]);
+  }
   async makePersistent(uuid: string) {
     const vm = await this.info(uuid);
     if (vm.persistent) return;

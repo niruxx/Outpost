@@ -1,3 +1,4 @@
+import { SteamAccountSelect } from '../../components/SteamAccountSelect.js';
 import { useCallback, useEffect, useState } from 'react';
 import { setVisibleInterval } from '../../lib/perf.js';
 import { useServerDetail } from './ServerContext.js';
@@ -186,6 +187,7 @@ export function WorkshopTab() {
   const [busy, setBusy] = useState<'' | 'add' | 'apply' | 'import' | 'login'>('');
   const [guard, setGuard] = useState('');
   const [steamUser, setSteamUser] = useState('');
+  const [savedAccount, setSavedAccount] = useState('anonymous');
   const [steamPass, setSteamPass] = useState('');
   const [editingLogin, setEditingLogin] = useState(false);
   const canEdit = can('plugins');
@@ -319,6 +321,7 @@ export function WorkshopTab() {
           <p className="mb-3 text-sm text-ink-400">
             Used only to download Workshop items. It must own {GAME[mode]}. The password stays on this panel; consider a separate Steam account for servers.
           </p>
+          {can('settings') && <div className="mb-4 space-y-2"><SteamAccountSelect value={savedAccount} onChange={setSavedAccount} disabled={!!busy} /><Button disabled={!savedAccount.startsWith('account:') || !!busy} onClick={() => run('login', async () => { setData(await api.put<WorkshopView>(`${base}/login`, { username: savedAccount, password: '' })); setEditingLogin(false); })}>Use saved account for Workshop</Button></div>}
           {state.loginUser && !editingLogin ? (
             can('settings') && (
               <div className="flex flex-wrap gap-2">

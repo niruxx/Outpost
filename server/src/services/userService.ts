@@ -1,5 +1,6 @@
 import { vmGrants } from './vmAccessService.js';
 import crypto from 'node:crypto';
+import { removeUserSteamAccounts } from './steamAccountService.js';
 import { prep, db } from '../db/db.js';
 import { hashPassword, verifyPassword } from '../auth/password.js';
 import { requestContext } from '../utils/requestContext.js';
@@ -93,6 +94,7 @@ export function updateUserPassword(id: string, password: string) {
 }
 
 export function deleteUser(id: string) {
+  removeUserSteamAccounts(id);
   // servers.created_by references users without ON DELETE — release ownership first (the
   // instances stay; admins can hand them to someone else) or the delete hits the foreign key.
   prep('UPDATE servers SET created_by = NULL WHERE created_by = ?').run(id);

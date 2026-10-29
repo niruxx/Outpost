@@ -10,6 +10,24 @@ Open **Administration → Host Console** as an administrator, select an OS accou
 
 Outpost does not grant sudo rights, store OS passwords, change sudoers, or elevate Windows through UAC. Root/named-user selectors are unavailable on Windows. The account's home directory is used rather than a game instance's directory. This console manages the machine or container where Outpost runs; it does not enter a remote libvirt hypervisor automatically.
 
+## Missing dependencies and automatic repair
+
+If the native backend is unavailable, **Host console dependencies** opens once and remains accessible through **Dependencies & automatic repair**. It explains the platform prerequisites, displays the exact repair commands and shows the installation directory. Status checks load node-pty in a fresh child process so an earlier missing-module result cannot remain cached after a successful repair.
+
+**Install / repair automatically** restores optional dependencies with install scripts disabled, then explicitly rebuilds only node-pty with scripts enabled. The project's `allowScripts` policy approves node-pty specifically for npm versions that enforce script approval. It does not run a general dependency upgrade or grant sudo rights. The background job displays its stage, bounded output and failures, and verifies that the new native backend can load. Reopening the popup shows the latest job. Network access to the configured npm registry and service-account write access to the Outpost installation are required.
+
+On supported Linux families, an optional checkbox first installs the fixed build prerequisites:
+
+- Debian/Ubuntu: `apt-get install -y python3 make g++ build-essential`.
+- Fedora/RHEL: `dnf install -y python3 make gcc gcc-c++`.
+- Arch: `pacman -S --needed --noconfirm python base-devel`.
+
+OS package installation requires root or existing passwordless sudo for the displayed command. Repository configuration and package databases must already work; Outpost does not perform an unattended full-system upgrade. Without that authority, install the shown packages using the host's normal administrator workflow, leave the checkbox off and retry the npm repair.
+
+On Windows, repair restores/rebuilds the packaged ConPTY backend. A matching prebuilt backend may work without a compiler. If compilation is required, the popup lists Python 3, Visual Studio 2022 Build Tools/Desktop C++, Windows SDK and matching Spectre libraries. Those OS developer tools require their normal Windows installer; this button does not elevate through UAC or silently install Visual Studio. Restart Outpost after changing the service's compiler/Python environment and retry. macOS similarly requires Xcode command-line tools installed through the native host workflow. Compiler installations are not automated on unsupported platforms.
+
+These repairs require a current interactive administrator session and are audited. API keys cannot start them. They do not open a shell, install an SSH service, change the host's sudo policy or restart unrelated terminal sessions. A build affecting a module already loaded by an active PTY may be refused by the OS; close those sessions and retry if necessary.
+
 ## Session lifetime
 
 Use **End session**, exit the shell, close the tab or navigate away to close its PTY. Connections are not automatically reattached or restarted: **New session** always opens a fresh shell. Up to two sessions per administrator and eight total are allowed. A session ends after 30 minutes without keyboard/paste input or eight hours total. Disconnected browser connections are detected by a heartbeat. Outpost shutdown closes active terminals.

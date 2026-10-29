@@ -281,6 +281,7 @@ export async function installModded(loader: ModdedLoader, mc: string, dir: strin
 // ---------------------------------------------------------------------------
 
 export interface ModpackRef {
+  source?: 'modrinth' | 'curseforge';
   projectId: string;
   versionId: string;
   title: string;
@@ -371,6 +372,7 @@ const ALLOWED_HOSTS = /^https:\/\/(cdn\.modrinth\.com|github\.com|raw\.githubuse
 
 /** Downloads a pack's server files and overrides into the instance. Returns the loader version it wants. */
 export async function installModpack(ref: ModpackRef, dir: string, progress: Progress, onLog?: LogFn): Promise<{ loader: ModdedLoader; mc: string; loaderVersion: string }> {
+  if (ref.source === 'curseforge') return (await import('./curseforgePackService.js')).installCurseForgePack(ref, dir, progress, onLog);
   const uploaded = ref.projectId === 'uploaded';
   const packPath = uploaded ? uploadedModpackPath(ref.versionId) : path.join(dir, '_modpack.mrpack');
   if (!uploaded) {

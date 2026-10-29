@@ -5,6 +5,7 @@ const execFileAsync = promisify(execFile);
 
 let cachedJavaPath: string | null | undefined;
 let cachedJavacPath: string | null | undefined;
+export function resetJavaDetection() { cachedJavaPath = undefined; cachedJavacPath = undefined; }
 
 /** Resolves a usable `java` executable: $JAVA_HOME first, then whatever is on PATH. Cached after first success. */
 export async function findJava(): Promise<string | null> {

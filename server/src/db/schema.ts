@@ -1,4 +1,42 @@
 export const SCHEMA_SQL = `
+CREATE TABLE IF NOT EXISTS allocation_pools (
+  id TEXT PRIMARY KEY, name TEXT NOT NULL, address TEXT NOT NULL, protocol TEXT NOT NULL,
+  first_port INTEGER NOT NULL, last_port INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS allocations (
+  pool_id TEXT NOT NULL REFERENCES allocation_pools(id) ON DELETE RESTRICT,
+  port INTEGER NOT NULL, server_id TEXT UNIQUE REFERENCES servers(id) ON DELETE CASCADE,
+  token TEXT UNIQUE, expires INTEGER,
+  PRIMARY KEY (pool_id, port)
+);
+CREATE TABLE IF NOT EXISTS automation_rules (
+  id TEXT PRIMARY KEY, server_id TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, name TEXT NOT NULL,
+  event TEXT NOT NULL, action TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1,
+  cooldown INTEGER NOT NULL DEFAULT 60, last_run INTEGER NOT NULL DEFAULT 0,
+  last_result TEXT, secret_hash TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS automation_server_event ON automation_rules(server_id, event);
+CREATE TABLE IF NOT EXISTS player_seen (
+  server_id TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE, identity TEXT NOT NULL,
+  PRIMARY KEY (server_id, identity)
+);
+CREATE TABLE IF NOT EXISTS webhook_deliveries (
+  rule_id TEXT NOT NULL REFERENCES automation_rules(id) ON DELETE CASCADE,
+  delivery TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (rule_id, delivery)
+);
+CREATE TABLE IF NOT EXISTS steam_accounts (
+  id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  username TEXT NOT NULL, secret TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(user_id, username)
+);
+CREATE TABLE IF NOT EXISTS fleet_requests (
+  id TEXT PRIMARY KEY, request_hash TEXT NOT NULL, server_id TEXT, at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS fleet_placements (
+  id TEXT PRIMARY KEY, node_id TEXT NOT NULL, request_hash TEXT NOT NULL,
+  status TEXT NOT NULL, server_id TEXT, error TEXT, at INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   username TEXT NOT NULL UNIQUE,

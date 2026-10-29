@@ -70,6 +70,15 @@ libvirtRouter.post('/vms/:uuid/persistent', admin, asyncHandler(async (req, res)
   logAudit(req.auth!.sub, req.auth!.username, 'libvirt.persist', req.params.uuid);
   res.json({ ok: true });
 }));
+libvirtRouter.delete('/vms/:uuid', admin, asyncHandler(async (req, res) => {
+  const client = libvirtClient();
+  await client.removeEntry(req.params.uuid, req.body);
+  // Remove grants only for this connection and UUID, keeping grants on other hosts intact.
+  const { prep } = await import('../db/db.js');
+  prep('DELETE FROM vm_access WHERE uri=? AND lower(uuid)=lower(?)').run(client.uri, req.params.uuid);
+  logAudit(req.auth!.sub, req.auth!.username, 'libvirt.undefine', req.params.uuid, 'Definition removed; disk volumes and NVRAM retained');
+  res.json({ ok: true });
+}));
 libvirtRouter.post('/vms', admin, asyncHandler(async (req, res) => {
   await libvirtClient().define(req.body?.xml);
   logAudit(req.auth!.sub, req.auth!.username, 'libvirt.define');

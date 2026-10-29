@@ -1,3 +1,4 @@
+import { OperationsPage } from './pages/OperationsPage.js';
 import { Navigate, Route, BrowserRouter, Routes, useParams } from 'react-router-dom';
 import { MotionConfig } from 'framer-motion';
 import { useEffectsMode } from './lib/perf.js';
@@ -84,6 +85,7 @@ function AppRoutes() {
         }
       />
       <Route path="/servers/:serverId/*" element={<LegacyServerRedirect />} />
+      <Route path="/operations" element={<RequireAuth><OperationsPage /></RequireAuth>} />
       <Route path="/libvirt/*" element={<RequireAuth><LibvirtPage /></RequireAuth>} />
       <Route path="/storage" element={<RequireAuth><StoragePage /></RequireAuth>} />
       <Route path="/host-console" element={<RequireAuth><RequireAdmin><Suspense fallback={<FullScreenLoader />}><HostTerminalPage /></Suspense></RequireAdmin></RequireAuth>} />

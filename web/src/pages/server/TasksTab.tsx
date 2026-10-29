@@ -1,3 +1,4 @@
+import { AutomationCard } from './AutomationCard.js';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { setVisibleInterval } from '../../lib/perf.js';
 import { useServerDetail } from './ServerContext.js';
@@ -238,7 +239,7 @@ export function TasksTab() {
   }
 
   return (
-    <Card className="p-5">
+    <div className="space-y-5"><AutomationCard /><Card className="p-5">
       <CardTitle
         action={
           allowed.length > 0 && (
@@ -311,6 +312,6 @@ export function TasksTab() {
         </div>
       )}
       <TaskModal open={modalOpen} editing={editing} allowed={allowed} onClose={() => setModalOpen(false)} onSaved={load} />
-    </Card>
+    </Card></div>
   );
 }

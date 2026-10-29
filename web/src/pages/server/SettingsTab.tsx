@@ -1,3 +1,4 @@
+import { SteamAccountSelect } from '../../components/SteamAccountSelect.js';
 import { useEffect, useState } from 'react';
 import { DatabasesCard } from './DatabasesCard.js';
 import { BackupStorageCard } from './BackupStorageCard.js';
@@ -133,6 +134,7 @@ export function SettingsTab() {
           </Field>
           {server.platform === 'steam' && (
             <>
+              <SteamAccountSelect value={steamLogin} onChange={setSteamLogin} disabled={!canConfig('setting', 'steamLogin')} />
               <Field label="Steam login">
                 <Input value={steamLogin} onChange={(e) => setSteamLogin(e.target.value)} disabled={!canConfig('setting', 'steamLogin')} placeholder="anonymous" />
               </Field>

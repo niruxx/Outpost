@@ -24,7 +24,7 @@ Passwords and URI query parameters are deliberately unsupported. There is no pas
 - Load and edit the inactive domain XML for disks, networks, boot order, graphics and other devices. Saving requires a stopped VM, keeps its UUID, and uses libvirt's schema validation. The editor does not create disk images or install guest operating systems.
 - **Define VM from XML** imports a new persistent definition. Names/UUIDs that already exist are rejected. Disks, installation media and networks referenced by the XML must already exist on the hypervisor. Use an existing VM's XML editor for updates.
 
-No VM deletion or disk removal operation is provided. Disabling this integration does not stop guests. Outpost shutdown also leaves VMs running under libvirt's supervision.
+Admins can use **Delete VM entry** on a stopped persistent guest. Type its exact name and confirm to remove its libvirt definition while retaining disk volumes, UEFI NVRAM and TPM state. Save its XML before deletion if you plan to register it again. Outpost removes only that connection/UUID's delegated grants. Running/transient guests cannot be deleted through this control. Snapshot metadata blocks undefinition unless its separate removal checkbox is explicitly selected; its on-disk snapshot data remains. Managed-save/checkpoint state can still cause libvirt to refuse deletion and must be resolved with native tools. The operation uses `undefine --keep-nvram --keep-tpm`, never storage-wipe/delete flags; older clients lacking those preservation options fail safely instead of falling back. No disk removal operation is supplied. Disabling this integration does not stop guests. Outpost shutdown also leaves VMs running under libvirt's supervision.
 
 ## Display preview
 

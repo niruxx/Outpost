@@ -1,9 +1,12 @@
+import { resolveCurseForgePack } from '../services/curseforgePackService.js';
+import { ownSteamAccount } from '../services/steamAccountService.js';
+import { reserveAllocation, commitAllocation, releaseAllocation, instanceAllocation, assertManualPort } from '../services/allocationService.js';
 import { getConfigAccess } from '../services/userService.js';
 import multer from 'multer';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { inspectModpack, uploadedModpackPath } from '../services/moddedService.js';
-import { Router, type Request } from 'express';
+import { Router, type Request, type Response } from 'express';
 import fs from 'node:fs';
 import os from 'node:os';
 import { asyncHandler, HttpError } from '../utils/asyncHandler.js';
@@ -147,6 +150,10 @@ async function runServerInstall(server: ServerRecord, afterInstall?: () => void)
         appendLine(server.id, `[Outpost] Couldn’t apply the template’s files: ${err instanceof Error ? err.message : String(err)}`, 'stderr');
       }
     }
+    if (server.platform === 'java' || server.platform === 'bedrock') {
+      const allocation = instanceAllocation(server.id);
+      writeServerProperties(server.id, server.platform, { 'server-port': String(getServer(server.id)?.server_port ?? server.server_port), ...(server.platform === 'java' && allocation ? { 'server-ip': allocation.address === '0.0.0.0' ? '' : allocation.address } : {}) });
+    }
     appendLine(server.id, '[Outpost] Installation finished — server is ready to start');
     setServerStatus(server.id, 'stopped');
     publish(consoleTopic(server.id), { type: 'status', status: 'stopped' });
@@ -245,10 +252,7 @@ serversRouter.get(
   })
 );
 
-serversRouter.post(
-  '/',
-  multer({ storage: multer.memoryStorage(), limits: { fileSize: 256 * 1024 * 1024, fields: 1, files: 1, fieldSize: 1024 * 1024 } }).single('mrpack'),
-  asyncHandler(async (req, res) => {
+export async function createInstance(req: Request, res: Response) {
     if (req.file) {
       if (!req.file.originalname.toLowerCase().endsWith('.mrpack')) throw new HttpError(400, 'Upload a .mrpack file');
       try { req.body = JSON.parse(req.body.payload); } catch { throw new HttpError(400, 'Invalid server configuration'); }
@@ -283,6 +287,11 @@ serversRouter.post(
       };
       fromTemplate = { tpl, vars, inst };
     }
+    if (req.body?.modpack?.source === 'curseforge') {
+      const permission = getEffectiveCreation(req.auth!.sub, req.auth!.role);
+      if (!permission.allowedPlatforms.includes('java') || (permission.maxInstances && permission.owned >= permission.maxInstances)) throw new HttpError(403, 'Your account cannot create another Java instance');
+      if (req.body.acceptEula !== true) throw new HttpError(400, 'Accept Mojang\'s EULA before resolving a server modpack');
+    }
     let modpackRef: ModpackRef | null = null;
     if (req.file) {
       try {
@@ -294,7 +303,7 @@ serversRouter.post(
     if (req.body?.modpack && typeof req.body.modpack === 'object') {
       let pack: Awaited<ReturnType<typeof resolveModpack>>;
       try {
-        pack = await resolveModpack(String(req.body.modpack.projectId ?? ''), req.body.modpack.versionId ? String(req.body.modpack.versionId) : undefined);
+        pack = req.body.modpack.source === 'curseforge' ? await resolveCurseForgePack(String(req.body.modpack.projectId ?? ''), String(req.body.modpack.versionId ?? '')) : await resolveModpack(String(req.body.modpack.projectId ?? ''), req.body.modpack.versionId ? String(req.body.modpack.versionId) : undefined);
       } catch (err) {
         throw new HttpError(400, err instanceof Error ? err.message : 'Couldn’t read that modpack');
       }
@@ -403,6 +412,12 @@ serversRouter.post(
       launchConfig = Object.keys(cfg).length ? JSON.stringify(cfg) : null;
     }
 
+    if (typeof steamLogin === 'string' && steamLogin.startsWith('account:')) ownSteamAccount(req.auth!.sub, steamLogin.slice(8));
+    const desiredProtocol = platform === 'java' ? 'tcp' : preset?.portProtocol ?? 'udp';
+    const allocation = req.body?.allocationPoolId ? reserveAllocation(String(req.body.allocationPoolId), desiredProtocol) : null;
+    const chosenPort = allocation?.port ?? ((dockerConfig ? JSON.parse(dockerConfig).ports[0].host : 0) || Number(serverPort) || preset?.defaultPort || (platform === 'bedrock' ? 19132 : 25565));
+    if (!allocation) assertManualPort(chosenPort);
+    if (allocation && platform !== 'java' && platform !== 'bedrock' && platform !== 'steam') { releaseAllocation(allocation.token); throw new HttpError(400, 'Automatic allocation supports Java, Bedrock and Steam instances'); }
     const record = createServerRecord({
       name: name.trim(),
       platform: platform as Platform,
@@ -411,7 +426,7 @@ serversRouter.post(
       minMemoryMb: Number(minMemoryMb) || 1024,
       maxMemoryMb: Number(maxMemoryMb) || 2048,
       serverPort:
-        (dockerConfig ? JSON.parse(dockerConfig).ports[0].host : 0) || Number(serverPort) || preset?.defaultPort || (platform === 'bedrock' ? 19132 : 25565),
+        chosenPort,
       extraJavaArgs: typeof extraJavaArgs === 'string' ? extraJavaArgs : '',
       extraArgs: typeof extraArgs === 'string' ? extraArgs : '',
       createdBy: req.auth!.sub,
@@ -423,6 +438,9 @@ serversRouter.post(
       dockerConfig,
     });
 
+    if (res.locals.fleetRequestId) { const { prep } = await import('../db/db.js'); prep('UPDATE fleet_requests SET server_id=? WHERE id=?').run(record.id, res.locals.fleetRequestId); }
+    if (allocation) commitAllocation(allocation.token, record.id);
+    if (platform === 'java' || platform === 'bedrock') writeServerProperties(record.id, platform, { 'server-port': String(chosenPort), ...(platform === 'java' && allocation && allocation.address !== '0.0.0.0' ? { 'server-ip': allocation.address } : {}) });
     if (modpackRef) {
       if (req.file) {
         const destination = uploadedModpackPath(modpackRef.versionId);
@@ -431,7 +449,7 @@ serversRouter.post(
       }
       setModpack(record.id, JSON.stringify(modpackRef));
       record.modpack = JSON.stringify(modpackRef);
-      appendLine(record.id, `[Outpost] Modpack: ${modpackRef.title} ${modpackRef.versionNumber} (Modrinth)`);
+      appendLine(record.id, `[Outpost] Modpack: ${modpackRef.title} ${modpackRef.versionNumber} (${modpackRef.source === 'curseforge' ? 'CurseForge' : 'Modrinth'})`);
     }
 
     if (platform === 'steam' && !preset && typeof customExecutable === 'string') {
@@ -490,7 +508,12 @@ serversRouter.post(
 
     res.status(201).json({ server: getServer(record.id) ?? record });
     void runServerInstall(getServer(record.id) ?? record, afterInstall);
-  })
+}
+
+serversRouter.post(
+  '/',
+  multer({ storage: multer.memoryStorage(), limits: { fileSize: 256 * 1024 * 1024, fields: 1, files: 1, fieldSize: 1024 * 1024 } }).single('mrpack'),
+  asyncHandler(createInstance)
 );
 
 serversRouter.post(
@@ -738,6 +761,8 @@ serversRouter.patch(
     }
     const clampInt = (v: unknown, min: number, max: number) =>
       v === undefined || v === null || v === '' ? undefined : Math.min(Math.max(Math.round(Number(v)) || 0, min), max);
+    if (typeof steamLogin === 'string' && steamLogin.startsWith('account:') && steamLogin !== server.steam_login) ownSteamAccount(req.auth!.sub, steamLogin.slice(8));
+    if (serverPort !== undefined) assertManualPort(Number(serverPort), server.id);
     updateServerRecord(server.id, {
       name,
       minMemoryMb: minMemoryMb !== undefined ? Number(minMemoryMb) : undefined,
@@ -909,6 +934,7 @@ serversRouter.put(
     if (updates['server-port'] !== undefined && !/^(?:[1-9]\d{0,4})$/.test(updates['server-port'])) {
       throw new HttpError(400, 'server-port must be between 1 and 65535');
     }
+    if (updates['server-port'] !== undefined) assertManualPort(Number(updates['server-port']), req.params.serverId);
     if (Number(updates['server-port']) > 65535) throw new HttpError(400, 'server-port must be between 1 and 65535');
     requireConfigItems(req, 'property', updates);
     const liveQueued: string[] = [];
