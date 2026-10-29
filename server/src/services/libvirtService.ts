@@ -113,6 +113,13 @@ export function screenshotToPng(data: Buffer): Buffer {
 
 export class LibvirtClient {
   constructor(readonly uri: string, private readonly run: VirshRunner = runVirsh) {}
+  private async volumeNames(pool: string): Promise<string[]> {
+    // vol-list has no --name option: its default output is a Name/Path table.
+    const table = await this.run(this.uri, ['vol-list', '--pool', pool]);
+    const lines = table.split(/\r?\n/);
+    const separator = lines.findIndex(line => /^\s*-+\s*$/.test(line));
+    return lines.slice(separator + 1).map(line => line.trim().split(/\s{2,}/)[0]).filter(Boolean);
+  }
   private imagesKey() { return `libvirt_images_${createHash('sha256').update(this.uri).digest('hex').slice(0, 16)}`; }
   async images(directory?: unknown) {
     const key = this.imagesKey();
@@ -133,7 +140,7 @@ export class LibvirtClient {
     const saved = getSetting(key);
     if (!saved) return { directory: '', pool, images: [] as { name: string; path: string }[] };
     await this.run(this.uri, ['pool-refresh', pool]);
-    const names = (await this.run(this.uri, ['vol-list', '--pool', pool, '--name'])).split(/\r?\n/).filter(n => /\.iso$/i.test(n));
+    const names = (await this.volumeNames(pool)).filter(n => /\.iso$/i.test(n));
     const images = [];
     for (const name of names) images.push({ name, path: await this.run(this.uri, ['vol-path', name, '--pool', pool]) });
     return { directory: saved, pool, images };
@@ -277,7 +284,7 @@ export class LibvirtClient {
     for (const name of pools) {
       const info = await this.run(this.uri, ['pool-info', name]);
       const active = /^State:\s+running\s*$/m.test(info);
-      const volumes = active ? (await this.run(this.uri, ['vol-list', '--pool', name, '--name'])).split(/\r?\n/).filter(Boolean) : [];
+      const volumes = active ? await this.volumeNames(name) : [];
       poolDetails.push({ name, active, info, volumes });
     }
     const networkDetails = [];
@@ -303,7 +310,7 @@ export class LibvirtClient {
     if (!Number.isInteger(input?.sizeMb) || Number(input.sizeMb) < 16 || Number(input.sizeMb) > 16_777_216 || !['raw', 'qcow2'].includes(String(input.format))) throw new HttpError(400, 'Provide sizeMb (16-16777216) and raw or qcow2 format');
     const xml = await this.run(this.uri, ['pool-dumpxml', pool]);
     if (!/<pool\s[^>]*type=['"]dir['"]/.test(xml)) throw new HttpError(400, 'Disk creation is limited to directory pools');
-    if ((await this.run(this.uri, ['vol-list', '--pool', pool, '--name'])).split(/\r?\n/).includes(name)) throw new HttpError(409, 'Volume already exists');
+    if ((await this.volumeNames(pool)).includes(name)) throw new HttpError(409, 'Volume already exists');
     await this.run(this.uri, ['vol-create-as', pool, name, `${input.sizeMb}MiB`, '--format', String(input.format)]);
   }
   async attachDisk(uuid: string, input: { pool?: unknown; volume?: unknown; target?: unknown }) {

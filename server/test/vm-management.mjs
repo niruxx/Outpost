@@ -32,7 +32,10 @@ const runner = async (uri, args) => {
   if (args[0] === 'pool-list') return 'images';
   if (args[0] === 'pool-info') return 'State: running\nAutostart: yes';
   if (args[0] === 'pool-dumpxml') return "<pool type='dir'><name>images</name></pool>";
-  if (args[0] === 'vol-list') return 'existing.qcow2';
+  if (args[0] === 'vol-list') {
+    assert.deepEqual(args, ['vol-list', '--pool', 'images']);
+    return ' Name                 Path\n--------------------------------------------------\n existing.qcow2       /images/existing.qcow2\n';
+  }
   if (args[0] === 'vol-dumpxml') return "<volume type='file'><target><path>/images/existing.qcow2</path><format type='qcow2'/></target></volume>";
   if (args[0] === 'net-list') return 'default';
   if (args[0] === 'net-info') return 'Active: yes';

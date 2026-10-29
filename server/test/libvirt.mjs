@@ -168,7 +168,10 @@ try {
   const images = new libvirt.LibvirtClient('qemu+ssh://images-host/system', async (uri, args) => {
     assert.equal(uri, 'qemu+ssh://images-host/system'); imageCalls.push(args);
     if (args[0] === 'pool-info') return 'State: running';
-    if (args[0] === 'vol-list') return 'ubuntu.iso\nnotes.txt\nrescue.ISO';
+    if (args[0] === 'vol-list') {
+      assert.deepEqual(args, ['vol-list', '--pool', args[2]]);
+      return ' Name                  Path\n--------------------------------------------------\n ubuntu.iso            /remote/isos/ubuntu.iso\n notes.txt             /remote/isos/notes.txt\n rescue.ISO            /remote/isos/rescue.ISO\n';
+    }
     if (args[0] === 'vol-path') return `/remote/isos/${args[1]}`;
     return '';
   });
