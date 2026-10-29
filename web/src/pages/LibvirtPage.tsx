@@ -1,3 +1,6 @@
+import { VmImageLibrary } from '../components/VmImageLibrary.js';
+import { VmDevices } from './VmDevices.js';
+import { CreateVmModal } from './CreateVmModal.js';
 import { useAuth } from '../state/AuthContext.js';
 import { VmConsole, VmSnapshots, VmMigration } from './VmTools.js';
 import { VmInfrastructure } from './VmInfrastructure.js';
@@ -23,7 +26,7 @@ export function LibvirtPage() {
   return <Layout><div className="mx-auto max-w-7xl p-4 sm:p-8">
     <PageHeader title={configuration ? 'Libvirt Configuration' : 'Virtual Machines'} subtitle={configuration ? 'Connect Outpost to a local or remote QEMU/KVM hypervisor.' : 'All guests on this libvirt connection, including VMs created with Cockpit, virt-manager or virsh.'}
       action={admin ? <Link to={configuration ? '/libvirt' : '/libvirt/configuration'}><Button>{configuration ? 'Virtual machines' : 'Connection settings'}</Button></Link> : undefined} />
-    {configuration ? <><ConnectionSettings /><div className="mt-6"><VmInfrastructure /></div></> : <VirtualMachines />}
+    {configuration ? <><ConnectionSettings /><div className="mt-6 space-y-5"><VmImageLibrary /><VmInfrastructure /></div></> : <VirtualMachines />}
   </div></Layout>;
 }
 
@@ -73,6 +76,8 @@ function VirtualMachines() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [createOpen, setCreateOpen] = useState(false);
+  const [creationWarning, setCreationWarning] = useState('');
   const [importOpen, setImportOpen] = useState(false);
   const [xml, setXml] = useState('');
   const [importError, setImportError] = useState('');
@@ -101,13 +106,15 @@ function VirtualMachines() {
   return <div className="space-y-5">
     <p className="text-sm text-ink-400">Existing VMs are discovered automatically, including stopped and transient guests. No import is needed. If a Cockpit VM is missing, select the same host and system/session URI in Libvirt Configuration.</p>
     {connection && <p className="break-all font-mono text-xs text-ink-500">Connection: {connection}</p>}
-    <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-ink-400">{machines.length} virtual machine(s) · refreshes every 10 seconds</p><div className="flex gap-2"><Button disabled={loading} onClick={load}><Icon name="refresh" className="h-4 w-4" />Refresh</Button>{admin && <Button variant="primary" onClick={() => { setImportError(''); setImportOpen(true); }}>Define VM from XML</Button>}</div></div>
+    <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-ink-400">{machines.length} virtual machine(s) · refreshes every 10 seconds</p><div className="flex flex-wrap gap-2"><Button disabled={loading} onClick={load}><Icon name="refresh" className="h-4 w-4" />Refresh</Button>{admin && <Button onClick={() => { setImportError(''); setImportOpen(true); }}>Define VM from XML</Button>}{admin && <Button variant="primary" onClick={() => setCreateOpen(true)}><Icon name="plus" className="h-4 w-4" />New virtual machine</Button>}</div></div>
     {error && <Notice tone="warning"><p>{error}</p><Link className="mt-2 inline-block underline" to="/libvirt/configuration">Open libvirt configuration</Link></Notice>}
     {loading && <Spinner />}
-    {!loading && !error && machines.length === 0 && <Card className="p-8 text-center"><Icon name="monitor" className="mx-auto mb-3 h-10 w-10 text-ink-400" /><h2 className="text-lg text-ink-100">No virtual machines found</h2><p className="mt-2 text-sm text-ink-400">Connect to the correct libvirt URI or define a VM using existing domain XML and disk images.</p></Card>}
+    {!loading && !error && machines.length === 0 && <Card className="p-8 text-center"><Icon name="monitor" className="mx-auto mb-3 h-10 w-10 text-ink-400" /><h2 className="text-lg text-ink-100">No virtual machines found</h2><p className="mt-2 text-sm text-ink-400">Create a new virtual machine or connect to the libvirt host where your guests are running.</p></Card>}
     {!error && machines.length > 0 && <div className="grid gap-5 lg:grid-cols-[260px_minmax(0,1fr)]"><div className="space-y-2" aria-label="Virtual machines">{machines.map((vm) => <button key={vm.uuid} onClick={() => setSelectedId(vm.uuid)} aria-pressed={vm.uuid === selectedId} className={`w-full rounded-2xl border p-4 text-left transition-colors ${vm.uuid === selectedId ? 'border-accent-400 bg-secondary-container text-secondary-on-container' : 'border-surface-700 bg-surface-850 text-ink-200'}`}>
       <span className="flex items-center gap-2"><Icon name="monitor" className="h-5 w-5" /><span className="min-w-0 truncate font-medium">{vm.name}</span></span><span className="mt-2 block text-xs opacity-80">{vm.state} · {vm.cpus} vCPU · {vm.memoryMb} MB</span>
     </button>)}</div>{selected && <VmDetail key={selected.uuid} vm={selected} onRefresh={load} />}</div>}
+    {creationWarning && <Notice tone="warning">{creationWarning}</Notice>}
+    {createOpen && <CreateVmModal onClose={() => setCreateOpen(false)} onCreated={async (uuid, warning) => { setCreationWarning(warning ?? ""); toast.success("Virtual machine created"); await load(); setSelectedId(uuid); }} />}
     <Modal title="Define a virtual machine" open={importOpen} onClose={() => !importing && setImportOpen(false)} size="lg"><div className="space-y-4"><p className="text-sm text-ink-300">Paste libvirt domain XML. This registers a new persistent VM; referenced disks, ISOs, bridges and networks must already exist on the hypervisor. Nothing is downloaded or installed.</p><textarea aria-label="New VM domain XML" spellCheck={false} className={textareaClass} value={xml} onChange={(e) => setXml(e.target.value)} disabled={importing} placeholder={'<domain type="kvm">\n  <name>my-vm</name>\n  …\n</domain>'} /><ErrorText>{importError}</ErrorText><div className="flex justify-end gap-2"><Button onClick={() => setImportOpen(false)} disabled={importing}>Cancel</Button><Button variant="primary" disabled={importing || !xml.trim()} onClick={importVm}>{importing ? 'Defining…' : 'Define VM'}</Button></div></div></Modal>
   </div>;
 }
@@ -172,7 +179,7 @@ function VmDetail({ vm, onRefresh }: { vm: VirtualMachine; onRefresh: () => Prom
   {can('snapshots') && <VmSnapshots uuid={vm.uuid} stopped={stopped && vm.persistent} onRefresh={onRefresh} />}
   {can('configure') && <Card className="space-y-4 p-5"><h3 className="font-medium text-ink-100">Next-boot configuration</h3><p className="text-xs text-ink-400">Shut down a persistent VM to edit. Increase CPU or memory ceilings in XML if necessary.</p><div className="grid gap-4 sm:grid-cols-2"><Field label="Memory (MB)"><Input type="number" min={128} max={vm.maxMemoryMb} value={memory} disabled={busy || !stopped || !vm.persistent} onChange={(e) => setMemory(Number(e.target.value))} /></Field><Field label="Virtual CPUs"><Input type="number" min={1} max={4096} value={cpus} disabled={busy || !stopped || !vm.persistent} onChange={(e) => setCpus(Number(e.target.value))} /></Field></div><label className="flex items-center gap-2 text-sm text-ink-200"><input type="checkbox" checked={autostart} disabled={busy || !stopped || !vm.persistent} onChange={(e) => setAutostart(e.target.checked)} />Start with the hypervisor</label><Button variant="primary" disabled={busy || !stopped || !vm.persistent} onClick={save}>{busy ? 'Working…' : 'Save configuration'}</Button></Card>}
   {admin && <Card className="space-y-4 p-5"><div className="flex items-center justify-between gap-3"><h3 className="font-medium text-ink-100">Domain XML</h3><Button disabled={busy || xmlLoading} onClick={loadXml}>{xmlLoading ? 'Loading…' : xml === null ? 'Load XML' : 'Reload XML'}</Button></div><p className="text-xs text-ink-400">Advanced disk, network, boot and device configuration. The VM must be stopped to save. Keep its UUID unchanged. No disks are created or deleted.</p>{xml !== null && <><textarea aria-label="VM domain XML" className={textareaClass} spellCheck={false} value={xml} onChange={(e) => { setXml(e.target.value); setXmlDirty(true); }} disabled={busy || !stopped || !vm.persistent} /><Button variant="primary" disabled={busy || !stopped || !vm.persistent || !xmlDirty} onClick={saveXml}>Save XML</Button></>}</Card>}
-  {admin && <><VmInfrastructure uuid={vm.uuid} stopped={stopped && vm.persistent} /><VmMigration uuid={vm.uuid} /></>}
+  {admin && <><VmDevices uuid={vm.uuid} stopped={stopped && vm.persistent} /><VmInfrastructure uuid={vm.uuid} stopped={stopped && vm.persistent} /><VmMigration uuid={vm.uuid} /></>}
   </div>;
 }
 

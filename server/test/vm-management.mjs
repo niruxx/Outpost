@@ -68,7 +68,8 @@ try {
   await client.createNetwork({ name: 'lan', mode: 'bridge', bridge: 'br0' }); assert.match(xml, /bridge name='br0'/);
   await assert.rejects(client.createNetwork({ name: 'bad', mode: 'nat', address: '192.168.1.1', prefix: 24, dhcpStart: '192.168.1.0', dhcpEnd: '192.168.1.30' }), { status: 400 });
   await assert.rejects(client.createNetwork({ name: 'bad', mode: 'nat', address: '192.168.1.1', prefix: 24, dhcpStart: '10.0.0.1', dhcpEnd: '10.0.0.5' }), { status: 400 });
-  await client.attachNetwork(uuid, 'default'); assert.deepEqual(calls.at(-1), ['attach-interface', uuid, '--type', 'network', '--source', 'default', '--model', 'virtio', '--config']);
+  await client.attachNetwork(uuid, 'default'); assert.equal(calls.at(-1)[0], 'attach-device'); assert.match(xml, /source network='default'/); assert.match(xml, /model type='virtio'/);
+  await client.attachNetwork(uuid, 'default', { model: 'e1000e', mac: '52:54:00:12:34:56', link: 'down' }); assert.match(xml, /model type='e1000e'/); assert.match(xml, /link state='down'/); assert.match(xml, /52:54:00:12:34:56/);
   assert.equal((await client.infrastructure()).pools[0].volumes[0], 'existing.qcow2');
   await client.migrate(uuid, { destination: 'qemu+ssh://user@dest/system', live: false, copyStorage: false, undefineSource: false }); assert(calls.at(-1).includes('--offline')); assert(!calls.at(-1).includes('--undefinesource'));
   await assert.rejects(client.migrate(uuid, { destination: 'qemu+ssh://user@dest/system', live: false, copyStorage: true, undefineSource: false }), { status: 400 });

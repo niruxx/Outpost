@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { createHash, randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { PNG } from 'pngjs';
@@ -56,6 +57,16 @@ export function resourceName(input: unknown): string {
   return input;
 }
 export function xmlEscape(value: string) { return value.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }[c]!)); }
+const unescapeXml = (value: string) => value.replace(/&(?:amp|lt|gt|quot|apos);/g, c => ({ '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&apos;': "'" }[c]!));
+const attr = (xml: string, key: string) => unescapeXml(xml.match(new RegExp(`\\b${key}=['"]([^'"]*)['"]`))?.[1] ?? '');
+const element = (xml: string, tag: string) => xml.match(new RegExp(`<${tag}\\b[^>]*>`))?.[0] ?? '';
+const deviceBlocks = (xml: string, tag: string) => [...(xml.match(/<devices\b[^>]*>([\s\S]*?)<\/devices>/)?.[1] ?? '').matchAll(new RegExp(`<${tag}\\b[^>]*>[\\s\\S]*?<\\/${tag}>`, 'g'))].map(m => m[0]);
+export function interfaceXml(input: { network?: unknown; model?: unknown; mac?: unknown; link?: unknown }) {
+  const network = resourceName(input.network), model = input.model ?? 'virtio', mac = input.mac ?? '', link = input.link ?? 'up';
+  if (!['virtio', 'e1000e', 'rtl8139'].includes(String(model)) || !['up', 'down'].includes(String(link))) throw new HttpError(400, 'Choose a supported NIC model and link state');
+  if (typeof mac !== 'string' || (mac && (!/^(?:[0-9a-f]{2}:){5}[0-9a-f]{2}$/i.test(mac) || (parseInt(mac.slice(0, 2), 16) & 1) !== 0 || mac === '00:00:00:00:00:00'))) throw new HttpError(400, 'Provide a unicast MAC address or leave it blank for automatic assignment');
+  return `<interface type='network'>${mac ? `<mac address='${mac}'/>` : ''}<source network='${xmlEscape(network)}'/><model type='${model}'/><link state='${link}'/></interface>`;
+}
 export function parseDomainInfo(text: string): VirtualMachine {
   const fields = Object.fromEntries(text.split(/\r?\n/).map((line) => {
     const colon = line.indexOf(':');
@@ -102,6 +113,142 @@ export function screenshotToPng(data: Buffer): Buffer {
 
 export class LibvirtClient {
   constructor(readonly uri: string, private readonly run: VirshRunner = runVirsh) {}
+  private imagesKey() { return `libvirt_images_${createHash('sha256').update(this.uri).digest('hex').slice(0, 16)}`; }
+  async images(directory?: unknown) {
+    const key = this.imagesKey();
+    const pool = `outpost-images-${createHash('sha256').update(`${this.uri}:${directory ?? getSetting(key) ?? ''}`).digest('hex').slice(0, 16)}`;
+    if (directory !== undefined) {
+      if (typeof directory !== 'string' || !directory.startsWith('/') || directory.length > 4096 || /[\x00-\x1f]/.test(directory) || directory.split('/').includes('..')) throw new HttpError(400, 'Specify an existing absolute images directory on the hypervisor');
+      const pools = (await this.run(this.uri, ['pool-list', '--all', '--name'])).split(/\r?\n/);
+      if (pools.includes(pool)) {
+        const xml = await this.run(this.uri, ['pool-dumpxml', pool]);
+        const current = unescapeXml(xml.match(/<path>([^<]*)<\/path>/)?.[1] ?? '');
+        if (current !== directory) throw new HttpError(409, 'This connection already has an images pool. Use a different directory by editing the dedicated pool in native libvirt tools first.');
+      } else await this.createPool({ name: pool, target: directory });
+      const info = await this.run(this.uri, ['pool-info', pool]);
+      if (!/^State:\s+running\s*$/m.test(info)) await this.run(this.uri, ['pool-start', pool]);
+      await this.run(this.uri, ['pool-autostart', pool]);
+      setSetting(key, directory);
+    }
+    const saved = getSetting(key);
+    if (!saved) return { directory: '', pool, images: [] as { name: string; path: string }[] };
+    await this.run(this.uri, ['pool-refresh', pool]);
+    const names = (await this.run(this.uri, ['vol-list', '--pool', pool, '--name'])).split(/\r?\n/).filter(n => /\.iso$/i.test(n));
+    const images = [];
+    for (const name of names) images.push({ name, path: await this.run(this.uri, ['vol-path', name, '--pool', pool]) });
+    return { directory: saved, pool, images };
+  }
+  async devices(uuid: string) {
+    const xml = await this.xml(uuid);
+    return {
+      disks: deviceBlocks(xml, 'disk').map(d => ({ target: attr(element(d, 'target'), 'dev'), device: attr(element(d, 'disk'), 'device'), source: attr(element(d, 'source'), 'file') || [attr(element(d, 'source'), 'pool'), attr(element(d, 'source'), 'volume')].filter(Boolean).join('/'), boot: Number(attr(element(d, 'boot'), 'order')) || null })),
+      interfaces: deviceBlocks(xml, 'interface').map(d => ({ mac: attr(element(d, 'mac'), 'address'), type: attr(element(d, 'interface'), 'type'), network: attr(element(d, 'source'), 'network'), model: attr(element(d, 'model'), 'type'), link: attr(element(d, 'link'), 'state') || 'up', boot: Number(attr(element(d, 'boot'), 'order')) || null })),
+    };
+  }
+  private async stoppedXml(uuid: string) {
+    const vm = await this.info(validateVmUuid(uuid));
+    if (vm.state !== 'shut off' || !vm.persistent) throw new HttpError(409, 'Shut down a persistent VM before editing devices or boot settings');
+    return this.xml(uuid);
+  }
+  async bootDevice(uuid: string, input: { target?: unknown; mac?: unknown }) {
+    let xml = await this.stoppedXml(uuid);
+    const tag = input.target ? 'disk' : 'interface';
+    const blocks = deviceBlocks(xml, tag);
+    const selected = blocks.find(d => input.target ? attr(element(d, 'target'), 'dev') === input.target : attr(element(d, 'mac'), 'address').toLowerCase() === String(input.mac).toLowerCase());
+    if (!selected) throw new HttpError(404, 'Boot device not found');
+    if (tag === 'disk' && attr(element(selected, 'disk'), 'device') === 'cdrom' && !/<source\b/.test(selected)) throw new HttpError(400, 'Insert media before selecting this CD-ROM as boot device');
+    // libvirt disallows mixing OS boot order with per-device boot order.
+    xml = xml.replace(/<boot\b[^>]*\/>/g, '');
+    const clean = selected.replace(/<boot\b[^>]*\/>/g, '');
+    xml = xml.replace(clean, clean.replace(`</${tag}>`, `<boot order='1'/></${tag}>`));
+    await this.define(xml, uuid);
+  }
+  async media(uuid: string, input: { target?: unknown; iso?: unknown; add?: unknown }) {
+    const xml = await this.stoppedXml(uuid);
+    const target = input.target;
+    const disk = deviceBlocks(xml, 'disk').find(d => attr(element(d, 'target'), 'dev') === target && attr(element(d, 'disk'), 'device') === 'cdrom');
+    if (input.iso !== '' && (typeof input.iso !== 'string' || !input.iso.startsWith('/') || !/\.iso$/i.test(input.iso) || /[\x00-\x1f]/.test(input.iso) || input.iso.length > 4096 || input.iso.split('/').includes('..'))) throw new HttpError(400, 'Provide an absolute ISO path or an empty string to eject');
+    if (input.add === true) {
+      if (typeof target !== 'string' || !/^sd[a-z]$/.test(target)) throw new HttpError(400, 'Choose a SATA target such as sdb');
+      if (deviceBlocks(xml, 'disk').some(d => attr(element(d, 'target'), 'dev') === target)) throw new HttpError(409, 'That disk target is already in use');
+      const controller = /<controller\b[^>]*type=['"]sata['"]/.test(xml) ? '' : "<controller type='sata' index='0'/>";
+      const drive = `<disk type='file' device='cdrom'><driver name='qemu' type='raw'/>${input.iso ? `<source file='${xmlEscape(String(input.iso))}'/>` : ''}<target dev='${target}' bus='sata'/><readonly/></disk>`;
+      await this.define(xml.replace('</devices>', `${controller}${drive}</devices>`), uuid); return;
+    }
+    if (!disk) throw new HttpError(404, 'CD-ROM drive not found');
+    await this.run(this.uri, ['change-media', uuid, String(target), ...(input.iso ? [input.iso as string, '--update'] : ['--eject']), '--config']);
+  }
+  async detachDisk(uuid: string, target: unknown) {
+    const xml = await this.stoppedXml(uuid);
+    const disk = deviceBlocks(xml, 'disk').find(d => attr(element(d, 'target'), 'dev') === target && attr(element(d, 'disk'), 'device') === 'disk');
+    if (!disk) throw new HttpError(404, 'Disk not found');
+    await this.withXml(disk, file => this.run(this.uri, ['detach-device', uuid, file, '--config']));
+  }
+  async createAttachedDisk(uuid: string, input: { pool?: unknown; name?: unknown; sizeMb?: unknown; format?: unknown; target?: unknown }) {
+    const xml = await this.stoppedXml(uuid), pool = resourceName(input.pool), name = resourceName(input.name);
+    if (typeof input.target !== 'string' || !/^vd[a-z]{1,2}$/.test(input.target)) throw new HttpError(400, 'Choose a virtio target such as vdb');
+    if (deviceBlocks(xml, 'disk').some(d => attr(element(d, 'target'), 'dev') === input.target)) throw new HttpError(409, 'That disk target is already in use');
+    await this.createDisk(pool, input);
+    try { await this.attachDisk(uuid, { pool, volume: name, target: input.target }); }
+    catch (err) { throw new HttpError(503, `${err instanceof Error ? err.message : 'Attachment failed'}. New disk ${pool}/${name} was retained. Attach the existing disk after reviewing the VM.`); }
+  }
+  async editInterface(uuid: string, input: { mac?: unknown; originalMac?: unknown; network?: unknown; model?: unknown; link?: unknown; remove?: unknown }) {
+    const xml = await this.stoppedXml(uuid);
+    const old = deviceBlocks(xml, 'interface').find(d => attr(element(d, 'mac'), 'address').toLowerCase() === String(input.originalMac ?? input.mac).toLowerCase());
+    if (!old || attr(element(old, 'interface'), 'type') !== 'network') throw new HttpError(404, 'Managed virtual network interface not found');
+    let replacement = '';
+    if (input.remove !== true) {
+      interfaceXml(input); await this.run(this.uri, ['net-info', resourceName(input.network)]);
+      // Preserve addresses, boot priorities, filters and other settings from native tools.
+      replacement = old;
+      replacement = replacement.replace(/<mac\b[^>]*\/>/, input.mac ? `<mac address='${input.mac}'/>` : '');
+      for (const [tag, value] of [['source', `<source network='${xmlEscape(String(input.network))}'/>`], ['model', `<model type='${input.model ?? 'virtio'}'/>`], ['link', `<link state='${input.link ?? 'up'}'/>`]]) {
+        const re = new RegExp(`<${tag}\\b[^>]*(?:\\/>|>[\\s\\S]*?<\\/${tag}>)`);
+        replacement = re.test(replacement) ? replacement.replace(re, value) : replacement.replace('</interface>', `${value}</interface>`);
+      }
+    }
+    await this.define(xml.replace(old, replacement), uuid);
+  }
+  async create(input: { name?: unknown; cpus?: unknown; memoryMb?: unknown; diskMb?: unknown; pool?: unknown; network?: unknown; iso?: unknown; start?: unknown; autostart?: unknown; model?: unknown; mac?: unknown; link?: unknown; boot?: unknown; extraVolume?: unknown }) {
+    const name = resourceName(input?.name), pool = resourceName(input?.pool), network = resourceName(input?.network);
+    if (!Number.isInteger(input.cpus) || Number(input.cpus) < 1 || Number(input.cpus) > 256 || !Number.isInteger(input.memoryMb) || Number(input.memoryMb) < 256 || Number(input.memoryMb) > 1048576 || !Number.isInteger(input.diskMb) || Number(input.diskMb) < 1024 || Number(input.diskMb) > 16777216) throw new HttpError(400, 'Provide 1-256 CPUs, 256-1048576 MiB memory and 1024-16777216 MiB disk capacity');
+    if (typeof input.start !== 'boolean' || typeof input.autostart !== 'boolean') throw new HttpError(400, 'start and autostart are required');
+    const nic = interfaceXml(input), boot = input.boot ?? 'hd';
+    if (input.extraVolume) resourceName(input.extraVolume);
+    if (!['hd', 'cdrom', 'network'].includes(String(boot))) throw new HttpError(400, 'Choose disk, CD-ROM or network boot');
+    const iso = input.iso;
+    if (typeof iso !== 'string' || (iso !== '' && (!iso.startsWith('/') || iso.length > 4096 || /[\x00-\x1f]/.test(iso) || iso.split('/').includes('..') || !/\.iso$/i.test(iso)))) throw new HttpError(400, 'Provide an absolute installer ISO path on the hypervisor without parent traversal, or leave it blank');
+    if (boot === 'cdrom' && !iso) throw new HttpError(400, 'Select an ISO to boot from CD-ROM');
+    if ((await this.list()).some(vm => vm.name === name)) throw new HttpError(409, 'A VM with that name already exists');
+    const poolInfo = await this.run(this.uri, ['pool-info', pool]);
+    if (!/^State:\s+running\s*$/m.test(poolInfo)) throw new HttpError(409, 'Start the selected storage pool first');
+    const networkInfo = await this.run(this.uri, ['net-info', network]);
+    if (!/^Active:\s+yes\s*$/m.test(networkInfo)) throw new HttpError(409, 'Start the selected network first');
+    const uuid = randomUUID(), volume = `${name.slice(0, 80)}-${uuid}.qcow2`;
+    await this.createDisk(pool, { name: volume, sizeMb: input.diskMb, format: 'qcow2' });
+    const xml = `<domain type='kvm'>
+      <name>${name}</name><uuid>${uuid}</uuid>
+      <memory unit='MiB'>${input.memoryMb}</memory><currentMemory unit='MiB'>${input.memoryMb}</currentMemory><vcpu>${input.cpus}</vcpu>
+      <os><type arch='x86_64' machine='q35'>hvm</type>${[boot, ...['hd', 'cdrom', 'network'].filter(d => d !== boot)].map(d => `<boot dev='${d}'/>`).join('')}<bootmenu enable='yes'/></os>
+      <features><acpi/><apic/></features><clock offset='utc'/><on_reboot>restart</on_reboot>
+      <devices>
+        <disk type='volume' device='disk'><driver name='qemu' type='qcow2'/><source pool='${xmlEscape(pool)}' volume='${xmlEscape(volume)}'/><target dev='vda' bus='virtio'/></disk>
+        <controller type='sata' index='0'/><disk type='file' device='cdrom'><driver name='qemu' type='raw'/>${iso ? `<source file='${xmlEscape(iso)}'/>` : ''}<target dev='sda' bus='sata'/><readonly/></disk>
+        ${nic}
+        <graphics type='vnc' port='-1' autoport='yes' listen='127.0.0.1'/><video><model type='vga'/></video>
+        <serial type='pty'><target port='0'/></serial><console type='pty'><target type='serial' port='0'/></console>
+      </devices></domain>`;
+    try { await this.define(xml); }
+    catch (error) { throw new HttpError(503, `${error instanceof Error ? error.message : 'VM definition failed'}. Disk ${pool}/${volume} was retained; review storage before retrying.`); }
+    // Once defined, return its identity even if a later operation fails, preventing blind duplicate retries.
+    let warning: string | undefined;
+    try {
+      if (input.extraVolume) await this.attachDisk(uuid, { pool, volume: input.extraVolume, target: 'vdb' });
+      if (input.autostart) await this.run(this.uri, ['autostart', uuid]);
+      if (input.start) await this.action(uuid, 'start');
+    } catch (error) { warning = `VM created. ${error instanceof Error ? error.message : 'Startup settings failed'}. Select it to review its state before retrying.`; }
+    return { uuid, name, pool, volume, warning };
+  }
   async snapshots(uuid: string) {
     return (await this.run(this.uri, ['snapshot-list', validateVmUuid(uuid), '--name'])).split(/\r?\n/).filter(Boolean);
   }
@@ -203,12 +350,13 @@ export class LibvirtClient {
     if ((await this.run(this.uri, ['net-list', '--all', '--name'])).split(/\r?\n/).includes(name)) throw new HttpError(409, 'Network already exists');
     await this.withXml(`<network><name>${name}</name>${body}</network>`, file => this.run(this.uri, ['net-define', file, '--validate']));
   }
-  async attachNetwork(uuid: string, network: unknown) {
+  async attachNetwork(uuid: string, network: unknown, options: { model?: unknown; mac?: unknown; link?: unknown } = {}) {
     validateVmUuid(uuid); const name = resourceName(network);
     const vm = await this.info(uuid);
     if (vm.state !== 'shut off' || !vm.persistent) throw new HttpError(409, 'Shut down a persistent VM before attaching a network');
     await this.run(this.uri, ['net-info', name]);
-    await this.run(this.uri, ['attach-interface', uuid, '--type', 'network', '--source', name, '--model', 'virtio', '--config']);
+    const xml = interfaceXml({ ...options, network: name });
+    await this.withXml(xml, file => this.run(this.uri, ['attach-device', uuid, file, '--config']));
   }
   async networkAction(name: string, action: string, enabled?: boolean) {
     resourceName(name);

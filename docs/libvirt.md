@@ -16,6 +16,29 @@ All guests on the selected connection are discovered automatically, including Co
 
 Passwords and URI query parameters are deliberately unsupported. There is no password prompt in the panel. Most commands time out after two minutes. Migration runs as a background job without the ordinary command timeout. Windows Outpost hosts need a virsh client with a working SSH transport to connect to a remote Linux hypervisor; this feature does not turn Windows into a KVM host.
 
+## Create a VM
+
+Admins can click **New virtual machine** in **Virtual Machines**. Choose a name, CPU count, memory, disk capacity, active directory storage pool and active virtual network. Supply an absolute path to a Linux installer `.iso` on the selected hypervisor (not the browser or Outpost host when using a remote connection). The hypervisor must be able to read this file.
+
+The form creates an x86_64 KVM guest with Q35/BIOS, a new sparse qcow2 disk and a loopback VNC display, following the [libvirt domain format](https://www.libvirt.org/formatdomain.html). Choose disk, ISO or PXE as the first boot device. Customize the interface network, model (virtio/e1000e/rtl8139), optional unicast MAC and connected/disconnected state. An additional existing raw/qcow2 disk from the selected pool can be attached as vdb; shared writable disks are refused. Optionally start immediately or enable host-boot autostart. Open the created guest's interactive VNC console to finish OS installation. UEFI and other architectures remain XML workflows.
+
+Configure and start a directory pool and network in **Libvirt Configuration** first if none are available. Creation follows existing admin permissions; delegates can manage assigned guests but cannot allocate new host resources. If definition fails after disk creation, the error identifies the retained volume. If startup fails after definition, the VM remains listed with a warning; inspect it before retrying.
+
+## ISO library and VM Images directory
+
+In **Libvirt Configuration**, set **VM Images directory** to an existing absolute directory on the selected hypervisor. Outpost defines/starts a dedicated directory pool, enables its autostart, and refreshes it to discover `.iso` files. The directory is saved per connection and supplies the ISO selectors in creation and device settings. Refresh after copying new files to the directory; scanning is direct rather than recursive. Switching directories retains previous pools and files. Manual absolute ISO paths remain supported. No directory is created or formatted.
+
+## Devices and boot settings
+
+On a selected VM, **Disks, installation media and boot** shows existing disks, CD-ROM drives and interfaces. Stop a persistent VM before making changes:
+
+- Insert, replace or eject an ISO; add an empty or loaded SATA CD-ROM drive.
+- Select a disk, loaded CD-ROM or network interface as the boot device. This replaces previous boot priorities; it does not install an OS or make a blank image contain a bootloader.
+- Detach a virtual disk while retaining its volume. Use **Storage pools and virtual disks** to create raw/qcow2 images, attach existing volumes, or **Create and attach disk** in one step with a free virtio target (for example vdb).
+- Attach interfaces and edit their virtual network, adapter model, MAC address and link state, or remove them. Other interface types remain available through XML. Guest IP configuration is managed inside the guest or by the network's DHCP service.
+
+Changes apply at next start. Media uses libvirt's [change-media command](https://www.libvirt.org/manpages/virsh.html#change-media) without forced ejection. Disk files are retained on detach and when attachment fails after image creation; errors identify the retained image. Refresh devices after attaching an image through the storage form.
+
 ## Manage VMs
 
 - List active and inactive VMs, see state, CPU count, memory, persistence and autostart.

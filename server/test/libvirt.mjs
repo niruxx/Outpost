@@ -100,6 +100,85 @@ try {
   assert.equal(kept, true); assert.equal((await external.info(transientUuid)).persistent, true);
   assert(!externalCalls.some((args) => ['destroy', 'shutdown', 'start'].includes(args[0]) && args[1] === transientUuid));
 
+  // Creation validates before allocating storage and preserves a defined VM on start failure.
+  const createCalls = []; let createdXml = ''; let failStart = false; let failDefine = false;
+  const creator = new libvirt.LibvirtClient('qemu:///system', async (_uri, args) => {
+    createCalls.push(args);
+    if (args[0] === 'pool-info') return 'State: running';
+    if (args[0] === 'net-info') return 'Active: yes';
+    if (args[0] === 'pool-dumpxml') return "<pool type='dir'/>";
+    if (args[0] === 'define') { createdXml = await fs.readFile(args[1], 'utf8'); if (failDefine) throw new Error('Invalid host capabilities'); }
+    if (args[0] === 'start' && failStart) throw new Error('ISO is not readable');
+    return '';
+  });
+  const creation = { name: 'new-guest', cpus: 2, memoryMb: 2048, diskMb: 20480, pool: 'default', network: 'default', iso: '/images/linux.iso', start: true, autostart: true };
+  await assert.rejects(creator.create({ ...creation, cpus: 0 }), { status: 400 });
+  await assert.rejects(creator.create({ ...creation, iso: '/images/../secret.iso' }), { status: 400 });
+  assert.equal(createCalls.length, 0);
+  const created = await creator.create(creation);
+  assert.match(created.uuid, /^[0-9a-f-]{36}$/);
+  assert.match(createdXml, /<memory unit='MiB'>2048/);
+  assert.match(createdXml, /listen='127.0.0.1'/);
+  assert.match(createdXml, /<readonly\/>/);
+  assert.deepEqual(createCalls.at(-1), ['start', created.uuid]);
+  await creator.create({ ...creation, iso: '', boot: 'network', model: 'e1000e', link: 'down' });
+  assert.match(createdXml, /<boot dev='network'\/>/); assert.match(createdXml, /model type='e1000e'/); assert.match(createdXml, /link state='down'/);
+  assert(!createdXml.includes("source file=''"));
+  await assert.rejects(creator.create({ ...creation, iso: '', boot: 'cdrom' }), { status: 400 });
+  failStart = true;
+  assert.match((await creator.create(creation)).warning, /VM created.*ISO is not readable/);
+  failDefine = true;
+  await assert.rejects(creator.create(creation), /Disk default\/.*was retained/);
+  assert(!createCalls.some(args => ['vol-delete', 'undefine', 'destroy'].includes(args[0])));
+
+  let deviceXml = `<domain type='kvm'><name>Game VM</name><uuid>${uuid}</uuid><os><type>hvm</type><boot dev='hd'/></os><devices><disk type='file' device='disk'><source file='/images/boot.qcow2'/><target dev='vda' bus='virtio'/></disk><disk type='file' device='cdrom'><source file='/images/linux.iso'/><target dev='sda' bus='sata'/><readonly/></disk><interface type='network'><mac address='52:54:00:12:34:56'/><source network='default'/><model type='virtio'/><address type='pci' slot='0x03'/></interface></devices></domain>`;
+  const deviceCalls = []; let deviceState = 'shut off';
+  const devices = new libvirt.LibvirtClient('qemu:///system', async (_uri, args) => {
+    deviceCalls.push(args);
+    if (args[0] === 'dominfo') return info(deviceState);
+    if (args[0] === 'dumpxml') return deviceXml;
+    if (args[0] === 'define') deviceXml = await fs.readFile(args[1], 'utf8');
+    if (args[0] === 'detach-device') assert.match(await fs.readFile(args[2], 'utf8'), /target dev='vda'/);
+    return '';
+  });
+  assert.equal((await devices.devices(uuid)).disks.length, 2);
+  await devices.bootDevice(uuid, { target: 'sda' });
+  assert(!deviceXml.includes("boot dev='hd'")); assert.match(deviceXml, /<boot order='1'\/><\/disk>/);
+  await devices.bootDevice(uuid, { target: 'vda' });
+  assert.equal((deviceXml.match(/<boot /g) ?? []).length, 1);
+  await devices.media(uuid, { target: 'sda', iso: '' });
+  assert.deepEqual(deviceCalls.at(-1), ['change-media', uuid, 'sda', '--eject', '--config']);
+  await assert.rejects(devices.media(uuid, { target: 'vda', iso: '' }), { status: 404 });
+  await devices.media(uuid, { target: 'sda', iso: '/images/a&b.iso' });
+  assert.deepEqual(deviceCalls.at(-1), ['change-media', uuid, 'sda', '/images/a&b.iso', '--update', '--config']);
+  await devices.media(uuid, { target: 'sdb', iso: '', add: true });
+  assert.match(deviceXml, /target dev='sdb' bus='sata'/);
+  await devices.editInterface(uuid, { originalMac: '52:54:00:12:34:56', mac: '52:54:00:65:43:21', network: 'isolated', model: 'e1000e', link: 'down' });
+  assert.match(deviceXml, /network='isolated'/); assert.match(deviceXml, /state='down'/); assert.match(deviceXml, /slot='0x03'/);
+  assert.match(deviceXml, /52:54:00:65:43:21/);
+  assert.throws(() => libvirt.interfaceXml({ network: 'default', mac: 'ff:ff:ff:ff:ff:ff' }), { status: 400 });
+  await devices.detachDisk(uuid, 'vda');
+  deviceState = 'running';
+  await assert.rejects(devices.bootDevice(uuid, { target: 'vda' }), { status: 409 });
+  await assert.rejects(devices.media(uuid, { target: 'sda', iso: '' }), { status: 409 });
+  await assert.rejects(devices.editInterface(uuid, { mac: '52:54:00:65:43:21', remove: true }), { status: 409 });
+  assert(!deviceCalls.some(args => args[0] === 'vol-delete'));
+
+  const imageCalls = [];
+  const images = new libvirt.LibvirtClient('qemu+ssh://images-host/system', async (uri, args) => {
+    assert.equal(uri, 'qemu+ssh://images-host/system'); imageCalls.push(args);
+    if (args[0] === 'pool-info') return 'State: running';
+    if (args[0] === 'vol-list') return 'ubuntu.iso\nnotes.txt\nrescue.ISO';
+    if (args[0] === 'vol-path') return `/remote/isos/${args[1]}`;
+    return '';
+  });
+  const library = await images.images('/remote/isos');
+  assert.equal(library.images.length, 2); assert.equal(library.images[0].path, '/remote/isos/ubuntu.iso');
+  assert.equal((await images.images()).directory, '/remote/isos');
+  const switched = await images.images('/remote/new-isos'); assert.notEqual(switched.pool, library.pool);
+  await assert.rejects(images.images('/remote/../private'), { status: 400 });
+  assert(!imageCalls.some(args => ['pool-destroy', 'pool-undefine', 'pool-build'].includes(args[0])));
+
   // Real HTTP middleware checks: anonymous, non-admin, demoted session, read-only API key.
   const { libvirtRouter } = await import('../dist/routes/libvirt.routes.js');
   const users = await import('../dist/services/userService.js');
@@ -118,6 +197,10 @@ try {
   const req = (route, token, init = {}) => fetch(base + route, { ...init, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } });
   assert.equal((await fetch(base + '/settings')).status, 401);
   assert.equal((await req('/settings', viewerToken)).status, 403);
+  assert.equal((await req('/vms/create', viewerToken, { method: 'POST', body: JSON.stringify(creation) })).status, 403);
+  for (const route of ['/images', `/vms/${uuid}/devices`]) assert.equal((await req(route, viewerToken)).status, 403);
+  for (const operation of ['boot', 'media', 'interface', 'detach-disk', 'create-disk']) assert.equal((await req(`/vms/${uuid}/${operation}`, viewerToken, { method: 'POST', body: '{}' })).status, 403);
+  assert.equal((await req('/vms/create', readOnlyKey, { method: 'POST', body: JSON.stringify(creation) })).status, 403);
   assert.equal((await req('/vms/' + uuid + '/preview', viewerToken)).status, 403);
   assert.equal((await req('/settings', adminToken)).status, 200);
   assert.equal((await req('/settings', readOnlyKey)).status, 200);

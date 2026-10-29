@@ -84,6 +84,16 @@ libvirtRouter.post('/vms', admin, asyncHandler(async (req, res) => {
   logAudit(req.auth!.sub, req.auth!.username, 'libvirt.define');
   res.status(201).json({ ok: true });
 }));
+let creatingVm = false;
+libvirtRouter.post('/vms/create', admin, asyncHandler(async (req, res) => {
+  if (creatingVm) throw new HttpError(409, 'Another VM creation is in progress');
+  creatingVm = true;
+  try {
+    const result = await libvirtClient().create(req.body);
+    logAudit(req.auth!.sub, req.auth!.username, 'libvirt.create', result.uuid, JSON.stringify(result));
+    res.status(201).json(result);
+  } finally { creatingVm = false; }
+}));
 libvirtRouter.get('/vms/:uuid/xml', admin, asyncHandler(async (req, res) => {
   res.json({ xml: await libvirtClient().xml(req.params.uuid) });
 }));
@@ -126,6 +136,23 @@ libvirtRouter.post('/vms/:uuid/snapshots', permission('snapshots'), asyncHandler
   res.json({ ok: true });
 }));
 libvirtRouter.get('/infrastructure', admin, asyncHandler(async (_req, res) => res.set('Cache-Control', 'no-store').json(await libvirtClient().infrastructure())));
+libvirtRouter.get('/images', admin, asyncHandler(async (_req, res) => res.set('Cache-Control', 'no-store').json(await libvirtClient().images())));
+libvirtRouter.put('/images', admin, asyncHandler(async (req, res) => {
+  if (typeof req.body?.directory !== 'string') throw new HttpError(400, 'Images directory is required');
+  const result = await libvirtClient().images(req.body.directory);
+  logAudit(req.auth!.sub, req.auth!.username, 'libvirt.images', undefined, result.directory); res.json(result);
+}));
+libvirtRouter.get('/vms/:uuid/devices', admin, asyncHandler(async (req, res) => res.set('Cache-Control', 'no-store').json(await libvirtClient().devices(req.params.uuid))));
+for (const operation of ['boot', 'media', 'detach-disk', 'interface'] as const) {
+  libvirtRouter.post(`/vms/:uuid/${operation}`, admin, asyncHandler(async (req, res) => {
+    const client = libvirtClient();
+    if (operation === 'boot') await client.bootDevice(req.params.uuid, req.body);
+    if (operation === 'media') await client.media(req.params.uuid, req.body);
+    if (operation === 'detach-disk') await client.detachDisk(req.params.uuid, req.body?.target);
+    if (operation === 'interface') await client.editInterface(req.params.uuid, req.body);
+    logAudit(req.auth!.sub, req.auth!.username, `libvirt.${operation}`, req.params.uuid, JSON.stringify(req.body)); res.json({ ok: true });
+  }));
+}
 libvirtRouter.post('/pools', admin, asyncHandler(async (req, res) => {
   await libvirtClient().createPool(req.body); logAudit(req.auth!.sub, req.auth!.username, 'libvirt.pool.create', undefined, JSON.stringify(req.body)); res.status(201).json({ ok: true });
 }));
@@ -138,11 +165,15 @@ libvirtRouter.post('/pools/:name/disks', admin, asyncHandler(async (req, res) =>
 libvirtRouter.post('/vms/:uuid/disks', admin, asyncHandler(async (req, res) => {
   await libvirtClient().attachDisk(req.params.uuid, req.body); logAudit(req.auth!.sub, req.auth!.username, 'libvirt.disk.attach', req.params.uuid, JSON.stringify(req.body)); res.json({ ok: true });
 }));
+libvirtRouter.post('/vms/:uuid/create-disk', admin, asyncHandler(async (req, res) => {
+  await libvirtClient().createAttachedDisk(req.params.uuid, req.body);
+  logAudit(req.auth!.sub, req.auth!.username, 'libvirt.disk.create-attach', req.params.uuid, JSON.stringify(req.body)); res.status(201).json({ ok: true });
+}));
 libvirtRouter.post('/networks', admin, asyncHandler(async (req, res) => {
   await libvirtClient().createNetwork(req.body); logAudit(req.auth!.sub, req.auth!.username, 'libvirt.network.create', undefined, JSON.stringify(req.body)); res.status(201).json({ ok: true });
 }));
 libvirtRouter.post('/vms/:uuid/networks', admin, asyncHandler(async (req, res) => {
-  await libvirtClient().attachNetwork(req.params.uuid, req.body?.network); logAudit(req.auth!.sub, req.auth!.username, 'libvirt.network.attach', req.params.uuid, String(req.body?.network)); res.json({ ok: true });
+  await libvirtClient().attachNetwork(req.params.uuid, req.body?.network, req.body); logAudit(req.auth!.sub, req.auth!.username, 'libvirt.network.attach', req.params.uuid, String(req.body?.network)); res.json({ ok: true });
 }));
 libvirtRouter.post('/networks/:name/action', admin, asyncHandler(async (req, res) => {
   await libvirtClient().networkAction(req.params.name, req.body?.action, req.body?.enabled); logAudit(req.auth!.sub, req.auth!.username, 'libvirt.network.action', undefined, JSON.stringify({ name: req.params.name, ...req.body })); res.json({ ok: true });
