@@ -8,9 +8,9 @@ import { envVar } from '../utils/env.js';
 import { prep } from '../db/db.js';
 import { HttpError } from '../utils/asyncHandler.js';
 import { logAudit } from './userService.js';
-import { checkOperation, storageFingerprint, validateStorageOperation, validateStorageSecrets, ADVANCED_ACTIONS, type StorageSecrets, type StorageInventory, type StorageOperation } from './storageHelper.js';
+import { checkOperation, layerShrinkPlan, deviceFingerprint, storageFingerprint, validateStorageOperation, validateStorageSecrets, ADVANCED_ACTIONS, type StorageHealth, type StorageSecrets, type StorageInventory, type StorageOperation } from './storageHelper.js';
 
-type HelperRequest = { action: 'inventory' | 'execute'; operation?: StorageOperation; fingerprint?: string; protectedPaths: string[]; secrets?: StorageSecrets };
+type HelperRequest = { action: 'inventory' | 'execute'; includeHealth?: boolean; operation?: StorageOperation; fingerprint?: string; protectedPaths: string[]; secrets?: StorageSecrets };
 export type StorageRunner = (request: HelperRequest) => Promise<unknown>;
 interface Plan { userId: string; operation: StorageOperation; fingerprint: string; confirmation: string; expires: number }
 export interface StorageJob { id: string; userId: string; action: string; device: string; state: 'running' | 'done' | 'failed'; message: string; createdAt: string }
@@ -54,15 +54,29 @@ export class StorageManager {
   private plans = new Map<string, Plan>();
   private jobs = new Map<string, StorageJob>();
   private busy = false;
+  private health: Record<string, { identity: string; result: StorageHealth }> = {};
+  private healthRefresh?: Promise<void>;
+  private healthCheckedAt = 0;
   constructor(private run: StorageRunner = runStorageHelper) {}
   private protectedPaths() {
     const rows = prep('SELECT backup_directory FROM servers WHERE backup_directory IS NOT NULL').all() as { backup_directory: string }[];
     return [...new Set([DATA_DIR, process.cwd(), ...rows.map((r) => r.backup_directory)])];
   }
-  async overview() {
+  async overview(includeHealth = false) {
     try {
       const state = await this.run({ action: 'inventory', protectedPaths: this.protectedPaths() }) as StorageInventory;
-      return { available: true, error: null, ...state, busy: this.busy || !!state.operationRunning, jobs: [...this.jobs.values()].slice(-20).reverse() };
+      const disks = state.devices.flatMap(function flatten(d): typeof state.devices { return [d, ...d.children.flatMap(flatten)]; }).filter(d => d.type === 'disk');
+      if (includeHealth && !this.busy && !state.operationRunning && !this.healthRefresh && (Date.now() - this.healthCheckedAt >= 60_000 || disks.some(d => this.health[d.path]?.identity !== deviceFingerprint(d)))) {
+        this.healthCheckedAt = Date.now();
+        this.healthRefresh = this.run({ action: 'inventory', includeHealth: true, protectedPaths: this.protectedPaths() }).then(result => {
+          const report = result as StorageInventory & { health?: Record<string, { identity: string; result: StorageHealth }> };
+          this.health = report.health ?? Object.fromEntries(disks.map(d => [d.path, { identity: deviceFingerprint(d), result: { status: 'unavailable' as const, checkedAt: new Date().toISOString(), error: 'Update the privileged helper to enable SMART summaries.' } }]));
+        }).catch(error => {
+          this.health = Object.fromEntries(disks.map(d => [d.path, { identity: deviceFingerprint(d), result: { status: 'unavailable' as const, checkedAt: new Date().toISOString(), error: error instanceof Error ? error.message : 'SMART unavailable' } }]));
+        }).finally(() => { this.healthRefresh = undefined; });
+      }
+      const health = includeHealth ? Object.fromEntries(disks.flatMap(d => this.health[d.path]?.identity === deviceFingerprint(d) ? [[d.path, this.health[d.path].result]] : [])) : undefined;
+      return { available: true, error: null, ...state, health, healthRefreshing: includeHealth && !!this.healthRefresh, busy: this.busy || !!state.operationRunning, jobs: [...this.jobs.values()].slice(-20).reverse() };
     }
     catch (error) { return { available: false, error: error instanceof Error ? error.message : 'Storage unavailable', devices: [], fstab: [], busy: this.busy, jobs: [...this.jobs.values()].slice(-20).reverse() }; }
   }
@@ -76,13 +90,20 @@ export class StorageManager {
     let device;
     try { device = checkOperation(state, operation); }
     catch (error) { throw new HttpError(409, error instanceof Error ? error.message : 'Storage action is blocked'); }
-    const destructive = ['format', 'wipe', 'partition', 'luksFormat', 'pvCreate', 'pvRemove', 'vgRemove', 'lvRemove', 'lvResize', 'partitionShrink', 'raidCreate', 'raidFail', 'raidRemove', 'pvShrink', 'luksRemoveSlot', 'layerShrink', 'secureErase'].includes(operation.action);
-    const confirmation = operation.action === 'secureErase' ? `ERASE ${device.path} ${device.serial || device.wwn}` : destructive ? `ERASE ${device.path}` : device.path;
+    const destructive = ['format', 'wipe', 'partition', 'luksFormat', 'pvCreate', 'pvRemove', 'vgRemove', 'lvRemove', 'lvResize', 'partitionShrink', 'firmwareSanitize', 'raidGrow', 'lvCacheAttach', 'lvCacheMode', 'raidCreate', 'raidFail', 'raidRemove', 'pvShrink', 'luksRemoveSlot', 'layerShrink', 'secureErase'].includes(operation.action);
+    const confirmation = ['secureErase', 'firmwareSanitize'].includes(operation.action) ? `ERASE ${device.path} ${device.serial || device.wwn}` : destructive ? `ERASE ${device.path}` : device.path;
     for (const [key, plan] of this.plans) if (plan.expires < Date.now() || plan.userId === userId) this.plans.delete(key);
     if (this.plans.size >= 100) throw new HttpError(429, 'Too many pending storage previews');
     const ticket = crypto.randomBytes(32).toString('base64url');
     this.plans.set(ticket, { userId, operation, fingerprint: storageFingerprint(state, operation), confirmation, expires: Date.now() + 120_000 });
-    return { ticket, device, affectedDevices: state.devices.flatMap(function flatten(node): typeof state.devices { return [node, ...node.children.flatMap(flatten)]; }).filter(d => (operation.devices ?? []).includes(d.path)).map(d => ({ path: d.path, size: d.size, model: d.model, serial: d.serial })), operation, confirmation, destructive, expiresInSeconds: 120, explanation: operation.action.startsWith('smart') ? 'Reads drive health or starts/stops a drive self-test. Tests run asynchronously; read health and self-test history later for results.' : operation.action.startsWith('raid') ? 'Manages Linux software RAID. Verify every member and keep independent backups. Synchronization may continue after the command returns. Boot configuration does not rebuild the initramfs.' : operation.action.startsWith('pvMove') ? 'Moves allocated extents between physical volumes in the same VG. Operations serialize behind the storage lock; interrupted migrations require inspection with native LVM tools.' : operation.action === 'secureErase' ? 'PERMANENT whole-disk data destruction. Verify the serial and capacity. Secure discard is attempted only with the kernel secure-discard API and never falls back to ordinary discard; software overwrite is an addressable-sector HDD clear, not a flash/remapped-sector physical purge.' : operation.action === 'layerShrink' ? 'Offline ext4 is shrunk and verified before dm-crypt and its outer partition/linear LV. The mapping is closed before reducing the outer layer, then reopened. Partial failures can leave a smaller filesystem or a closed mapping; inspect before retrying.' : operation.action === 'crypttabSet' && operation.keyMode === 'managed' ? 'Creates a root-only random boot-unlock key in a new LUKS slot. Anyone with the host root filesystem can use this key; protect host backups. Existing unrelated crypttab entries are preserved. The initramfs is not rebuilt.' : ADVANCED_ACTIONS.includes(operation.action) ? 'Changes encryption, LVM or device sizing. LUKS creation erases existing content; LV shrinking uses filesystem-aware resizing. Check the device, group and sizes. Keep a separate data backup. System and Outpost volumes remain protected.' : operation.action === 'wipe' ? 'Removes filesystem and partition-table signatures. Files become inaccessible; this is not a secure erase of the disk contents.' : operation.action === 'format' ? `Creates a new ${operation.filesystem} filesystem, destroying existing data on this device.` : operation.action === 'partition' ? 'Creates a GPT table and one Linux partition using the whole empty disk. Format the new partition afterwards.' : operation.action === 'automount' ? 'Changes this filesystem’s Outpost-managed UUID entry in /etc/fstab. Existing unrelated entries are preserved; changes apply at next mount/boot.' : operation.action === 'unmount' ? 'Unmounts the filesystem now. Its boot-mount setting is kept.' : 'Mounts the selected filesystem at the chosen empty folder.' };
+    const shrink = operation.action === 'layerShrink' ? layerShrinkPlan(state, operation) : null;
+    const affectedPaths = new Set(operation.devices ?? []);
+    if (shrink) for (const d of [shrink.mapping, ...shrink.mapping.children]) affectedPaths.add(d.path);
+    if (operation.action === 'lvCacheAttach') for (const lv of state.lvm?.lvs ?? []) if (lv.vg === operation.vg && lv.name === operation.pool) affectedPaths.add(lv.path);
+    if (operation.action === 'raidGrow') for (const member of state.raid?.find(r => r.device === device.path)?.members ?? []) affectedPaths.add(member.path);
+    const nodes = state.devices.flatMap(function flatten(node): typeof state.devices { return [node, ...node.children.flatMap(flatten)]; });
+    const affectedDevices = [...new Map(nodes.filter(d => affectedPaths.has(d.path)).map(d => [d.path, { path: d.path, size: d.size, model: d.model, serial: d.serial }])).values()];
+    return { ticket, device, affectedDevices, steps: shrink?.steps, operation, confirmation, destructive, expiresInSeconds: 120, explanation: operation.action.startsWith('lvCache') ? 'LVM cache maintenance requires an offline origin. Attachment consumes the selected blank cache LV. Writeback depends on the cache for unflushed data; detachment flushes before splitting and may take hours.' : operation.action === 'raidGrow' ? 'Increases native RAID1/5/6 member count using existing healthy spares. A persistent recovery backup is retained on independent host storage. Preserve it through reshape/recovery. This does not resize the filesystem or convert RAID levels.' : operation.action === 'firmwareSanitize' ? 'PERMANENT firmware sanitization. NVMe affects the entire controller: only direct PCIe, single-controller, single-namespace devices are accepted. ATA must support the selected SANITIZE command. The job waits for the hardware completion report; interrupted/failed jobs retain a maintenance block until completion is confirmed.' : operation.action === 'firmwareInfo' ? 'Reads ATA/NVMe sanitize capabilities and status. A successful firmware completion report clears any pending maintenance block. No erase command is issued.' : operation.action.startsWith('smart') ? 'Reads drive health or starts/stops a drive self-test. Tests run asynchronously; read health and self-test history later for results.' : operation.action.startsWith('raid') ? 'Manages Linux software RAID. Verify every member and keep independent backups. Synchronization may continue after the command returns. Boot configuration does not rebuild the initramfs.' : operation.action.startsWith('pvMove') ? 'Moves allocated extents between physical volumes in the same VG. Operations serialize behind the storage lock; interrupted migrations require inspection with native LVM tools.' : operation.action === 'secureErase' ? 'PERMANENT whole-disk data destruction. Verify the serial and capacity. Secure discard is attempted only with the kernel secure-discard API and never falls back to ordinary discard; software overwrite is an addressable-sector HDD clear, not a flash/remapped-sector physical purge.' : operation.action === 'layerShrink' ? 'Offline ext4 or a single-PV VG boundary is verified before dm-crypt and its outer partition/linear LV. Inner LVs must already fit; a VG may be left inactive after failure. The mapping is closed before reducing the outer layer, then reopened. Partial failures can leave a smaller filesystem or a closed mapping; inspect before retrying.' : operation.action === 'crypttabSet' && operation.keyMode === 'managed' ? 'Creates a root-only random boot-unlock key in a new LUKS slot. Anyone with the host root filesystem can use this key; protect host backups. Existing unrelated crypttab entries are preserved. The initramfs is not rebuilt.' : ADVANCED_ACTIONS.includes(operation.action) ? 'Changes encryption, LVM or device sizing. LUKS creation erases existing content; LV shrinking uses filesystem-aware resizing. Check the device, group and sizes. Keep a separate data backup. System and Outpost volumes remain protected.' : operation.action === 'wipe' ? 'Removes filesystem and partition-table signatures. Files become inaccessible; this is not a secure erase of the disk contents.' : operation.action === 'format' ? `Creates a new ${operation.filesystem} filesystem, destroying existing data on this device.` : operation.action === 'partition' ? 'Creates a GPT table and one Linux partition using the whole empty disk. Format the new partition afterwards.' : operation.action === 'automount' ? 'Changes this filesystem’s Outpost-managed UUID entry in /etc/fstab. Existing unrelated entries are preserved; changes apply at next mount/boot.' : operation.action === 'unmount' ? 'Unmounts the filesystem now. Its boot-mount setting is kept.' : 'Mounts the selected filesystem at the chosen empty folder.' };
   }
   plannedAction(userId: string, ticket: unknown): StorageOperation['action'] {
     const plan = typeof ticket === 'string' ? this.plans.get(ticket) : undefined;
@@ -111,7 +132,7 @@ export class StorageManager {
     }).catch((error) => {
       job.state = 'failed'; job.message = error instanceof Error ? error.message : 'Storage operation failed';
       logAudit(userId, username, `storage.${job.action}.failed`, job.device, job.message);
-    }).finally(() => { this.busy = false; secrets.passphrase = undefined; secrets.newPassphrase = undefined; });
+    }).finally(() => { this.busy = false; if (plan.operation.action.startsWith('smart')) this.healthCheckedAt = 0; secrets.passphrase = undefined; secrets.newPassphrase = undefined; });
     return { ...job };
   }
 }

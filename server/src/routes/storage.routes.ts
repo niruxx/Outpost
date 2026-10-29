@@ -22,7 +22,7 @@ export function createStorageRouter(manager: StorageManager = storageManager) {
   const router = Router(); router.use(requireAuth);
   router.get('/', asyncHandler(async (req, res) => {
     const user = requireStorage(req, 'view');
-    res.set('Cache-Control', 'no-store').json({ ...await manager.overview(), permissions: storagePermissionsOf(user) });
+    res.set('Cache-Control', 'no-store').json({ ...await manager.overview(storagePermissionsOf(user).includes('health')), permissions: storagePermissionsOf(user) });
   }));
   router.post('/preview', asyncHandler(async (req, res) => {
     let op;

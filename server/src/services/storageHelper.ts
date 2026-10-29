@@ -6,10 +6,12 @@ import crypto from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-export const EXPERT_ACTIONS = ['raidInfo', 'raidCreate', 'raidAdd', 'raidFail', 'raidRemove', 'raidStop', 'raidBootAdd', 'raidBootRemove', 'pvMove', 'pvMoveAbort', 'pvShrink', 'luksInfo', 'luksAddKey', 'luksRemoveSlot', 'luksChangeSlot', 'luksHeaderBackup', 'crypttabSet', 'crypttabRemove', 'layerShrink', 'smartInfo', 'smartShort', 'smartLong', 'smartConveyance', 'smartAbort', 'secureErase'] as const;
+export const EXPERT_ACTIONS = ['firmwareInfo', 'firmwareSanitize', 'raidGrow', 'lvCacheAttach', 'lvCacheDetach', 'lvCacheMode', 'raidInfo', 'raidCreate', 'raidAdd', 'raidFail', 'raidRemove', 'raidStop', 'raidBootAdd', 'raidBootRemove', 'pvMove', 'pvMoveAbort', 'pvShrink', 'luksInfo', 'luksAddKey', 'luksRemoveSlot', 'luksChangeSlot', 'luksHeaderBackup', 'crypttabSet', 'crypttabRemove', 'layerShrink', 'smartInfo', 'smartShort', 'smartLong', 'smartConveyance', 'smartAbort', 'secureErase'] as const;
 export type StorageAction = 'mount' | 'unmount' | 'automount' | 'format' | 'wipe' | 'partition' | 'luksFormat' | 'luksOpen' | 'luksClose' | 'luksPassphrase' | 'luksGrow' | 'pvCreate' | 'pvRemove' | 'pvGrow' | 'vgCreate' | 'vgRename' | 'vgExtend' | 'vgReduce' | 'vgRemove' | 'lvCreate' | 'lvRename' | 'lvResize' | 'lvRemove' | 'lvSnapshot' | 'lvActivate' | 'lvDeactivate' | 'partitionGrow' | 'partitionShrink' | 'filesystemGrow' | typeof EXPERT_ACTIONS[number];
 export const ADVANCED_ACTIONS = ['luksFormat', 'luksOpen', 'luksClose', 'luksPassphrase', 'luksGrow', 'pvCreate', 'pvRemove', 'pvGrow', 'vgCreate', 'vgRename', 'vgExtend', 'vgReduce', 'vgRemove', 'lvCreate', 'lvRename', 'lvResize', 'lvRemove', 'lvSnapshot', 'lvActivate', 'lvDeactivate', 'partitionGrow', 'partitionShrink', 'filesystemGrow', ...EXPERT_ACTIONS];
 export function storagePermission(action: StorageAction): 'mount' | 'automount' | 'format' | 'wipe' | 'partition' | 'encrypt' | 'lvm' | 'resize' | 'raid' | 'migrate' | 'crypttab' | 'health' | 'erase' {
+  if (action === 'firmwareInfo') return 'health';
+  if (action === 'firmwareSanitize') return 'erase';
   if (action.startsWith('raid')) return 'raid';
   if (action.startsWith('smart')) return 'health';
   if (action === 'secureErase') return 'erase';
@@ -22,13 +24,21 @@ export function storagePermission(action: StorageAction): 'mount' | 'automount' 
   return action === 'unmount' ? 'mount' : action as 'mount' | 'automount' | 'format' | 'wipe' | 'partition';
 }
 export interface StorageSecrets { passphrase?: string; newPassphrase?: string }
+export interface StorageHealth {
+  status: 'passed' | 'warning' | 'failed' | 'unknown' | 'unavailable'; checkedAt: string;
+  temperatureC?: number; powerOnHours?: number; selfTest?: string; remainingPercent?: number;
+  error?: string;
+}
 export interface StorageOperation {
+  sanitizeMethod?: 'ata-block' | 'ata-crypto' | 'nvme-block' | 'nvme-crypto';
+  raidDevices?: number; cacheMode?: 'writethrough' | 'writeback';
   action: StorageAction; device: string; mountpoint?: string; persistent?: boolean;
   enabled?: boolean; readOnly?: boolean; filesystem?: string; label?: string;
   name?: string; vg?: string; lv?: string; sizeMb?: number; devices?: string[]; layout?: 'linear' | 'thin-pool' | 'thin'; pool?: string;
   slot?: number; survivorSlot?: number; raidLevel?: '0' | '1' | '5' | '6' | '10'; keyMode?: 'prompt' | 'managed'; options?: string[]; eraseMethod?: 'secure-discard' | 'overwrite-verify';
 }
 export interface StorageDevice {
+  maintenance?: string;
   path: string; kernel: string; id: string; type: string; size: number;
   model: string; serial: string; wwn: string; diskSeq: string; transport: string;
   filesystem: string; label: string; uuid: string; readOnly: boolean;
@@ -41,11 +51,14 @@ export interface PhysicalVolume { path: string; uuid: string; vg: string; size: 
 export interface VolumeGroup { name: string; uuid: string; size: number; free: number; extentSize?: number }
 export interface LogicalVolume { name: string; uuid: string; vg: string; path: string; size: number; attributes: string; kind: string; pool: string; origin: string }
 export interface LvmInventory { available: boolean; error: string | null; pvs: PhysicalVolume[]; vgs: VolumeGroup[]; lvs: LogicalVolume[]; moving?: boolean }
-export interface RaidArray { device: string; uuid: string; name: string; level: string; degraded: number; sync: string; state: string; members: { path: string; state: string }[] }
+export interface RaidArray { device: string; uuid: string; name: string; level: string; raidDevices?: number; metadata?: string; degraded: number; sync: string; state: string; members: { path: string; state: string }[] }
 export interface EncryptionInfo { device: string; slots: number[]; digest: string; error?: string }
 export interface CrypttabEntry { name: string; source: string; keyMode: 'prompt' | 'managed' | 'external'; options: string[]; managed: boolean }
 export interface StorageInventory { raid?: RaidArray[]; encryption?: EncryptionInfo[]; boot?: CrypttabEntry[]; configDigest?: string;  devices: StorageDevice[]; fstab: MountEntry[]; crypttab?: string[]; operationRunning?: boolean; lvm?: LvmInventory }
 export interface StorageHost {
+  list?(dir: string): Promise<string[]>;
+  firmwarePending?(device: StorageDevice, pending: boolean): Promise<void>;
+  pause?(ms: number): Promise<void>;
   run(command: string, args: string[], input?: string): Promise<string>;
   read(file: string): Promise<string>;
   writeFstab(expected: string, next: string): Promise<void>;
@@ -56,8 +69,113 @@ export interface StorageHost {
   writeConfig?(file: string, expected: string, next: string): Promise<void>;
   createBootKey?(uuid: string, slot: number): Promise<string>;
   backupHeader?(device: string, name: string): Promise<string>;
+  reshapeBackup?(uuid: string): Promise<string>;
   overwriteDisk?(device: StorageDevice): Promise<void>;
   withKeyFiles?(secrets: StorageSecrets, use: (files: { current?: string; next?: string }) => Promise<void>): Promise<void>;
+}
+function firmwareRecord(device: StorageDevice) { return `/var/lib/outpost-storage/sanitize/${crypto.createHash('sha256').update(device.serial || device.wwn).digest('hex')}.json`; }
+export async function firmwareStatus(host: StorageHost, device: StorageDevice) {
+  if (device.type !== 'disk' || !device.serial) fail('Firmware tools require a physical disk with a serial');
+  if (device.transport === 'sata' || device.transport === 'ata') {
+    const info = await host.run('hdparm', ['-I', device.path]);
+    if (info.match(/^\s*Serial Number:\s*(.+)$/m)?.[1]?.trim() !== device.serial) fail('ATA serial does not match the selected disk');
+    if (!/^\s*\*?\s*SANITIZE feature set\s*$/im.test(info)) fail('ATA SANITIZE is not supported');
+    const status = await host.run('hdparm', ['--sanitize-status', device.path]);
+    const state = Number(status.match(/State:\s*SD([0-4])\b/)?.[1]);
+    if (!Number.isInteger(state)) fail('ATA sanitize state is unknown');
+    return { target: device.path, methods: [ ...(/^\s*\*?\s*BLOCK_ERASE_EXT command\s*$/m.test(info) ? ['ata-block'] : []), ...(/^\s*\*?\s*CRYPTO_SCRAMBLE_EXT command\s*$/m.test(info) ? ['ata-crypto'] : [])], state: state === 2 ? 'running' : state === 4 ? 'completed' : state === 0 ? 'idle' : 'blocked', raw: status };
+  }
+  const match = device.kernel.match(/^(nvme\d+)n1$/);
+  if (device.transport !== 'nvme' || !match || !host.list) fail('NVMe sanitization requires one directly attached PCIe controller with namespace 1');
+  const controller = match[1], target = `/dev/${controller}`;
+  if ((await host.read(`/sys/class/nvme/${controller}/transport`)).trim() !== 'pcie') fail('NVMe fabrics/shared transports are not supported');
+  const nqn = (await host.read(`/sys/class/nvme/${controller}/subsysnqn`)).trim();
+  if (!nqn) fail('NVMe subsystem identity is unavailable');
+  const controllers = (await host.list('/sys/class/nvme')).filter(n => /^nvme\d+$/.test(n));
+  for (const other of controllers) if (other !== controller && (await host.read(`/sys/class/nvme/${other}/subsysnqn`)).trim() === nqn) fail('Shared/multipath NVMe subsystems cannot be sanitized here');
+  const namespaces = (await host.list(`/sys/class/nvme/${controller}`)).filter(n => /^nvme\d+n\d+$/.test(n));
+  if (namespaces.length !== 1 || namespaces[0] !== device.kernel) fail('All controller namespaces must be accounted for; only a single namespace is supported');
+  const id = JSON.parse(await host.run('nvme', ['id-ctrl', target, '--output-format=json']));
+  const ns = JSON.parse(await host.run('nvme', ['list-ns', target, '--all', '--output-format=json']));
+  if (typeof id.sn !== 'string' || id.sn.trim() !== device.serial || id.nn !== 1 || !Number.isInteger(id.cmic) || (id.cmic & 7) || !Array.isArray(ns.nsid_list) || ns.nsid_list.length !== 1 || ns.nsid_list[0] !== 1) fail('Controller serial, namespace inventory or sharing capability is ambiguous');
+  if (!Number.isInteger(id.sanicap) || id.sanicap < 0) fail('NVMe sanitize capabilities are unavailable');
+  const rawLog = JSON.parse(await host.run('nvme', ['sanitize-log', target, '--output-format=json']));
+  // nvme-cli versions expose either a raw SSTAT or a device-keyed decoded object.
+  const log = rawLog.sstat !== undefined ? rawLog : rawLog[target] ?? rawLog[controller];
+  const decoded = typeof log?.sstat?.status === 'string' ? log.sstat.status.match(/^\(([0-7])\) /) : null;
+  const status = Number.isInteger(log?.sstat) && log.sstat >= 0 && log.sstat <= 65535 ? log.sstat & 7 : decoded ? Number(decoded[1]) : NaN;
+  if (!Number.isInteger(status)) fail('Unsupported NVMe sanitize log format; no reliable status is available');
+  return { target, methods: [...(id.sanicap & 2 ? ['nvme-block'] : []), ...(id.sanicap & 1 ? ['nvme-crypto'] : [])], state: status === 2 ? 'running' : [1, 4].includes(status) ? 'completed' : status === 0 ? 'idle' : 'blocked', raw: JSON.stringify(rawLog) };
+}
+async function executeFirmware(host: StorageHost, device: StorageDevice, op: StorageOperation) {
+  const info = await firmwareStatus(host, device);
+  if (op.action === 'firmwareInfo') {
+    if (info.state === 'completed' && host.firmwarePending) await host.firmwarePending(device, false);
+    return `Firmware sanitize: ${info.state}. Supported methods: ${info.methods.join(', ') || 'none'}.\n${info.raw}`;
+  }
+  if (!op.sanitizeMethod || !info.methods.includes(op.sanitizeMethod) || !['idle', 'completed'].includes(info.state)) fail('Requested firmware sanitize method is unsupported or the drive is busy/frozen/failed');
+  if (!host.firmwarePending) fail('Update the helper for persistent firmware maintenance records');
+  if ((await host.read(`/sys/class/block/${device.kernel}/diskseq`)).trim() !== device.diskSeq) fail('Disk identity changed before firmware sanitization');
+  await host.firmwarePending(device, true);
+  try {
+    if (op.sanitizeMethod.startsWith('nvme')) await host.run('nvme', ['sanitize', info.target, `--sanact=${op.sanitizeMethod === 'nvme-block' ? 2 : 4}`]);
+    else await host.run('hdparm', ['--yes-i-know-what-i-am-doing', op.sanitizeMethod === 'ata-block' ? '--sanitize-block-erase' : '--sanitize-crypto-scramble', device.path]);
+    const deadline = Date.now() + 23 * 60 * 60_000;
+    for (;;) {
+      await (host.pause ? host.pause(5000) : new Promise(resolve => setTimeout(resolve, 5000)));
+      const current = await firmwareStatus(host, device);
+      if (current.state === 'completed') { await host.firmwarePending(device, false); return 'Firmware reports sanitize completed successfully. Completion is the device report, not independent verification of every physical cell.'; }
+      if (current.state !== 'running' || Date.now() >= deadline) fail('Sanitize completion is not confirmed');
+    }
+  } catch (error) { fail(`Firmware operation may continue in hardware; this disk remains blocked by its maintenance record. Inspect firmware status before reuse. ${error instanceof Error ? error.message : String(error)}`); }
+}
+export function summarizeSmart(text: string, checkedAt = new Date().toISOString()): StorageHealth {
+  const report = JSON.parse(text);
+  const exit = report.smartctl?.exit_status;
+  const failed = report.smart_status?.passed === false || (Number.isInteger(exit) && !!(exit & 8));
+  const warning = Number.isInteger(exit) && !!(exit & 240);
+  const unavailable = report.smart_support?.available === false || (Number.isInteger(exit) && !!(exit & 7));
+  const current = report.ata_smart_data?.self_test?.status;
+  const latest = report.ata_smart_self_test_log?.standard?.table?.[0]?.status
+    ?? report.nvme_self_test_log?.table?.[0]?.self_test_result
+    ?? report.scsi_self_test_log?.table?.[0]?.result;
+  const selfTest = current?.value >= 240 ? current : latest ?? current;
+  const result: StorageHealth = {
+    checkedAt, status: failed ? 'failed' : unavailable ? 'unavailable' : warning ? 'warning' : report.smart_status?.passed === true ? 'passed' : 'unknown',
+  };
+  const temperature = report.temperature?.current ?? report.nvme_smart_health_information_log?.temperature;
+  const hours = report.power_on_time?.hours ?? report.nvme_smart_health_information_log?.power_on_hours;
+  if (typeof temperature === 'number' && Number.isFinite(temperature)) result.temperatureC = temperature;
+  if (typeof hours === 'number' && Number.isFinite(hours) && hours >= 0) result.powerOnHours = hours;
+  if (typeof selfTest?.string === 'string') result.selfTest = selfTest.string.slice(0, 300);
+  if (current?.value >= 240 && typeof current?.remaining_percent === 'number') result.remainingPercent = current.remaining_percent;
+  const nvmeOperation = report.nvme_self_test_log?.current_self_test_operation;
+  const nvmeCompletion = report.nvme_self_test_log?.current_self_test_completion_percent;
+  if (typeof nvmeOperation?.value === 'number' && nvmeOperation.value > 0) {
+    result.selfTest = typeof nvmeOperation.string === 'string' ? nvmeOperation.string.slice(0, 300) : 'NVMe self-test in progress';
+    if (typeof nvmeCompletion === 'number' && nvmeCompletion >= 0 && nvmeCompletion <= 100) result.remainingPercent = 100 - nvmeCompletion;
+  }
+  if (result.status === 'unavailable' || result.status === 'unknown') {
+    result.error = report.smartctl?.messages?.map((m: { string?: string }) => m.string ?? '').filter(Boolean).join('; ').slice(0, 500)
+      || 'SMART health was not reported; the device may be asleep or unsupported.';
+  }
+  return result;
+}
+export async function storageHealth(host: StorageHost, state: StorageInventory) {
+  const devices = [...new Map(all(state.devices).filter(d => d.type === 'disk').map(d => [d.path, d])).values()];
+  const health: Record<string, { identity: string; result: StorageHealth }> = {};
+  // Bound parallelism; automatic polling must not wake sleeping ATA disks.
+  let index = 0;
+  await Promise.all(Array.from({ length: Math.min(2, devices.length) }, async () => {
+    for (;;) {
+      const device = devices[index++]; if (!device) return;
+      let result: StorageHealth;
+      try { result = summarizeSmart(await host.run('smartctl', ['--json', '--all', '--nocheck=standby,0', device.path])); }
+      catch (error) { result = { status: 'unavailable', checkedAt: new Date().toISOString(), error: error instanceof Error ? error.message : 'SMART unavailable' }; }
+      health[device.path] = { identity: deviceFingerprint(device), result };
+    }
+  }));
+  return health;
 }
 function fail(message: string): never { throw new Error(message); }
 const FILESYSTEMS = ['ext2', 'ext3', 'ext4', 'xfs', 'btrfs', 'vfat', 'exfat', 'ntfs'];
@@ -93,6 +211,9 @@ export function validateStorageOperation(input: unknown): StorageOperation {
     if (raw.devices !== undefined) { if (!Array.isArray(raw.devices) || raw.devices.length > 16) fail('Select at most 16 PV devices'); op.devices = [...new Set(raw.devices.map(devicePath))]; }
     for (const key of ['slot', 'survivorSlot'] as const) if (raw[key] !== undefined) { if (!Number.isInteger(raw[key]) || raw[key]! < 0 || raw[key]! > 31) fail('Keyslot must be between 0 and 31'); op[key] = raw[key]; }
     if (raw.raidLevel !== undefined) { if (!['0', '1', '5', '6', '10'].includes(raw.raidLevel)) fail('Supported RAID levels: 0, 1, 5, 6, 10'); op.raidLevel = raw.raidLevel; }
+    if (raw.raidDevices !== undefined) { if (!Number.isInteger(raw.raidDevices) || raw.raidDevices! < 2 || raw.raidDevices! > 128) fail('RAID device count must be 2–128'); op.raidDevices = raw.raidDevices; }
+    if (raw.sanitizeMethod !== undefined) { if (!['ata-block', 'ata-crypto', 'nvme-block', 'nvme-crypto'].includes(raw.sanitizeMethod)) fail('Unsupported firmware sanitize method'); op.sanitizeMethod = raw.sanitizeMethod; }
+    if (raw.cacheMode !== undefined) { if (!['writethrough', 'writeback'].includes(raw.cacheMode)) fail('Unsupported cache mode'); op.cacheMode = raw.cacheMode; }
     if (raw.keyMode !== undefined) { if (!['prompt', 'managed'].includes(raw.keyMode)) fail('Choose prompt or managed boot key'); op.keyMode = raw.keyMode; }
     if (raw.options !== undefined) { if (!Array.isArray(raw.options) || !raw.options.every(o => ['nofail', 'noauto', 'discard', 'x-systemd.device-timeout=10s'].includes(o))) fail('Unsupported crypttab options'); op.options = [...new Set(raw.options)]; }
     if (raw.eraseMethod !== undefined) { if (!['secure-discard', 'overwrite-verify'].includes(raw.eraseMethod)) fail('Choose secure-discard or overwrite-verify'); op.eraseMethod = raw.eraseMethod; }
@@ -150,7 +271,7 @@ export async function inventory(host: StorageHost): Promise<StorageInventory> {
   const criticalTargets = new Set(['/', '/boot', '/boot/efi', '/usr', '/var', '/var/lib', '/home', '/opt']);
   const protectedTargets = new Set<string>(criticalTargets);
   const protectedIds = new Set(mounts.filter((m) => criticalTargets.has(String(m.target))).map((m) => String(m['maj:min'])));
-  for (const target of host.protectedPaths) {
+  for (const target of [...host.protectedPaths, '/var/lib/outpost-storage', '/etc/cryptsetup-keys.d']) {
     try {
       const result = JSON.parse(await host.run('findmnt', ['--json', '--target', target, '--output', 'MAJ:MIN,TARGET']));
       for (const mount of result.filesystems ?? []) {
@@ -199,6 +320,13 @@ export async function inventory(host: StorageHost): Promise<StorageInventory> {
   let crypttab: string[] = [];
   try { crypttab = (await host.read('/etc/crypttab')).split('\n').filter((line) => line.trim() && !line.trim().startsWith('#')).map((line) => line.trim().split(/\s+/)[1]).filter(Boolean); } catch { /* optional */ }
   if (host.canonicalDevice) crypttab = await Promise.all(crypttab.map(async (source) => { try { return source.startsWith('/dev/') ? await host.canonicalDevice!(source) : source; } catch { return source; } }));
+  for (const disk of all(devices).filter(d => d.type === 'disk' && (d.serial || d.wwn))) {
+    const record = await optionalRead(host, firmwareRecord(disk));
+    if (record.trim()) for (const node of all([disk])) {
+      node.maintenance = 'Firmware sanitization needs a confirmed completion report; inspect Firmware sanitize status before reuse';
+      node.protected = true; node.reason = node.maintenance;
+    }
+  }
   return { devices, fstab, crypttab, lvm: await lvmInventory(host), ...await expertInventory(host, devices), operationRunning: host.operationRunning ? await host.operationRunning() : false };
 }
 export function deviceFingerprint(device: StorageDevice): string {
@@ -270,7 +398,7 @@ async function expertInventory(host: StorageHost, devices: StorageDevice[]) {
       const md = `/sys/class/block/${device.kernel}/md`;
       const degradedText = (await host.read(`${md}/degraded`)).trim();
       if (!/^\d+$/.test(degradedText)) continue;
-      raid.push({ device: device.path, uuid: fields.MD_UUID ?? '', name: fields.MD_NAME ?? device.kernel, level: fields.MD_LEVEL ?? device.type, degraded: Number(degradedText), sync: (await host.read(`${md}/sync_action`)).trim(), state: (await host.read(`${md}/array_state`)).trim(), members });
+      raid.push({ device: device.path, uuid: fields.MD_UUID ?? '', name: fields.MD_NAME ?? device.kernel, level: fields.MD_LEVEL ?? device.type, metadata: fields.MD_METADATA, raidDevices: Number(fields.MD_DEVICES), degraded: Number(degradedText), sync: (await host.read(`${md}/sync_action`)).trim(), state: (await host.read(`${md}/array_state`)).trim(), members });
     } catch { /* Visible lsblk device remains protected; no unsafe array management without metadata. */ }
   }
   const [crypt, mdDebian, mdOther] = await Promise.all(['/etc/crypttab', '/etc/mdadm/mdadm.conf', '/etc/mdadm.conf'].map(file => optionalRead(host, file)));
@@ -299,7 +427,20 @@ export function layerShrinkPlan(state: StorageInventory, op: StorageOperation) {
   const nodes = all(state.devices), outer = nodes.find(d => d.path === op.device);
   if (!outer || outer.critical !== false || outer.readOnly || !['part', 'lvm'].includes(outer.type) || outer.filesystem !== 'crypto_LUKS' || outer.children.length !== 1) fail('Supported layered shrink: non-system partition or linear LV → LUKS2 mapping → offline ext4');
   const mapping = outer.children[0];
-  if (mapping.type !== 'crypt' || mapping.children.length || mapping.filesystem !== 'ext4' || mapping.critical || mapping.readOnly || !op.sizeMb || op.sizeMb * 1048576 >= outer.size) fail('Select a single, writable ext4 mapping and a smaller outer size');
+  if (mapping.type !== 'crypt' || !['ext4', 'LVM2_member'].includes(mapping.filesystem) || mapping.critical !== false || mapping.readOnly || !op.sizeMb || op.sizeMb * 1048576 >= outer.size) fail('Select a writable ext4 or LVM mapping and a smaller outer size');
+  let innerGroup: { name: string; extentSize: number; active: string[] } | undefined;
+  if (mapping.filesystem === 'ext4') {
+    if (mapping.children.length) fail('Release holders above ext4 before shrinking');
+  } else {
+    const pv = state.lvm?.pvs.find(p => p.path === mapping.path);
+    const group = state.lvm?.vgs.find(g => g.name === pv?.vg);
+    const members = state.lvm?.pvs.filter(p => p.vg === pv?.vg) ?? [];
+    const lvs = state.lvm?.lvs.filter(l => l.vg === pv?.vg) ?? [];
+    if (!pv || !group || !/^[a-zA-Z0-9_][a-zA-Z0-9_+.-]*$/.test(group.name) || !group.extentSize || members.length !== 1 || state.lvm?.moving || state.lvm?.vgs.filter(g => g.name === group.name).length !== 1) fail('Inner LVM shrinking requires an unambiguous, single-PV VG without extent moves');
+    if (!lvs.length || lvs.some(l => l.kind !== 'linear' || l.pool || l.origin || !/^[a-zA-Z0-9_][a-zA-Z0-9_+.-]*$/.test(l.name)) || mapping.children.some(d => d.type !== 'lvm' || d.children.length || !lvs.some(l => l.path === d.path))) fail('Inner VG must contain only plain linear LVs without child mappings, snapshots or caches');
+    if (lvs.some(l => l.attributes[4] === 'a' && !mapping.children.some(d => d.path === l.path))) fail('Every active LV must be present in the inspected mapping tree');
+    innerGroup = { name: group.name, extentSize: group.extentSize, active: lvs.filter(l => l.attributes[4] === 'a').map(l => l.name) };
+  }
   offlineTree(outer);
   if (outer.type === 'part') {
     const parent = nodes.find(d => d.path === outer.parentPath);
@@ -313,13 +454,35 @@ export function layerShrinkPlan(state: StorageInventory, op: StorageOperation) {
   }
   const metadata = state.encryption?.find(e => e.device === outer.path);
   if (!metadata?.digest || !metadata.slots.length) fail('Verified LUKS2 metadata is required');
-  return { outer, mapping, steps: ['Verify passphrase and LUKS2 layout', 'Check, shrink and verify ext4', 'Shrink and verify dm-crypt mapping', 'Close mapping', `Shorten ${outer.type === 'part' ? 'partition without moving its start' : 'linear LV at an exact extent boundary'}`, 'Reopen the mapping'] };
+  return { outer, mapping, innerGroup, steps: ['Verify passphrase and LUKS2 layout', innerGroup ? 'Reduce and verify inner PV boundary; deactivate its VG (LVs must already fit)' : 'Check, shrink and verify ext4', 'Shrink and verify dm-crypt mapping', 'Close mapping', `Shorten ${outer.type === 'part' ? 'partition without moving its start' : 'linear LV at an exact extent boundary'}`, 'Reopen the mapping', ...(innerGroup ? ['Reactivate previously active LVs'] : [])] };
 }
 function checkExpertOperation(state: StorageInventory, op: StorageOperation): StorageDevice {
   const nodes = all(state.devices), device = nodes.find(d => d.path === op.device);
   if (!device) fail('Device is no longer available');
+  if (op.action === 'firmwareInfo') { if (nodes.filter(d => d.type === 'disk' && d.serial === device.serial).length !== 1) fail('Disk serial is ambiguous'); if (device.type !== 'disk') fail('Select a physical disk'); return device; }
+  if (op.action === 'firmwareSanitize') {
+    if (nodes.filter(d => d.type === 'disk' && d.serial === device.serial).length !== 1) fail('Disk serial is ambiguous');
+    checkExpertOperation(state, { ...op, action: 'secureErase', eraseMethod: 'secure-discard' });
+    if (!op.sanitizeMethod || !['ata', 'sata', 'nvme'].includes(device.transport)) fail('Select an ATA/NVMe firmware method for a direct-attached disk');
+    return device;
+  }
   if (op.action.startsWith('smart')) { if (device.type !== 'disk') fail('Select a physical disk for SMART diagnostics'); return device; }
   if (device.critical !== false || device.readOnly) fail('System, Outpost, unknown-protection and read-only devices cannot be changed');
+  if (op.action.startsWith('lvCache')) {
+    const { lvm, group } = expertGroup(state, device, op.vg);
+    const lv = lvm.lvs.find(l => l.path === device.path && l.vg === group.name && l.name === op.lv);
+    if (!lv || lvm.moving || lv.origin || (lv.kind === 'linear' && lv.pool) || lvm.lvs.some(l => l.vg === group.name && (l.origin === lv.name || l.pool === lv.name))) fail('Select an ordinary LV without snapshots, pools or extent moves');
+    offlineTree(device);
+    if (device.children.length) fail('Release child mappings before changing caching');
+    if (op.action === 'lvCacheAttach') {
+      const cache = lvm.lvs.find(l => l.vg === group.name && l.name === op.pool && l.path !== lv.path);
+      const cacheDevice = nodes.find(d => d.path === cache?.path);
+      if (lv.kind !== 'linear' || !cache || cache.kind !== 'linear' || cache.pool || cache.origin || cache.size < 64 * 1048576 || lvm.lvs.some(l => l.vg === group.name && (l.origin === cache.name || l.pool === cache.name)) || !cacheDevice || cacheDevice.filesystem || cacheDevice.children.length || cacheDevice.critical !== false || cacheDevice.readOnly) fail('Choose a separate blank linear cache LV of at least 64 MiB in this VG');
+      offlineTree(cacheDevice); unreferenced(state, cacheDevice);
+    } else if (lv.kind !== 'cache') fail('Select an existing cached LV');
+    if (op.action !== 'lvCacheDetach' && !op.cacheMode) fail('Select a cache mode');
+    return device;
+  }
   if (op.action === 'layerShrink') { layerShrinkPlan(state, op); return device; }
   if (op.action === 'secureErase') {
     if (device.type !== 'disk' || !device.size || !Number.isSafeInteger(device.size) || !device.diskSeq || !(device.serial || device.wwn)) fail('Erase requires an identified whole physical disk with serial/WWN, kernel disk sequence and a valid capacity');
@@ -363,6 +526,14 @@ function checkExpertOperation(state: StorageInventory, op: StorageOperation): St
     for (const member of array.members) { const node = nodes.find(d => d.path === member.path); if (!node || node.critical !== false || node.readOnly) fail('All array members must be present, writable and non-system'); }
     if (['raidInfo', 'raidBootAdd', 'raidBootRemove'].includes(op.action)) return device;
     if (array.sync !== 'idle') fail('Wait for RAID synchronization/recovery/reshape to finish');
+    if (op.action === 'raidGrow') {
+      offlineTree(device);
+      if (device.children.length || array.degraded !== 0 || !['raid1', 'raid5', 'raid6'].includes(array.level) || !['1.0', '1.1', '1.2'].includes(array.metadata ?? '') || !Number.isInteger(array.raidDevices) || !array.raidDevices || !op.raidDevices || op.raidDevices <= array.raidDevices) fail('Grow requires an offline, healthy native-metadata RAID1/5/6 array and an increased device count');
+      const active = array.members.filter(m => m.state.split(',').includes('in_sync'));
+      const spares = array.members.filter(m => m.state.split(',').includes('spare'));
+      if (active.length !== array.raidDevices || array.members.length !== active.length + spares.length || spares.length < op.raidDevices - array.raidDevices) fail('Add enough healthy spares before growing; every member state must be known');
+      return device;
+    }
     if (op.action === 'raidStop') { offlineTree(device); if (device.children.length) fail('Release inner mappings/LVs before stopping the array'); unreferenced(state, device); return device; }
     if (op.devices?.length !== 1) fail('Choose exactly one member device');
     if (op.action === 'raidAdd') { blankMember(state, op.devices[0]); return device; }
@@ -555,7 +726,7 @@ async function shrinkAndVerifyExt4(host: StorageHost, device: string, size: numb
   return actual;
 }
 async function executeLayerShrink(host: StorageHost, state: StorageInventory, op: StorageOperation, secrets: StorageSecrets) {
-  const { outer, mapping } = layerShrinkPlan(state, op);
+  const { outer, mapping, innerGroup } = layerShrinkPlan(state, op);
   const metadataText = await host.run('cryptsetup', ['luksDump', '--dump-json-metadata', outer.path]);
   if (crypto.createHash('sha256').update(metadataText).digest('hex') !== state.encryption!.find(e => e.device === outer.path)!.digest) fail('LUKS2 metadata changed after validation');
   const metadata = JSON.parse(metadataText);
@@ -574,7 +745,17 @@ async function executeLayerShrink(host: StorageHost, state: StorageInventory, op
   if (!host.withKeyFiles) fail('Update the storage helper for passphrase handling');
   await host.withKeyFiles(secrets, async files => {
     await host.run('cryptsetup', ['open', '--test-passphrase', '--key-file', files.current!, outer.path]);
-    const actual = await shrinkAndVerifyExt4(host, mapping.path, payload);
+    let actual: number;
+    if (innerGroup) {
+      await host.run('pvresize', ['--setphysicalvolumesize', `${payload}B`, '--yes', mapping.path]);
+      const report = JSON.parse(await host.run('pvs', ['--reportformat', 'json', '--units', 'b', '--nosuffix', '-o', 'pv_name,pe_start,pv_pe_count', mapping.path]));
+      const rows = report.report?.flatMap((r: { pv?: unknown[] }) => r.pv ?? []) ?? [];
+      const row = rows[0], start = Number(row?.pe_start), count = Number(row?.pv_pe_count);
+      actual = start + count * innerGroup.extentSize;
+      if (rows.length !== 1 || (host.canonicalDevice ? await host.canonicalDevice(row.pv_name.trim()) : row.pv_name?.trim()) !== mapping.path || !Number.isSafeInteger(start) || start < 4096 || !Number.isSafeInteger(count) || count < 1 || !Number.isSafeInteger(actual) || actual > payload) fail('PV extent boundary verification failed; encryption and outer layers are unchanged');
+      // No force: LVM refuses deactivation while any LV still has a consumer.
+      await host.run('vgchange', ['--activate', 'n', innerGroup.name]);
+    } else actual = await shrinkAndVerifyExt4(host, mapping.path, payload);
     await host.run('cryptsetup', ['resize', '--size', String(payload / 512), '--key-file', files.current!, name]);
     const mappedSize = Number(await host.run('blockdev', ['--getsize64', mapping.path]));
     if (mappedSize !== payload || mappedSize < actual) fail('Mapping size verification failed; outer device is unchanged');
@@ -586,11 +767,28 @@ async function executeLayerShrink(host: StorageHost, state: StorageInventory, op
       if (outerSize !== target) fail('Outer layer size does not match the verified plan; mapping remains closed for inspection');
     } catch (error) { fail(`The filesystem is smaller and the mapping is closed. Inspect the outer device before reopening: ${error instanceof Error ? error.message : String(error)}`); }
     await host.run('cryptsetup', ['open', '--type', 'luks', '--key-file', files.current!, outer.path, name]);
+    if (innerGroup) for (const lv of innerGroup.active) await host.run('lvchange', ['--activate', 'y', `${innerGroup.name}/${lv}`]);
   });
 }
 async function executeExpertOperation(host: StorageHost, state: StorageInventory, op: StorageOperation, input?: StorageSecrets): Promise<string> {
   const device = checkExpertOperation(state, op);
   const secrets = validateStorageSecrets(op, input);
+  if (['firmwareInfo', 'firmwareSanitize'].includes(op.action)) return executeFirmware(host, device, op);
+  if (op.action === 'raidGrow') {
+    const array = state.raid!.find(r => r.device === device.path)!;
+    if (!host.reshapeBackup) fail('Update the helper for persistent RAID reshape backups');
+    const backup = await host.reshapeBackup(array.uuid);
+    try { await host.run('mdadm', ['--grow', device.path, `--raid-devices=${op.raidDevices}`, `--backup-file=${backup}`]); }
+    catch (error) { fail(`Inspect RAID state before retrying. Preserve reshape recovery file ${backup}: ${error instanceof Error ? error.message : String(error)}`); }
+    return `RAID growth requested; synchronization may still be running. Preserve recovery file ${backup} until mdadm confirms the reshape is complete. Filesystem capacity is unchanged; grow it separately.`;
+  }
+  if (op.action.startsWith('lvCache')) {
+    const target = `${op.vg}/${op.lv}`;
+    if (op.action === 'lvCacheAttach') await host.run('lvconvert', ['--yes', '--type', 'cache', '--cachevol', `${op.vg}/${op.pool}`, '--cachemode', op.cacheMode!, target]);
+    else if (op.action === 'lvCacheDetach') await host.run('lvconvert', ['--splitcache', target]);
+    else await host.run('lvchange', ['--cachemode', op.cacheMode!, target]);
+    return op.action === 'lvCacheDetach' ? 'Cache flushed and detached using LVM splitcache; inspect the retained cache LV before reuse.' : `LVM cache operation completed in ${op.cacheMode} mode. Refresh inventory.`;
+  }
   if (op.action.startsWith('smart')) {
     const tests: Record<string, string> = { smartShort: 'short', smartLong: 'long', smartConveyance: 'conveyance' };
     const args = op.action === 'smartInfo' ? ['--json', '--all', device.path] : op.action === 'smartAbort' ? ['--json', '--abort', device.path] : ['--json', '--test', tests[op.action], device.path];
@@ -603,7 +801,7 @@ async function executeExpertOperation(host: StorageHost, state: StorageInventory
     await host.overwriteDisk(device);
     return `Overwrote, flushed and verified all ${device.size} addressable bytes on ${device.path}. This is an HDD logical clear, not an SSD/remapped-sector physical purge.`;
   }
-  if (op.action === 'layerShrink') { await executeLayerShrink(host, state, op, secrets); return `Verified ext4 → dm-crypt → ${device.type} shrink completed; mapping reopened. Refresh inventory.`; }
+  if (op.action === 'layerShrink') { await executeLayerShrink(host, state, op, secrets); return `Verified inner data boundary → dm-crypt → ${device.type} shrink completed; mapping reopened. Refresh inventory.`; }
   if (op.action === 'luksInfo') return `LUKS2 metadata\n${await host.run('cryptsetup', ['luksDump', '--dump-json-metadata', device.path])}`;
   if (op.action === 'luksHeaderBackup') { if (!host.backupHeader) fail('Update the helper for root-only header backups'); return `Encrypted LUKS header backup saved root-only at ${await host.backupHeader(device.path, device.uuid)}. Keep a separate protected copy; old header backups can restore old keyslots.`; }
   if (['luksAddKey', 'luksChangeSlot', 'luksRemoveSlot'].includes(op.action)) {
@@ -742,6 +940,12 @@ async function executeAdvancedOperation(host: StorageHost, state: StorageInvento
   try { await host.run('udevadm', ['settle']); } catch { /* optional */ }
 }
 export function checkOperation(state: StorageInventory, op: StorageOperation): StorageDevice {
+  if (!['smartInfo', 'firmwareInfo'].includes(op.action)) {
+    const affected = new Set([op.device, ...(op.devices ?? [])]);
+    if (all(state.devices).some(d => affected.has(d.path) && all([d]).some(n => n.maintenance))) fail('Firmware maintenance is pending on an affected device; inspect its firmware status before reuse');
+    // Group-wide operations also affect PVs not explicitly listed in the request.
+    if (op.vg && state.lvm?.pvs.some(p => p.vg === op.vg && all(state.devices).some(d => d.path === p.path && d.maintenance))) fail('Firmware maintenance is pending on this VG');
+  }
   if (EXPERT_ACTIONS.includes(op.action as typeof EXPERT_ACTIONS[number])) return checkExpertOperation(state, op);
   if (ADVANCED_ACTIONS.includes(op.action)) return checkAdvancedOperation(state, op);
   const device = all(state.devices).find((d) => d.path === op.device);
@@ -821,15 +1025,27 @@ async function rootDirectory(directory: string, privateMode: boolean) {
 }
 export function createLinuxStorageHost(protectedPaths: string[]): StorageHost {
   const command = async (name: string, args: string[], input?: string) => {
-    if (!['mdadm', 'pvmove', 'smartctl', 'blkdiscard', 'blockdev', 'lvreduce', 'lsblk', 'findmnt', 'mount', 'umount', 'wipefs', 'sfdisk', 'udevadm', 'systemctl', 'flock', 'cryptsetup', 'pvs', 'vgs', 'lvs', 'pvcreate', 'pvremove', 'pvresize', 'vgcreate', 'vgrename', 'vgextend', 'vgreduce', 'vgremove', 'lvcreate', 'lvrename', 'lvresize', 'lvextend', 'lvremove', 'lvchange', 'growpart', 'e2fsck', 'resize2fs', 'dumpe2fs', 'xfs_growfs', 'btrfs', ...FORMAT_TYPES.map((f) => `mkfs.${f}`)].includes(name)) fail('Unsupported command');
+    if (!['hdparm', 'nvme', 'lvconvert', 'vgchange', 'mdadm', 'pvmove', 'smartctl', 'blkdiscard', 'blockdev', 'lvreduce', 'lsblk', 'findmnt', 'mount', 'umount', 'wipefs', 'sfdisk', 'udevadm', 'systemctl', 'flock', 'cryptsetup', 'pvs', 'vgs', 'lvs', 'pvcreate', 'pvremove', 'pvresize', 'vgcreate', 'vgrename', 'vgextend', 'vgreduce', 'vgremove', 'lvcreate', 'lvrename', 'lvresize', 'lvextend', 'lvremove', 'lvchange', 'growpart', 'e2fsck', 'resize2fs', 'dumpe2fs', 'xfs_growfs', 'btrfs', ...FORMAT_TYPES.map((f) => `mkfs.${f}`)].includes(name)) fail('Unsupported command');
     const executable = ['/usr/sbin', '/sbin', '/usr/bin', '/bin'].map((base) => path.join(base, name)).find(existsSync);
     if (!executable) fail(`Install the host utility ${name} before using this action`);
     return new Promise<string>((resolve, reject) => {
-      const child = execFile(executable!, args, { timeout: ['flock', 'pvmove', 'blkdiscard', 'e2fsck', 'resize2fs'].includes(name) ? 24 * 60 * 60_000 : 600_000, maxBuffer: 4 * 1024 * 1024, env: { PATH: '/usr/sbin:/usr/bin:/sbin:/bin', LC_ALL: 'C', LANG: 'C', HOME: '/root' } }, (error, stdout, stderr) => error && !storageExitAccepted(name, error.code) ? reject(new Error(`${name}: ${(stderr || stdout || error.message).trim().slice(0, 1500)}`)) : resolve(stdout));
+      const child = execFile(executable!, args, { timeout: name === 'smartctl' ? 20_000 : ['flock', 'pvmove', 'lvconvert', 'lvchange', 'mdadm', 'blkdiscard', 'e2fsck', 'resize2fs'].includes(name) ? 24 * 60 * 60_000 : 600_000, maxBuffer: 4 * 1024 * 1024, env: { PATH: '/usr/sbin:/usr/bin:/sbin:/bin', LC_ALL: 'C', LANG: 'C', HOME: '/root' } }, (error, stdout, stderr) => error && !storageExitAccepted(name, error.code) ? reject(new Error(`${name}: ${(stderr || stdout || error.message).trim().slice(0, 1500)}`)) : resolve(stdout));
       child.stdin?.end(input ?? '');
     });
   };
   const host: StorageHost = {
+    list: dir => fs.readdir(dir),
+    firmwarePending: async (device, pending) => {
+      const dir = '/var/lib/outpost-storage/sanitize'; await rootDirectory(dir, true);
+      const target = firmwareRecord(device);
+      if (!pending) { await fs.rm(target, { force: true }); }
+      else {
+        const handle = await fs.open(target, 'wx', 0o600);
+        try { await handle.writeFile(JSON.stringify({ serial: device.serial, path: device.path, createdAt: new Date().toISOString() })); await handle.sync(); }
+        finally { await handle.close(); }
+      }
+      const directory = await fs.open(dir, 'r'); try { await directory.sync(); } finally { await directory.close(); }
+    },
     protectedPaths, run: command, read: (file) => fs.readFile(file, 'utf8'), canonicalDevice: (file) => fs.realpath(file),
     writeConfig: async (file, expected, next) => {
       if (!['/etc/crypttab', '/etc/mdadm.conf', '/etc/mdadm/mdadm.conf'].includes(file)) fail('Unsupported configuration file');
@@ -863,6 +1079,14 @@ export function createLinuxStorageHost(protectedPaths: string[]): StorageHost {
       const target = `${dir}/${uuid}-${Date.now()}-${crypto.randomUUID()}.luks`;
       await command('cryptsetup', ['luksHeaderBackup', '--header-backup-file', target, device]);
       await fs.chmod(target, 0o600); return target;
+    },
+    reshapeBackup: async uuid => {
+      if (!/^[a-f0-9:.-]+$/i.test(uuid)) fail('Invalid array UUID');
+      const dir = '/var/lib/outpost-storage/reshape'; await rootDirectory(dir, true);
+      const space = await fs.statfs(dir);
+      if (space.bavail * space.bsize < 64 * 1048576) fail('At least 64 MiB of independent reshape-backup space is required');
+      // mdadm creates this file. Never delete it on failure: assembly may need it.
+      return `${dir}/${uuid.replace(/:/g, '-')}-${crypto.randomUUID()}.backup`;
     },
     overwriteDisk: async device => {
       if (!device.diskSeq || device.rotational !== true) fail('A stable kernel disk sequence and rotational disk are required');
@@ -951,6 +1175,9 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
         return;
       }
       const result = request.action === 'inventory' ? await inventory(host) : await executeStorage(host, request.operation, request.fingerprint, request.secrets);
+      if (request.action === 'inventory' && request.includeHealth === true && !(result as StorageInventory).operationRunning) {
+        (result as StorageInventory & { health: unknown }).health = await storageHealth(host, result as StorageInventory);
+      }
       process.stdout.write(JSON.stringify({ ok: true, result }));
     } catch (error) {
       process.stdout.write(JSON.stringify({ ok: false, error: error instanceof Error ? error.message : 'Storage operation failed' })); process.exitCode = 1;

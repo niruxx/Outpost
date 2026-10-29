@@ -7,6 +7,7 @@ import { Icon } from '../components/icons.js';
 import { api, ApiError } from '../api/client.js';
 import { setVisibleInterval } from '../lib/perf.js';
 import type { StoragePermission } from '../api/types.js';
+import { StorageHealth, type DiskHealth } from './StorageHealth.js';
 
 interface Device {
   path: string; kernel: string; id: string; type: string; size: number; model: string;
@@ -18,11 +19,12 @@ type Action = 'mount' | 'unmount' | 'automount' | 'format' | 'wipe' | 'partition
 interface Operation extends AdvancedFields { action: Action; device: string; mountpoint?: string; persistent?: boolean; enabled?: boolean; readOnly?: boolean; filesystem?: string; label?: string }
 interface Job { id: string; action: string; device: string; state: 'running' | 'done' | 'failed'; message: string; createdAt: string }
 interface Overview extends ExpertState {
+  health?: Record<string, DiskHealth>; healthRefreshing?: boolean;
   lvm?: LvmState;
   available: boolean; error: string | null; devices: Device[]; busy: boolean; permissions: StoragePermission[];
   fstab: { source: string; target: string; filesystem: string; options: string; managed: boolean }[]; jobs: Job[];
 }
-interface Plan { affectedDevices?: { path: string; size: number; model: string; serial: string }[]; ticket: string; device: Device; operation: Operation; confirmation: string; destructive: boolean; explanation: string }
+interface Plan { steps?: string[]; affectedDevices?: { path: string; size: number; model: string; serial: string }[]; ticket: string; device: Device; operation: Operation; confirmation: string; destructive: boolean; explanation: string }
 const flatten = (nodes: Device[]): Device[] => nodes.flatMap((node) => [node, ...flatten(node.children)]);
 const bytes = (size: number) => size >= 1024 ** 4 ? `${(size / 1024 ** 4).toFixed(1)} TiB` : size >= 1024 ** 3 ? `${(size / 1024 ** 3).toFixed(1)} GiB` : `${(size / 1024 ** 2).toFixed(0)} MiB`;
 const message = (err: unknown) => err instanceof Error ? err.message : 'Storage request failed';
@@ -58,7 +60,9 @@ export function StoragePage() {
   function openExpert(action: ExpertAction, fields: ExpertFields = {}) {
     if (!device) return;
     const pv = state?.lvm?.pvs.find(p => p.path === device.path), lv = state?.lvm?.lvs.find(l => l.path === device.path);
-    setOperation({ action, device: device.path, vg: pv?.vg || lv?.vg || undefined, lv: lv?.name, ...fields });
+    setOperation({ action, device: device.path, vg: pv?.vg || lv?.vg || undefined, lv: lv?.name,
+      ...(['layerShrink', 'pvShrink'].includes(action) ? { sizeMb: 256 } : {}),
+      ...(action === 'raidGrow' ? { raidDevices: (state?.raid?.find(r => r.device === device.path)?.raidDevices ?? 2) + 1 } : {}), ...fields });
   }
   return <Layout><div className="mx-auto max-w-7xl space-y-5 p-4 sm:p-8">
     <PageHeader title="Storage" subtitle="Disks, filesystems, mounts and persistent boot mounts on this host." action={<Button onClick={load}><Icon name="refresh" className="h-4 w-4" />Refresh</Button>} />
@@ -66,12 +70,13 @@ export function StoragePage() {
     {state && !state.available && <Notice tone="warning"><p>{state.error}</p><p className="mt-2">This feature requires Linux disk utilities and the privileged Outpost storage helper. Existing instances and backups continue to work.</p></Notice>}
     {state?.busy && <Notice tone="info">A storage operation is running. Changes are temporarily disabled; do not disconnect its disk.</Notice>}
     {state?.available && <div className="grid items-start gap-5 lg:grid-cols-[320px_minmax(0,1fr)]">
-      <div className="space-y-3">{state.devices.map((disk) => <Card key={disk.path} className="overflow-hidden p-2"><DeviceTree device={disk} depth={0} selected={selectedPath} onSelect={setSelectedPath} /></Card>)}{state.devices.length === 0 && <Card className="p-5 text-sm text-ink-400">No block devices found.</Card>}</div>
+      <div className="space-y-3">{state.devices.map((disk) => <Card key={disk.path} className="overflow-hidden p-2"><DeviceTree device={disk} depth={0} selected={selectedPath} onSelect={setSelectedPath} health={state.permissions.includes('health') ? state.health ?? {} : undefined} healthRefreshing={state.healthRefreshing} /></Card>)}{state.devices.length === 0 && <Card className="p-5 text-sm text-ink-400">No block devices found.</Card>}</div>
       {device && <div className="space-y-5"><Card className="space-y-4 p-5">
         <div className="flex flex-wrap items-center gap-2"><Icon name="storage" className="h-6 w-6 text-accent-400" /><h2 className="break-all text-xl font-medium text-ink-100">{device.path}</h2><Badge tone="neutral">{device.type}</Badge>{device.protected && <Badge tone="yellow">Protected</Badge>}</div>
         <dl className="grid gap-4 text-sm sm:grid-cols-2">{[
           ['Capacity', bytes(device.size)], ['Model', device.model || '—'], ['Serial', device.serial || 'Not reported'], ['Filesystem', device.filesystem || 'None'], ['Label', device.label || '—'], ['UUID', device.uuid || '—'], ['Mountpoints', device.mountpoints.join(', ') || 'Not mounted'], ['Connection', device.transport || '—'],
         ].map(([label, value]) => <div key={label}><dt className="text-xs text-ink-500">{label}</dt><dd className="mt-1 break-all text-ink-200">{value}</dd></div>)}</dl>
+        {device.type === 'disk' && state.permissions.includes('health') && <StorageHealth health={state.health?.[device.path]} refreshing={state.healthRefreshing} detail />}
         {device.reason && <Notice tone="info">{device.reason}. Basic disk actions are blocked. Eligible encryption/LVM operations are checked separately.</Notice>}
         <div className="flex flex-wrap gap-2">
           <Button disabled={!can('mount') || !!device.mountpoints.length || !device.filesystem} onClick={() => open('mount')}>Mount</Button>
@@ -92,8 +97,8 @@ export function StoragePage() {
   </div></Layout>;
 }
 
-function DeviceTree({ device, depth, selected, onSelect }: { device: Device; depth: number; selected: string | null; onSelect: (device: string) => void }) {
-  return <><button className={`w-full rounded-xl p-3 text-left ${selected === device.path ? 'bg-secondary-container text-secondary-on-container' : 'text-ink-300 hover:bg-surface-700'}`} style={{ paddingLeft: `${12 + Math.min(depth, 5) * 14}px` }} aria-pressed={selected === device.path} onClick={() => onSelect(device.path)}><span className="block truncate text-sm font-medium">{device.path}</span><span className="mt-1 block text-xs opacity-75">{bytes(device.size)} · {device.filesystem || device.type}{device.mountpoints.length ? ' · mounted' : ''}{device.protected ? ' · protected' : ''}</span></button>{device.children.map((child) => <DeviceTree key={child.path} device={child} depth={depth + 1} selected={selected} onSelect={onSelect} />)}</>;
+function DeviceTree({ device, depth, selected, onSelect, health, healthRefreshing }: { device: Device; depth: number; selected: string | null; onSelect: (device: string) => void; health?: Record<string, DiskHealth>; healthRefreshing?: boolean }) {
+  return <><button className={`w-full rounded-xl p-3 text-left ${selected === device.path ? 'bg-secondary-container text-secondary-on-container' : 'text-ink-300 hover:bg-surface-700'}`} style={{ paddingLeft: `${12 + Math.min(depth, 5) * 14}px` }} aria-pressed={selected === device.path} onClick={() => onSelect(device.path)}><span className="block truncate text-sm font-medium">{device.path}</span><span className="mt-1 block text-xs opacity-75">{bytes(device.size)} · {device.filesystem || device.type}{device.mountpoints.length ? ' · mounted' : ''}{device.protected ? ' · protected' : ''}</span>{device.type === 'disk' && health && <StorageHealth health={health[device.path]} refreshing={healthRefreshing} />}</button>{device.children.map((child) => <DeviceTree key={child.path} device={child} depth={depth + 1} selected={selected} onSelect={onSelect} health={health} healthRefreshing={healthRefreshing} />)}</>;
 }
 function OperationModal({ operation, permissions, onClose, onStarted }: { operation: Operation | null; permissions: StoragePermission[]; onClose: () => void; onStarted: () => void }) {
   const [draft, setDraft] = useState<Operation | null>(null);
@@ -131,6 +136,7 @@ function OperationModal({ operation, permissions, onClose, onStarted }: { operat
         {draft.action === 'unmount' && <p className="text-sm text-ink-300">Close files and stop programs using the filesystem first. This does not remove its boot-mount entry.</p>}
       </>}
       {plan && <><Notice tone={plan.destructive ? 'warning' : 'info'}>{plan.explanation}</Notice><div className="rounded-xl bg-surface-900 p-3 text-sm text-ink-300"><p>{plan.device.path} · {bytes(plan.device.size)} · {plan.device.model || plan.device.type}</p><p className="mt-1 text-xs text-ink-500">Serial: {plan.device.serial || 'not reported'}{draft.mountpoint ? ` · Mount: ${draft.mountpoint}` : ''}</p></div>{plan.destructive && <Field label={`Type ${plan.confirmation} to confirm`}><Input autoComplete="off" value={confirmation} disabled={busy} onChange={(e) => setConfirmation(e.target.value)} /></Field>}<p className="text-xs text-ink-500">The preview expires after two minutes. Device identity and permissions are checked again when the action starts.</p></>}
+      {plan?.steps && <ol className="list-inside list-decimal space-y-1 text-xs text-ink-300">{plan.steps.map(step => <li key={step}>{step}</li>)}</ol>}
       {plan?.affectedDevices?.map(d => <p key={d.path} className="break-all text-xs text-ink-300">Affected: {d.path} | {bytes(d.size)} | {d.model} | serial {d.serial || 'not reported'}</p>)}
       {plan && <pre className="overflow-auto rounded-xl bg-surface-900 p-3 text-xs text-ink-300">{JSON.stringify(plan.operation, null, 2)}</pre>}
       {plan && needsCurrent && <Field label={draft.action === 'luksRemoveSlot' ? 'Passphrase for the surviving keyslot' : 'Current LUKS passphrase'}><Input type="password" autoComplete="off" value={secrets.passphrase ?? ''} disabled={busy} onChange={(e) => setSecrets({ ...secrets, passphrase: e.target.value })} /></Field>}

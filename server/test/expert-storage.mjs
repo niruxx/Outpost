@@ -139,6 +139,7 @@ try {
   server = app.listen(0, '127.0.0.1'); await once(server, 'listening'); const url = `http://127.0.0.1:${server.address().port}/storage`;
   const post = (route, body) => fetch(url + route, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   users.setStoragePermissions(actor.id, ['wipe']); assert.equal((await post('/preview', { action: 'secureErase', device: '/dev/sdb', eraseMethod: 'overwrite-verify' })).status, 403);
+  users.setStoragePermissions(actor.id, ['health']); assert.equal((await post('/preview', { action: 'firmwareSanitize', device: '/dev/nvme0n1', sanitizeMethod: 'nvme-block' })).status, 403);
   users.setStoragePermissions(actor.id, ['migrate']); assert.equal((await post('/preview', { action: 'pvMove', device: '/dev/sdh1', vg: 'games', devices: ['/dev/sdi1'] })).status, 403);
   users.setStoragePermissions(actor.id, ['crypttab']); assert.equal((await post('/preview', { action: 'crypttabSet', device: encrypted.path, name: 'boot', keyMode: 'prompt' })).status, 403);
   users.setStoragePermissions(actor.id, ['raid']); assert.equal((await post('/preview', { action: 'raidBootAdd', device: '/dev/md0' })).status, 403);

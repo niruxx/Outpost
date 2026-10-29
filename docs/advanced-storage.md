@@ -52,7 +52,7 @@ Supported operations:
 
 Renaming requires affected filesystems to be unmounted. Device-path references in fstab or crypttab block a rename; convert those references to UUIDs first. UUID-based filesystem references survive renaming. External application paths, scripts and references outside these files are not rewritten. Activate inactive ordinary LVs before renaming a group so mount/reference checks can inspect them. Groups with missing, read-only, system or Outpost member devices are blocked. Duplicate VG names must be resolved outside Outpost first.
 
-This is a broad set of core LVM workflows, not every LVM feature: cache/VDO configurations, clustered VGs, snapshot merging and thin metadata repair remain outside this UI. Same-VG extent migration, PV boundary reduction and Linux software RAID are described in [advanced maintenance](expert-storage.md). Detaching a PV with allocated extents is refused rather than silently discarding or moving them.
+This is a broad set of core LVM workflows, not every LVM feature: VDO configurations, clustered VGs, snapshot merging and thin metadata repair remain outside this UI. Same-VG extent migration, PV boundary reduction and Linux software RAID are described in [advanced maintenance](expert-storage.md). Detaching a PV with allocated extents is refused rather than silently discarding or moving them.
 
 ## Resize in the correct order
 
@@ -69,7 +69,7 @@ There are two supported shrinking paths:
 - **Linear ext4 LV:** unmount the leaf LV, release child mappings, then supply a smaller MiB target. `lvresize --resizefs` delegates filesystem-first shrink ordering to LVM/fsadm. Raw reductions of encrypted, XFS, thin or unknown filesystem layouts are refused.
 - **Plain ext4 partition:** unmount every partition on the parent disk, release holders and select **Shrink ext4 partition**. The helper checks filesystem health, shrinks ext4, verifies the resulting block count/size with `dumpe2fs`, then updates only that partition's size using `sfdisk -N`. The existing start and other fields remain unchanged. If filesystem resizing/verification fails, the partition table is not shortened. If the later table write fails, the smaller filesystem remains inside the original larger partition.
 
-Offline ext4 inside one LUKS2 mapping on a partition or linear LV now has a filesystem-first shrink workflow. See [advanced maintenance](expert-storage.md) for its strict layout checks and recovery limits. Arbitrary layered shrinking remains unsupported; XFS cannot shrink. Keep independent backups before destructive operations. Long filesystem and migration commands have a 24-hour timeout; other native commands generally have a ten-minute timeout. A timed-out or failed operation requires inspection before retrying.
+Offline ext4 inside one LUKS2 mapping on a partition or linear LV has a filesystem-first shrink workflow. A single-PV VG inside LUKS can also have its PV boundary shortened after its linear LVs already fit. LVM cache attachment, mode changes and flush/detachment are also supported. See [advanced maintenance](expert-storage.md) for its strict layout checks and recovery limits. Arbitrary layered shrinking remains unsupported; XFS cannot shrink. Keep independent backups before destructive operations. Long filesystem and migration commands have a 24-hour timeout; other native commands generally have a ten-minute timeout. A timed-out or failed operation requires inspection before retrying.
 
 ## Verification
 
