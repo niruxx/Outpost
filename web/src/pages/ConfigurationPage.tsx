@@ -9,7 +9,8 @@ import { TemplatesCard } from '../components/TemplatesCard.js';
 import { LanguageSelect, t } from '../i18n/index.js';
 import { ConsoleLogRetentionCard } from '../components/ConsoleLogRetentionCard.js';
 import { JavaRuntimesCard } from '../components/JavaRuntimesCard.js';
-import { Layout, PageHeader } from '../components/Layout.js';
+import { PageHeader } from '../components/Layout.js';
+import { SystemLayout } from '../components/SystemLayout.js';
 import { Badge, Button, Card, CardTitle, ErrorText, Field, Input, Modal, Notice, Spinner } from '../components/ui.js';
 import { Icon } from '../components/icons.js';
 import { useToast } from '../components/Toast.js';
@@ -462,8 +463,8 @@ export function ConfigurationPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
   return (
-    <Layout>
-      <div className="stagger mx-auto max-w-5xl space-y-5 px-4 py-8 sm:px-8">
+    <SystemLayout>
+      <div className="stagger mx-auto max-w-5xl space-y-5">
         <PageHeader title="Configuration" subtitle="Panel-wide settings for this Outpost host." />
         <AppearanceCard isAdmin={isAdmin} />
         <TwoFactorCard />
@@ -491,6 +492,6 @@ export function ConfigurationPage() {
           <p className="text-sm text-ink-400">Panel-wide settings are only available to admins. Per-instance settings live in each instance's Configuration page.</p>
         )}
       </div>
-    </Layout>
+    </SystemLayout>
   );
 }

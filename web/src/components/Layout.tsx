@@ -101,7 +101,6 @@ function MainNav({ onNavigate }: { onNavigate?: () => void }) {
       <NavSectionLabel>Workspace</NavSectionLabel>
       <NavItem to="/" end icon="instances" label="Instances" onClick={onNavigate} />
       <NavItem to="/files" icon="folder" label="File Management" onClick={onNavigate} />
-      <NavItem to="/operations" icon="configuration" label="Operations" onClick={onNavigate} />
       <NavItem to="/docker" icon="container" label="Docker" onClick={onNavigate} />
       {(user?.role === 'admin' || !!user?.vmAccess?.length) && <>
         <NavSectionLabel>Virtualization</NavSectionLabel>

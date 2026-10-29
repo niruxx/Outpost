@@ -85,7 +85,8 @@ function AppRoutes() {
         }
       />
       <Route path="/servers/:serverId/*" element={<LegacyServerRedirect />} />
-      <Route path="/operations" element={<RequireAuth><OperationsPage /></RequireAuth>} />
+      <Route path="/operations" element={<Navigate to="/configuration/operations" replace />} />
+      <Route path="/configuration/operations" element={<RequireAuth><OperationsPage /></RequireAuth>} />
       <Route path="/libvirt/*" element={<RequireAuth><LibvirtPage /></RequireAuth>} />
       <Route path="/storage" element={<RequireAuth><StoragePage /></RequireAuth>} />
       <Route path="/host-console" element={<RequireAuth><RequireAdmin><Suspense fallback={<FullScreenLoader />}><HostTerminalPage /></Suspense></RequireAdmin></RequireAuth>} />

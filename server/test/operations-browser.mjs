@@ -34,10 +34,12 @@ try {
   await runBrowser(origin, async ({ evaluate, navigate, text, click, until }) => {
     await navigate('/'); await text('Your instances');
     await evaluate("document.querySelector('button[aria-label=\"Open navigation\"]').click()");
-    await text('Operations');
+    await text('Configuration');
     // HTTP LAN origins do not expose randomUUID. Exercise sidebar navigation in that environment.
     await evaluate("Object.defineProperty(crypto, 'randomUUID', { value: undefined, configurable: true })");
+    await click('Configuration'); await text('Appearance'); await text('System');
     await click('Operations'); await text('Provision an instance'); await text('Fixture host');
+    assert.equal(await evaluate('location.pathname'), '/configuration/operations');
     await click('Start a different request'); await text('New request ID selected.');
     await click('IP / port pools'); await text('Local IP / port pools');
     await click('My Steam accounts'); await text('Saved Steam user');
@@ -47,7 +49,10 @@ try {
     await evaluate(`const input = [...document.querySelectorAll('input')].find(e => e.closest('label')?.textContent.includes('Type VM entry fixture')); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, 'VM entry fixture'); input.dispatchEvent(new Event('input', { bubbles: true }));`);
     await until(() => evaluate("![...document.querySelectorAll('button')].find(b => b.textContent === 'Delete entry and retain disks').disabled"), 'VM name confirmation');
     await click('Delete entry and retain disks'); await text('No virtual machines found'); assert.equal(deleted, true);
-    await navigate('/configuration'); await text('Default Java environment');
+    await navigate('/operations'); await text('Provision an instance');
+    assert.equal(await evaluate('location.pathname'), '/configuration/operations');
+    await click('Configuration'); await text('Default Java environment');
+    await until(() => evaluate("[...document.querySelectorAll('select')].some(e => e.closest('label')?.textContent.includes('Installed system Java'))"), 'system Java choices loaded');
     await evaluate(`const select = [...document.querySelectorAll('select')].find(e => e.closest('label')?.textContent.includes('Installed system Java')); select.value = '/usr/lib/jvm/java-21/bin/java'; select.dispatchEvent(new Event('change', { bubbles: true }));`);
     await click('Set system default'); await text('Change the host’s default Java?'); await click('Confirm');
     await until(() => defaultJava.endsWith('java-21/bin/java'), 'system Java submission');
