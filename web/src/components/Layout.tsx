@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { setVisibleInterval } from '../lib/perf.js';
 import { PanelUpdateBanner } from './PanelUpdateBanner.js';
 import { t, tc } from '../i18n/index.js';
@@ -178,6 +178,50 @@ function DrawerFooter({ system }: { system: SystemInfo | null }) {
 // animation only plays when it actually changes (main menu ↔ an instance's menu).
 let lastNavKey: string | null = null;
 
+// Keep drawer positions across page-owned Layout remounts. Desktop and mobile have
+// different viewport sizes, and each account/menu needs its own position.
+const drawerPositions = new Map<string, number>();
+
+function DrawerScroll({ positionKey, animate, children }: {
+  positionKey: string; animate: boolean; children: ReactNode;
+}) {
+  const viewport = useRef<HTMLDivElement>(null);
+  const content = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const element = viewport.current!;
+    const restore = () => {
+      if (element.clientHeight > 0) element.scrollTop = drawerPositions.get(positionKey) ?? 0;
+    };
+    restore();
+    // Instance links arrive asynchronously. Retry when the menu grows, and when
+    // a hidden desktop drawer becomes visible after a viewport resize.
+    const observer = new ResizeObserver(restore);
+    observer.observe(element);
+    observer.observe(content.current!);
+    return () => observer.disconnect();
+  }, [positionKey]);
+  return (
+    <motion.div
+      ref={viewport}
+      className="min-h-0 flex-1 overflow-y-auto"
+      onScroll={event => {
+        const element = event.currentTarget;
+        const saved = drawerPositions.get(positionKey) ?? 0;
+        const maximum = Math.max(0, element.scrollHeight - element.clientHeight);
+        // A partially loaded menu can clamp restoration; keep the full target
+        // until its instance links arrive, unless the user scrolls elsewhere.
+        if (saved > maximum && element.scrollTop === maximum) return;
+        if (element.clientHeight > 0) drawerPositions.set(positionKey, element.scrollTop);
+      }}
+      initial={animate ? { opacity: 0, x: -16 } : false}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ duration: 0.35, ease: [0.2, 0, 0, 1] }}
+    >
+      <div ref={content}>{children}</div>
+    </motion.div>
+  );
+}
+
 /**
  * App shell: MD3 navigation drawer + content. Pages can replace the drawer's navigation with
  * their own (`sidebar`) — the instance view does, swapping in Status/Console/Backups/….
@@ -196,6 +240,7 @@ export function Layout({
   const [system, setSystem] = useState<SystemInfo | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
   const location = useLocation();
+  const { user } = useAuth();
 
   useEffect(() => {
     api
@@ -220,7 +265,7 @@ export function Layout({
     lastNavKey = navKey;
     return changed;
   });
-  const drawer = (
+  const drawer = (device: 'desktop' | 'mobile') => (
     <div className="flex h-full flex-col px-3 py-4">
       <div className="mb-4 flex items-center gap-3 px-4 py-2">
         <motion.div whileHover={{ rotate: -8, scale: 1.06 }} transition={{ type: 'spring', stiffness: 400, damping: 15 }}>
@@ -228,14 +273,9 @@ export function Layout({
         </motion.div>
         <div><span className="text-xl font-semibold tracking-tight text-ink-50">Outpost</span><p className="text-[11px] text-ink-400">{t('Your server workspace')}</p></div>
       </div>
-      <motion.div
-        className="min-h-0 flex-1 overflow-y-auto"
-        initial={animateNav ? { opacity: 0, x: -16 } : false}
-        animate={{ opacity: 1, x: 0 }}
-        transition={{ duration: 0.35, ease: [0.2, 0, 0, 1] }}
-      >
+      <DrawerScroll positionKey={`${user?.id}:${navKey}:${device}`} animate={animateNav}>
         {sidebar ? sidebar(close) : <MainNav onNavigate={close} />}
-      </motion.div>
+      </DrawerScroll>
       <DrawerFooter system={system} />
     </div>
   );
@@ -243,7 +283,7 @@ export function Layout({
   return (
     <div className="ui-app relative isolate flex h-screen bg-surface-950">
       <Wallpaper />
-      <aside className="ui-sidebar relative z-[1] hidden w-72 shrink-0 bg-surface-900 md:block">{drawer}</aside>
+      <aside className="ui-sidebar relative z-[1] hidden w-72 shrink-0 bg-surface-900 md:block">{drawer('desktop')}</aside>
 
       {/* Phone drawer. It stays mounted and slides with CSS: when closed it ignores every touch, so
           its backdrop can never be left covering the page (an interrupted exit animation used to
@@ -259,7 +299,7 @@ export function Layout({
           }`}
         >
           {/* Own namespace for the sliding "active item" highlight, separate from the desktop sidebar's. */}
-          {drawerMounted && <LayoutGroup id="mobile-drawer">{drawer}</LayoutGroup>}
+          {drawerMounted && <LayoutGroup id="mobile-drawer">{drawer('mobile')}</LayoutGroup>}
         </aside>
       </div>
 
