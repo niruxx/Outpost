@@ -890,3 +890,5 @@ Features other game panels (Pterodactyl, AMP, Crafty, PufferPanel) have that Out
 - [ ] 🎟️ **Reserved slots & whitelist** — SteamID lists for private or pug servers
 
 <p align="center"><sub>Made with 💚 for people who'd rather play than SSH.</sub></p>
+
+Advanced host storage includes software RAID, PV extent migration, LUKS2 keyslot/crypttab management, supported encrypted ext4 shrinking, SMART self-tests and disk erasure. See [supported workflows and limitations](docs/expert-storage.md).

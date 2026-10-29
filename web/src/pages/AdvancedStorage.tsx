@@ -1,7 +1,9 @@
+import { EXPERT_TITLES, type ExpertFields } from './ExpertStorage.js';
 import { Button, Card, Field, Input, Notice, Select } from '../components/ui.js';
 import type { StoragePermission } from '../api/types.js';
 
 export const ADVANCED_TITLES = {
+  ...EXPERT_TITLES,
   luksFormat: 'Create LUKS2 encryption', luksOpen: 'Unlock LUKS', luksClose: 'Lock LUKS mapping', luksPassphrase: 'Change LUKS passphrase', luksGrow: 'Grow encrypted mapping',
   pvCreate: 'Create physical volume', pvRemove: 'Remove physical volume', pvGrow: 'Grow physical volume',
   vgCreate: 'Create volume group', vgRename: 'Rename volume group', vgExtend: 'Add physical volumes', vgReduce: 'Remove unused physical volume', vgRemove: 'Remove empty volume group',
@@ -9,7 +11,7 @@ export const ADVANCED_TITLES = {
   partitionGrow: 'Grow partition', partitionShrink: 'Shrink ext4 partition', filesystemGrow: 'Grow filesystem',
 } as const;
 export type AdvancedAction = keyof typeof ADVANCED_TITLES;
-export interface AdvancedFields { name?: string; vg?: string; lv?: string; sizeMb?: number; devices?: string[]; layout?: 'linear' | 'thin-pool' | 'thin'; pool?: string }
+export interface AdvancedFields extends ExpertFields { name?: string; vg?: string; lv?: string; sizeMb?: number; devices?: string[]; layout?: 'linear' | 'thin-pool' | 'thin'; pool?: string }
 export interface LvmState {
   available: boolean; error: string | null;
   pvs: { path: string; uuid: string; vg: string; size: number; free: number; used: number }[];

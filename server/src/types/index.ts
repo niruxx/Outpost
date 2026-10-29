@@ -22,7 +22,7 @@ export interface User {
 /** What a user may do with the host firewall. Admins can always do everything. */
 export type FirewallAccess = 'none' | 'view' | 'instances' | 'manage';
 
-export type StoragePermission = 'view' | 'mount' | 'automount' | 'format' | 'wipe' | 'partition' | 'encrypt' | 'lvm' | 'resize';
+export type StoragePermission = 'view' | 'mount' | 'automount' | 'format' | 'wipe' | 'partition' | 'encrypt' | 'lvm' | 'resize' | 'raid' | 'migrate' | 'crypttab' | 'health' | 'erase';
 export type PublicUser = Omit<User, 'password_hash' | 'password_salt' | 'totp_secret' | 'totp_last_step' | 'totp_recovery' | 'storage'> & { storagePermissions: StoragePermission[]; vmAccess: import('../services/vmAccessService.js').VmGrant[] };
 
 export type TaskAction = 'command' | 'restart' | 'start' | 'stop';

@@ -1,3 +1,4 @@
+import { ExpertDeviceControls, ExpertInventoryCard, ExpertOperationFields, type ExpertAction, type ExpertFields, type ExpertState } from './ExpertStorage.js';
 import { AdvancedDeviceControls, AdvancedOperationFields, LvmPanel, ADVANCED_TITLES, type AdvancedAction, type AdvancedFields, type LvmState } from './AdvancedStorage.js';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Layout, PageHeader } from '../components/Layout.js';
@@ -10,18 +11,18 @@ import type { StoragePermission } from '../api/types.js';
 interface Device {
   path: string; kernel: string; id: string; type: string; size: number; model: string;
   serial: string; filesystem: string; label: string; uuid: string; transport: string;
-  critical?: boolean; readOnly?: boolean;
+  rotational?: boolean; critical?: boolean; readOnly?: boolean;
   mountpoints: string[]; children: Device[]; protected: boolean; reason: string | null;
 }
 type Action = 'mount' | 'unmount' | 'automount' | 'format' | 'wipe' | 'partition' | AdvancedAction;
 interface Operation extends AdvancedFields { action: Action; device: string; mountpoint?: string; persistent?: boolean; enabled?: boolean; readOnly?: boolean; filesystem?: string; label?: string }
 interface Job { id: string; action: string; device: string; state: 'running' | 'done' | 'failed'; message: string; createdAt: string }
-interface Overview {
+interface Overview extends ExpertState {
   lvm?: LvmState;
   available: boolean; error: string | null; devices: Device[]; busy: boolean; permissions: StoragePermission[];
   fstab: { source: string; target: string; filesystem: string; options: string; managed: boolean }[]; jobs: Job[];
 }
-interface Plan { ticket: string; device: Device; operation: Operation; confirmation: string; destructive: boolean; explanation: string }
+interface Plan { affectedDevices?: { path: string; size: number; model: string; serial: string }[]; ticket: string; device: Device; operation: Operation; confirmation: string; destructive: boolean; explanation: string }
 const flatten = (nodes: Device[]): Device[] => nodes.flatMap((node) => [node, ...flatten(node.children)]);
 const bytes = (size: number) => size >= 1024 ** 4 ? `${(size / 1024 ** 4).toFixed(1)} TiB` : size >= 1024 ** 3 ? `${(size / 1024 ** 3).toFixed(1)} GiB` : `${(size / 1024 ** 2).toFixed(0)} MiB`;
 const message = (err: unknown) => err instanceof Error ? err.message : 'Storage request failed';
@@ -54,6 +55,11 @@ export function StoragePage() {
     const current = state?.fstab.find((entry) => entry.source === `UUID=${device.uuid}` || entry.source === device.path);
     setOperation({ action, device: device.path, mountpoint: current?.target ?? device.mountpoints[0] ?? `/mnt/outpost/${device.kernel}`, persistent: false, enabled: current?.managed ?? true, readOnly: current?.options.split(',').includes('ro') ?? false, filesystem: 'ext4', label: '', vg: state?.lvm?.pvs.find((p) => p.path === device.path)?.vg || undefined });
   }
+  function openExpert(action: ExpertAction, fields: ExpertFields = {}) {
+    if (!device) return;
+    const pv = state?.lvm?.pvs.find(p => p.path === device.path), lv = state?.lvm?.lvs.find(l => l.path === device.path);
+    setOperation({ action, device: device.path, vg: pv?.vg || lv?.vg || undefined, lv: lv?.name, ...fields });
+  }
   return <Layout><div className="mx-auto max-w-7xl space-y-5 p-4 sm:p-8">
     <PageHeader title="Storage" subtitle="Disks, filesystems, mounts and persistent boot mounts on this host." action={<Button onClick={load}><Icon name="refresh" className="h-4 w-4" />Refresh</Button>} />
     <ErrorText>{error}</ErrorText>{loading && <Spinner />}
@@ -75,11 +81,13 @@ export function StoragePage() {
           <Button variant="danger" disabled={!can('wipe') || mounted} onClick={() => open('wipe')}>Wipe signatures</Button>
           <Button variant="danger" disabled={!can('partition') || mounted || device.type !== 'disk' || !!device.children.length || !!device.filesystem} onClick={() => open('partition')}>Create GPT partition</Button>
         </div><p className="text-xs text-ink-500">Root/system and Outpost data disks are protected. Destructive actions require a fresh device preview and typed confirmation. Wiping signatures does not securely erase disk contents.</p>
+        <ExpertDeviceControls device={device} state={state} permissions={state.permissions} busy={state.busy} onOpen={openExpert} />
         <AdvancedDeviceControls device={device} permissions={state.permissions} busy={state.busy} lvm={state.lvm} onOpen={open} />
       </Card><Card className="space-y-3 p-5"><h3 className="font-medium text-ink-100">Persistent mounts · /etc/fstab</h3>{state.fstab.filter((e) => e.source === device.path || (!!device.uuid && e.source === `UUID=${device.uuid}`)).map((entry) => <div key={entry.source + entry.target} className="rounded-xl bg-surface-900 p-3 text-xs"><p className="break-all font-mono text-ink-200">{entry.target}</p><p className="mt-1 break-all text-ink-400">{entry.filesystem} · {entry.options}</p><p className="mt-1 text-ink-500">{entry.managed ? 'Managed by Outpost' : 'Existing system entry; edit outside Outpost'}</p></div>)}<p className="text-xs text-ink-400">Boot mounts use filesystem UUIDs, nofail, nodev and nosuid. Unmounting does not remove the boot entry. Remove it with Boot mount before formatting or wiping.</p></Card></div>}
     </div>}
     {state?.available && <LvmPanel lvm={state.lvm} permissions={state.permissions} busy={state.busy} onOpen={setOperation} />}
-    {!!state?.jobs.length && <Card className="space-y-3 p-5"><h2 className="font-medium text-ink-100">Recent storage operations</h2>{state.jobs.map((job) => <div key={job.id} className="rounded-xl bg-surface-900 p-3"><div className="flex flex-wrap items-center gap-2"><span className="text-sm text-ink-200">{TITLES[job.action as Action] ?? job.action} · {job.device}</span><Badge tone={job.state === 'done' ? 'green' : job.state === 'failed' ? 'red' : 'blue'}>{job.state}</Badge></div><p className="mt-2 break-words text-xs text-ink-400">{job.message}</p></div>)}</Card>}
+    {!!state?.jobs.length && <Card className="space-y-3 p-5"><h2 className="font-medium text-ink-100">Recent storage operations</h2>{state.jobs.map((job) => <div key={job.id} className="rounded-xl bg-surface-900 p-3"><div className="flex flex-wrap items-center gap-2"><span className="text-sm text-ink-200">{TITLES[job.action as Action] ?? job.action} · {job.device}</span><Badge tone={job.state === 'done' ? 'green' : job.state === 'failed' ? 'red' : 'blue'}>{job.state}</Badge></div><p className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap break-words text-xs text-ink-400">{job.message}</p></div>)}</Card>}
+    {state?.available && <ExpertInventoryCard state={state} onSelect={setSelectedPath} />}
     <OperationModal operation={operation} permissions={state?.permissions ?? []} onClose={() => setOperation(null)} onStarted={() => { setOperation(null); void load(); }} />
   </div></Layout>;
 }
@@ -106,12 +114,13 @@ function OperationModal({ operation, permissions, onClose, onStarted }: { operat
     try { await api.post('/storage/execute', { ticket: plan.ticket, confirmation: plan.destructive ? confirmation : plan.confirmation, secrets }); onStarted(); }
     catch (err) { setError(message(err)); } finally { setBusy(false); setSecrets({}); setRepeatPassphrase(''); }
   }
-  const needsCurrent = !!draft && ['luksOpen', 'luksPassphrase', 'luksGrow'].includes(draft.action);
-  const needsNew = !!draft && ['luksFormat', 'luksPassphrase'].includes(draft.action);
+  const needsCurrent = !!draft && (['luksOpen', 'luksPassphrase', 'luksGrow', 'luksAddKey', 'luksRemoveSlot', 'luksChangeSlot', 'layerShrink'].includes(draft.action) || (draft.action === 'crypttabSet' && draft.keyMode === 'managed'));
+  const needsNew = !!draft && ['luksFormat', 'luksPassphrase', 'luksAddKey', 'luksChangeSlot'].includes(draft.action);
   const secretsReady = (!needsCurrent || !!secrets.passphrase) && (!needsNew || ((secrets.newPassphrase?.length ?? 0) >= 8 && secrets.newPassphrase === repeatPassphrase));
   return <Modal open={!!operation} onClose={() => !busy && onClose()} title={draft ? TITLES[draft.action] : 'Storage operation'} size="lg">
     {draft && <div className="space-y-4"><p className="font-mono text-sm text-ink-100">{draft.device}</p>
       {!plan && <>
+        <ExpertOperationFields op={draft} busy={busy} patch={patch => setDraft({ ...draft, ...patch })} />
         <AdvancedOperationFields op={draft} busy={busy} patch={(patch) => setDraft({ ...draft, ...patch })} />
         {['mount', 'automount'].includes(draft.action) && <><Field label="Mount folder"><Input value={draft.mountpoint ?? ''} disabled={busy} onChange={(e) => setDraft({ ...draft, mountpoint: e.target.value })} placeholder="/mnt/outpost/data" /></Field><p className="text-xs text-ink-500">Use an empty dedicated folder under /mnt, /media or /srv. Existing folders and parents must be root-owned and not writable by other users.</p><label className="flex items-center gap-2 text-sm text-ink-200"><input type="checkbox" checked={draft.readOnly ?? false} onChange={(e) => setDraft({ ...draft, readOnly: e.target.checked })} disabled={busy} />Read-only filesystem</label></>}
         {draft.action === 'mount' && permissions.includes('automount') && <label className="flex items-center gap-2 text-sm text-ink-200"><input type="checkbox" checked={draft.persistent ?? false} onChange={(e) => setDraft({ ...draft, persistent: e.target.checked })} disabled={busy} />Also mount at boot through /etc/fstab</label>}
@@ -122,8 +131,9 @@ function OperationModal({ operation, permissions, onClose, onStarted }: { operat
         {draft.action === 'unmount' && <p className="text-sm text-ink-300">Close files and stop programs using the filesystem first. This does not remove its boot-mount entry.</p>}
       </>}
       {plan && <><Notice tone={plan.destructive ? 'warning' : 'info'}>{plan.explanation}</Notice><div className="rounded-xl bg-surface-900 p-3 text-sm text-ink-300"><p>{plan.device.path} · {bytes(plan.device.size)} · {plan.device.model || plan.device.type}</p><p className="mt-1 text-xs text-ink-500">Serial: {plan.device.serial || 'not reported'}{draft.mountpoint ? ` · Mount: ${draft.mountpoint}` : ''}</p></div>{plan.destructive && <Field label={`Type ${plan.confirmation} to confirm`}><Input autoComplete="off" value={confirmation} disabled={busy} onChange={(e) => setConfirmation(e.target.value)} /></Field>}<p className="text-xs text-ink-500">The preview expires after two minutes. Device identity and permissions are checked again when the action starts.</p></>}
+      {plan?.affectedDevices?.map(d => <p key={d.path} className="break-all text-xs text-ink-300">Affected: {d.path} | {bytes(d.size)} | {d.model} | serial {d.serial || 'not reported'}</p>)}
       {plan && <pre className="overflow-auto rounded-xl bg-surface-900 p-3 text-xs text-ink-300">{JSON.stringify(plan.operation, null, 2)}</pre>}
-      {plan && needsCurrent && <Field label="Current LUKS passphrase"><Input type="password" autoComplete="off" value={secrets.passphrase ?? ''} disabled={busy} onChange={(e) => setSecrets({ ...secrets, passphrase: e.target.value })} /></Field>}
+      {plan && needsCurrent && <Field label={draft.action === 'luksRemoveSlot' ? 'Passphrase for the surviving keyslot' : 'Current LUKS passphrase'}><Input type="password" autoComplete="off" value={secrets.passphrase ?? ''} disabled={busy} onChange={(e) => setSecrets({ ...secrets, passphrase: e.target.value })} /></Field>}
       {plan && needsNew && <><Field label="New LUKS passphrase"><Input type="password" autoComplete="new-password" value={secrets.newPassphrase ?? ''} disabled={busy} onChange={(e) => setSecrets({ ...secrets, newPassphrase: e.target.value })} /></Field><Field label="Repeat new passphrase"><Input type="password" autoComplete="new-password" value={repeatPassphrase} disabled={busy} onChange={(e) => setRepeatPassphrase(e.target.value)} /></Field></>}
       <ErrorText>{error}</ErrorText><div className="flex flex-wrap justify-end gap-2"><Button disabled={busy} onClick={onClose}>Cancel</Button>{plan ? <><Button disabled={busy} onClick={() => { setPlan(null); setConfirmation(''); }}>Edit / refresh preview</Button><Button variant={plan.destructive ? 'danger' : 'primary'} disabled={busy || !secretsReady || (plan.destructive && confirmation !== plan.confirmation)} onClick={execute}>{busy ? 'Starting…' : 'Apply operation'}</Button></> : <Button variant="primary" disabled={busy} onClick={preview}>{busy ? 'Checking device…' : 'Preview operation'}</Button>}</div>
     </div>}

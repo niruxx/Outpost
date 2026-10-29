@@ -312,7 +312,7 @@ function EditUserModal({
           <p className="text-xs font-medium text-ink-300">Host storage permissions</p>
           <p className="text-xs text-ink-500">Host-wide disk access, separate from instance permissions. Administrators have every permission by default. Formatting, wiping and partitioning destroy data.</p>
           <div className="flex flex-wrap gap-3">{([
-            ['view', 'View disks'], ['mount', 'Mount / unmount'], ['automount', 'Boot mounts (fstab)'], ['format', 'Format filesystems'], ['wipe', 'Wipe signatures'], ['partition', 'Initialize GPT partitions'], ['encrypt', 'LUKS encryption / passphrases'], ['lvm', 'LVM management'], ['resize', 'Resize storage'],
+            ['view', 'View disks'], ['mount', 'Mount / unmount'], ['automount', 'Boot mounts (fstab)'], ['format', 'Format filesystems'], ['wipe', 'Wipe signatures'], ['partition', 'Initialize GPT partitions'], ['encrypt', 'LUKS encryption / passphrases'], ['lvm', 'LVM management'], ['resize', 'Resize storage'], ['raid', 'Software RAID management'], ['migrate', 'LVM extent migration'], ['crypttab', 'Encrypted boot configuration'], ['health', 'SMART health / tests'], ['erase', 'Whole-disk erasure'],
           ] as [StoragePermission, string][]).map(([permission, label]) => <label key={permission} className="flex items-center gap-2 text-xs text-ink-200">
             <input type="checkbox" checked={storagePermissions.includes(permission)} onChange={(e) => setStoragePermissions((current) => e.target.checked ? [...current, permission] : current.filter((item) => item !== permission))} />{label}
           </label>)}</div>

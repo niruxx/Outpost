@@ -18,6 +18,11 @@ Open **Users → Edit user → Host storage permissions**:
 | Initialize GPT | Initialize an empty disk with GPT and one whole-disk Linux partition. |
 | LUKS encryption / passphrases | Create, unlock/lock and change LUKS passphrases. |
 | LVM management | Manage physical volumes, volume groups, logical volumes, pools and snapshots. |
+| Software RAID | Create arrays, manage members and inspect health; boot assembly changes also require Boot mounts. |
+| Migrate extents | Move or abort PV migrations; also requires LVM management. |
+| Encrypted boot configuration | Manage crypttab; also requires LUKS encryption. |
+| Disk health | Read SMART reports and start/abort drive self-tests. |
+| Secure disk erasure | Secure discard or verified rotational-disk overwrite; separate from Wipe signatures. |
 | Resize storage | Supported partition/filesystem resizing; also required alongside encryption/LVM for their resize operations. |
 
 Any change permission also grants viewing. A combined “mount now and at boot” operation requires both Mount and Boot mounts, checked again when the operation starts. API keys cannot mutate host storage, even writable administrator keys. Permissions and administrator status come from the current database account, so revocation and demotion apply to existing sign-ins.
@@ -70,13 +75,15 @@ The helper blocks system/boot and Outpost data disks, read-only devices, mounted
 
 There is no forced/lazy unmount or automatic swap disabling. Operations run as background jobs and serialize behind a kernel `flock`, including across Outpost restarts. A running action can finish after its browser closes or Outpost restarts; its lock continues to block other disk mutations. The page polls inventory and running-state checks every five seconds. Recent job results are held for the current panel process; start/completion/failure audit entries persist. Failed or interrupted destructive operations may have partially applied: inspect the device before retrying. Do not disconnect a disk during an operation.
 
-The Storage page also supports [LUKS, LVM and supported resize workflows](advanced-storage.md). This is not full Cockpit parity: RAID/iSCSI, arbitrary layered shrinking, SMART tests and secure whole-disk erasure remain outside this UI. Reinstall the updated privileged helper and install the required crypto/LVM/filesystem tools before using the new controls.
+The Storage page also supports [LUKS, LVM and supported resize workflows](advanced-storage.md). See [advanced maintenance](expert-storage.md) for RAID, migration, keyslots/crypttab, supported layered shrinking, SMART and erasure. iSCSI, generalized layered shrinking and device-specific firmware sanitization remain outside this UI. Reinstall the updated privileged helper and install the required crypto/LVM/filesystem tools before using the new controls.
 
 ## Verification
 
 ```sh
 npm run build
 node server/test/storage.mjs
+node server/test/advanced-storage.mjs
+node server/test/expert-storage.mjs
 ```
 
 The regression uses simulated Linux inventory, in-memory fstab text and captured command arguments. It exercises protected disks, swap/holders, device replacement, format/wipe/GPT command construction, fstab preservation/rollback, delegation, API-key rejection and revoked permissions. **It does not format, mount, wipe or repartition real devices, or write the real `/etc/fstab`.** Real-host verification should use disposable Linux VM disks after installing the helper.

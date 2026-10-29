@@ -46,7 +46,9 @@ Planned features inspired by AMP and other game panels. These are development go
 - [x] LUKS2 initialization, unlock/lock, passphrase changes and mapping growth.
 - [x] Core LVM PV/VG/LV management, renaming, thin provisioning, snapshots and supported LV resizing.
 - [x] Partition growth and filesystem-first offline ext4 partition/LV shrinking.
-- [ ] Remaining advanced storage: RAID, extent migration, advanced keyslot/crypttab management, arbitrary layered shrinking, SMART tests and secure whole-disk erasure.
+- [x] Advanced storage: Linux software RAID creation/member management and boot assembly entries; same-VG extent migration; LUKS2 keyslots, header backups and crypttab; SMART tests; supported secure discard and verified HDD overwrite.
+- [x] Verified offline ext4 -> LUKS2 -> partition or linear-LV shrinking.
+- [ ] Generalized layered shrinking (including LVM-inside-LUKS and complex stacks), RAID reshape/cache management, and device-specific ATA/NVMe firmware sanitization. See [supported limits](docs/expert-storage.md).
 
 ## Comparison and sources
 

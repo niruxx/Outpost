@@ -1,5 +1,5 @@
 export type Role = 'admin' | 'moderator' | 'viewer';
-export type StoragePermission = 'view' | 'mount' | 'automount' | 'format' | 'wipe' | 'partition' | 'encrypt' | 'lvm' | 'resize';
+export type StoragePermission = 'view' | 'mount' | 'automount' | 'format' | 'wipe' | 'partition' | 'encrypt' | 'lvm' | 'resize' | 'raid' | 'migrate' | 'crypttab' | 'health' | 'erase';
 
 export type VmPermission = 'view' | 'power' | 'console' | 'configure' | 'snapshots';
 export interface VmGrant { uri: string; uuid: string; permissions: VmPermission[] }

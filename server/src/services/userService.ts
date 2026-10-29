@@ -11,7 +11,7 @@ function toPublic(user: User): PublicUser {
   return { ...rest, storagePermissions: storagePermissionsOf(user), vmAccess: vmGrants(user.id) };
 }
 
-export const STORAGE_PERMISSIONS: StoragePermission[] = ['view', 'mount', 'automount', 'format', 'wipe', 'partition', 'encrypt', 'lvm', 'resize'];
+export const STORAGE_PERMISSIONS: StoragePermission[] = ['view', 'mount', 'automount', 'format', 'wipe', 'partition', 'encrypt', 'lvm', 'resize', 'raid', 'migrate', 'crypttab', 'health', 'erase'];
 export function storagePermissionsOf(user: User): StoragePermission[] {
   if (user.role === 'admin') return [...STORAGE_PERMISSIONS];
   try {

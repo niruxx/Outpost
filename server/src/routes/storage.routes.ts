@@ -12,6 +12,12 @@ function requireStorage(req: Request, permission: StoragePermission) {
   if (permission !== 'view' && req.auth!.apiKey) throw new HttpError(403, 'Sign in to the panel to change host storage; API keys cannot perform disk operations');
   return user;
 }
+function requireAdditionalStorage(req: Request, op: ReturnType<typeof validateStorageOperation>) {
+  if (op.persistent || ['raidBootAdd', 'raidBootRemove'].includes(op.action)) requireStorage(req, 'automount');
+  if (['luksGrow', 'pvGrow', 'lvResize'].includes(op.action)) requireStorage(req, 'resize');
+  if (['pvMove', 'pvMoveAbort', 'pvShrink', 'layerShrink'].includes(op.action)) requireStorage(req, 'lvm');
+  if (['crypttabSet', 'crypttabRemove', 'layerShrink'].includes(op.action)) requireStorage(req, 'encrypt');
+}
 export function createStorageRouter(manager: StorageManager = storageManager) {
   const router = Router(); router.use(requireAuth);
   router.get('/', asyncHandler(async (req, res) => {
@@ -23,8 +29,7 @@ export function createStorageRouter(manager: StorageManager = storageManager) {
     try { op = validateStorageOperation(req.body); }
     catch (error) { throw new HttpError(400, error instanceof Error ? error.message : 'Invalid storage operation'); }
     const user = requireStorage(req, storagePermission(op.action));
-    if (op.persistent) requireStorage(req, 'automount');
-    if (['luksGrow', 'pvGrow', 'lvResize'].includes(op.action)) requireStorage(req, 'resize');
+    requireAdditionalStorage(req, op);
     res.set('Cache-Control', 'no-store').json(await manager.preview(user.id, op));
   }));
   router.post('/execute', (req, res, next) => {
@@ -33,8 +38,7 @@ export function createStorageRouter(manager: StorageManager = storageManager) {
       const op = manager.plannedOperation(user.id, req.body?.ticket);
       const action = op.action;
       requireStorage(req, storagePermission(action));
-      if (op.persistent) requireStorage(req, 'automount');
-      if (['luksGrow', 'pvGrow', 'lvResize'].includes(op.action)) requireStorage(req, 'resize');
+      requireAdditionalStorage(req, op);
       if (req.auth!.apiKey) throw new HttpError(403, 'Sign in to the panel to change host storage');
       res.status(202).json({ job: manager.execute(user.id, user.username, req.body?.ticket, req.body?.confirmation, req.body?.secrets) });
     } catch (error) { next(error); }
