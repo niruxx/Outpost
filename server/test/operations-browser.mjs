@@ -32,7 +32,13 @@ app.use(express.static(path.resolve('web/dist'))); app.get('*', (_req, res) => r
 const server = app.listen(0, '127.0.0.1'); await once(server, 'listening'); const origin = `http://127.0.0.1:${server.address().port}`;
 try {
   await runBrowser(origin, async ({ evaluate, navigate, text, click, until }) => {
-    await navigate('/operations'); await text('Provision an instance'); await text('Fixture host');
+    await navigate('/'); await text('Your instances');
+    await evaluate("document.querySelector('button[aria-label=\"Open navigation\"]').click()");
+    await text('Operations');
+    // HTTP LAN origins do not expose randomUUID. Exercise sidebar navigation in that environment.
+    await evaluate("Object.defineProperty(crypto, 'randomUUID', { value: undefined, configurable: true })");
+    await click('Operations'); await text('Provision an instance'); await text('Fixture host');
+    await click('Start a different request'); await text('New request ID selected.');
     await click('IP / port pools'); await text('Local IP / port pools');
     await click('My Steam accounts'); await text('Saved Steam user');
     await click('CurseForge modpacks'); await text('Install a CurseForge server modpack'); await click('Search'); await text('Fixture CurseForge pack');
