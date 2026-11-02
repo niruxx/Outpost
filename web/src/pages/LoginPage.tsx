@@ -16,7 +16,11 @@ export function LoginPage() {
   const location = useLocation();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const [error, setError] = useState(() => {
+    const msg = sessionStorage.getItem('outpost.disabledMessage') ?? '';
+    sessionStorage.removeItem('outpost.disabledMessage');
+    return msg;
+  });
   const [submitting, setSubmitting] = useState(false);
   // Second step: the password was right and the account has two-factor sign-in on.
   const [needsCode, setNeedsCode] = useState(false);

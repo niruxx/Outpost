@@ -17,6 +17,9 @@ export interface User {
   storage: string;
   /** UI theme applied at sign-in (set by an admin); null = the browser's own choice. */
   theme: string | null;
+  /** Disabled accounts can't sign in or use existing sessions/API keys. */
+  disabled: 0 | 1;
+  disabled_reason: string | null;
 }
 
 /** What a user may do with the host firewall. Admins can always do everything. */

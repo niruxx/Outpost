@@ -2,7 +2,7 @@ import type { NextFunction, Request, Response } from 'express';
 import { authenticate } from './tokens.js';
 import { requestContext } from '../utils/requestContext.js';
 import type { AuthTokenPayload, Role } from '../types/index.js';
-import { getConfigAccess, getServerPermissions, logAudit, userHasServerAccess, type ServerPermission } from '../services/userService.js';
+import { disabledMessage, getUserById, getConfigAccess, getServerPermissions, logAudit, userHasServerAccess, type ServerPermission } from '../services/userService.js';
 import { HttpError } from '../utils/asyncHandler.js';
 import { getServer } from '../services/serverService.js';
 
@@ -27,6 +27,8 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (!token) return res.status(401).json({ error: 'Authentication required' });
   const payload = authenticate(token);
   if (!payload) return res.status(401).json({ error: token.startsWith('opk_') ? 'Invalid, revoked or expired API key' : 'Invalid or expired session' });
+  const account = getUserById(payload.sub);
+  if (account?.disabled) return res.status(403).json({ error: disabledMessage(account.disabled_reason), disabled: true, reason: account.disabled_reason });
   if (payload.apiKey) {
     // Keys can't manage keys or sign-in settings (password, 2FA, SFTP logins) — that needs a real sign-in.
     if (/^\/api\/(keys|auth|sftp\/me)(\/|$|\?)/.test(req.originalUrl)) return res.status(403).json({ error: 'API keys can’t change API keys or sign-in settings — sign in to the panel for that' });

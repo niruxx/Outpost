@@ -35,6 +35,14 @@ export function runMigrations(db: DatabaseSync): void {
   addAuditClientColumns(db);
   addRewindColumn(db);
   addRconAndAutoUpdateColumns(db);
+  addUserDisabledColumns(db);
+}
+
+function addUserDisabledColumns(db: DatabaseSync): void {
+  if (db.prepare("SELECT 1 FROM pragma_table_info('users') WHERE name = 'disabled'").get()) return;
+  logger.info('Migrating database: adding users.disabled columns');
+  db.exec('ALTER TABLE users ADD COLUMN disabled BOOLEAN NOT NULL DEFAULT 0');
+  db.exec('ALTER TABLE users ADD COLUMN disabled_reason TEXT');
 }
 
 function addRconAndAutoUpdateColumns(db: DatabaseSync): void {

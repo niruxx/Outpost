@@ -37,6 +37,9 @@ export interface PublicUser {
   firewall?: FirewallAccess;
   /** Theme applied when this user signs in (an admin's choice); null = their own browser's choice. */
   theme?: string | null;
+  /** Disabled accounts can't sign in; the reason is shown at the login screen. */
+  disabled?: 0 | 1;
+  disabled_reason?: string | null;
   serverAccess?: string[];
   /** serverId → explicit permission set, or null for the role's defaults */
   configAccess?: Record<string, Record<string, boolean>>;

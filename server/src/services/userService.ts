@@ -65,6 +65,14 @@ export function authenticate(username: string, password: string): PublicUser | n
   return toPublic(user);
 }
 
+export function setUserDisabled(id: string, disabled: boolean, reason: string | null) {
+  prep('UPDATE users SET disabled = ?, disabled_reason = ? WHERE id = ?').run(disabled ? 1 : 0, disabled ? reason : null, id);
+}
+
+export function disabledMessage(reason: string | null): string {
+  return `This account has been disabled${reason ? `: ${reason}` : ''}. Contact the panel owner.`;
+}
+
 export const FIREWALL_ACCESS = ['none', 'view', 'instances', 'manage'] as const;
 
 /** Theme ids the web app ships (web/src/lib/theme.ts). */

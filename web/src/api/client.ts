@@ -46,6 +46,16 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     }
   }
 
+  if (res.status === 403 && token && res.headers.get('content-type')?.includes('application/json')) {
+    // The account was disabled mid-session: sign out and show the reason on the login page.
+    const body = await res.clone().json().catch(() => null);
+    if (body?.disabled) {
+      setToken(null);
+      sessionStorage.setItem('outpost.disabledMessage', body.error);
+      if (!path.startsWith('/auth/')) window.location.href = '/login';
+    }
+  }
+
   if (res.status === 204) return undefined as T;
 
   const isJson = res.headers.get('content-type')?.includes('application/json');

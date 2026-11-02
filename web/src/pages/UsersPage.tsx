@@ -21,6 +21,7 @@ export function UsersPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<PublicUser | null>(null);
   const [editOpen, setEditOpen] = useState(false);
+  const [disablingUser, setDisablingUser] = useState<PublicUser | null>(null);
 
   async function load() {
     try {
@@ -74,6 +75,16 @@ export function UsersPage() {
     }
   }
 
+  async function enableUser(user: PublicUser) {
+    try {
+      await api.patch(`/users/${user.id}`, { disabled: false });
+      toast.success(`Re-enabled "${user.username}"`);
+      await load();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Failed to enable user');
+    }
+  }
+
   return (
     <Layout>
       <div className="mx-auto max-w-3xl px-4 py-8 sm:px-8">
@@ -101,9 +112,13 @@ export function UsersPage() {
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-ink-100">{u.username}</span>
                     <Badge tone={u.role === 'admin' ? 'green' : u.role === 'moderator' ? 'blue' : 'neutral'}>{u.role}</Badge>
+                    {u.disabled ? <Badge tone="red">disabled</Badge> : null}
                     {u.totp_enabled ? <Badge tone="neutral">2FA</Badge> : null}
                     {u.theme ? <Badge tone="neutral">{THEMES.find((t) => t.id === u.theme)?.label ?? u.theme} theme</Badge> : null}
                   </div>
+                  {u.disabled ? (
+                    <p className="mt-0.5 text-xs text-red-400">Disabled{u.disabled_reason ? `: ${u.disabled_reason}` : ' (no reason given)'}</p>
+                  ) : null}
                   {u.role !== 'admin' && (
                     <p className="mt-0.5 text-xs text-ink-500">
                       {u.serverAccess && u.serverAccess.length > 0
@@ -129,6 +144,16 @@ export function UsersPage() {
                     Reset 2FA
                   </Button>
                 ) : null}
+                {u.id !== me?.id &&
+                  (u.disabled ? (
+                    <Button variant="ghost" onClick={() => enableUser(u)}>
+                      Enable
+                    </Button>
+                  ) : (
+                    <Button variant="ghost" onClick={() => setDisablingUser(u)}>
+                      Disable
+                    </Button>
+                  ))}
                 {u.id !== me?.id && (
                   <Button variant="danger" onClick={() => deleteUser(u)}>
                     Delete
@@ -138,6 +163,7 @@ export function UsersPage() {
             ))}
           </Card>
         )}
+        <DisableUserModal user={disablingUser} onClose={() => setDisablingUser(null)} onDone={load} />
 
       </div>
 
@@ -202,6 +228,56 @@ function CreateUserModal({ open, onClose, onSaved }: { open: boolean; onClose: (
           </Button>
           <Button variant="primary" onClick={submit} disabled={submitting}>
             {submitting ? 'Creating…' : 'Create user'}
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function DisableUserModal({ user, onClose, onDone }: { user: PublicUser | null; onClose: () => void; onDone: () => Promise<void> }) {
+  const toast = useToast();
+  const [reason, setReason] = useState('');
+  const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    setReason('');
+    setError('');
+  }, [user]);
+
+  async function submit() {
+    if (!user) return;
+    setSubmitting(true);
+    setError('');
+    try {
+      await api.patch(`/users/${user.id}`, { disabled: true, disabledReason: reason.trim() || null });
+      toast.success(`Disabled "${user.username}"`);
+      onClose();
+      await onDone();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Failed to disable user');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <Modal open={!!user} onClose={onClose} title={`Disable ${user?.username ?? 'user'}`}>
+      <div className="space-y-4">
+        <p className="text-sm text-ink-400">
+          They'll be signed out right away and can't sign in or use their API keys until re-enabled. The reason is shown to them when they try to sign in.
+        </p>
+        <Field label="Reason (optional)">
+          <Input value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} placeholder="e.g. Account under review" autoFocus />
+        </Field>
+        <ErrorText>{error}</ErrorText>
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button variant="danger" onClick={submit} disabled={submitting}>
+            {submitting ? 'Disabling…' : 'Disable user'}
           </Button>
         </div>
       </div>

@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { asyncHandler, HttpError } from '../utils/asyncHandler.js';
 import { requireAuth } from '../auth/middleware.js';
 import { createToken } from '../auth/tokens.js';
-import { authenticate, countUsers, createUser, getPublicUser, getUserById, logAudit } from '../services/userService.js';
+import { disabledMessage, authenticate, countUsers, createUser, getPublicUser, getUserById, logAudit } from '../services/userService.js';
 import { getEffectiveCreation } from '../services/userService.js';
 import {
   assertNotLocked,
@@ -54,6 +54,11 @@ authRouter.post(
     if (!user) {
       logAudit(null, username.trim().slice(0, 64), 'auth.login_failed');
       throw new HttpError(401, 'Invalid username or password');
+    }
+    if (user.disabled) {
+      // Only revealed after a correct password, so the reason isn't exposed to guessers.
+      logAudit(user.id, user.username, 'auth.login_disabled');
+      return res.status(403).json({ error: disabledMessage(user.disabled_reason), disabled: true, reason: user.disabled_reason });
     }
     if (user.totp_enabled) {
       // Password was right; the client asks for the code and sends all three again.

@@ -29,6 +29,7 @@ import {
   setUserTheme,
   STORAGE_PERMISSIONS,
   setStoragePermissions,
+  setUserDisabled,
 } from '../services/userService.js';
 import { disableTotp } from '../services/twoFactorService.js';
 import type { Role } from '../types/index.js';
@@ -99,6 +100,17 @@ usersRouter.patch(
         throw new HttpError(400, 'You cannot demote your own account');
       }
       updateUserRole(target.id, role);
+    }
+    if (req.body?.disabled !== undefined) {
+      const { disabled, disabledReason } = req.body;
+      if (typeof disabled !== 'boolean') throw new HttpError(400, 'disabled must be a boolean');
+      if (disabled && target.id === req.auth!.sub) throw new HttpError(400, 'You cannot disable your own account');
+      if (disabledReason != null && (typeof disabledReason !== 'string' || disabledReason.length > 500)) {
+        throw new HttpError(400, 'Disable reason must be a string of at most 500 characters');
+      }
+      const reason = typeof disabledReason === 'string' && disabledReason.trim() ? disabledReason.trim() : null;
+      setUserDisabled(target.id, disabled, reason);
+      logAudit(req.auth!.sub, req.auth!.username, disabled ? 'user.disable' : 'user.enable', target.id, reason ?? undefined);
     }
     if (password !== undefined) {
       if (typeof password !== 'string' || password.length < 8) {
