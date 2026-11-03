@@ -6,7 +6,11 @@ Install `mdadm`, `smartmontools`, `lvm2`, `cryptsetup`, `e2fsprogs`, `nvme-cli`,
 
 ## Linux software RAID
 
-Create RAID0/1/5/6/10 from blank, unmounted disks or partitions on distinct physical disks. RAID0 has no redundancy. Inspect array/member state, add a spare/replacement, mark an offline healthy redundant array's member faulty, detach faulty/spare members, or stop an offline array. Membership changes are blocked during synchronization. Healthy offline RAID1/5/6 arrays with native 1.x metadata can grow their member count using existing spares. Outpost retains a recovery file in root-only `/var/lib/outpost-storage/reshape` on independent host storage. Keep that file until reshape is complete; interrupted assembly may require it. Filesystem growth is a separate operation. Level/layout conversions, RAID shrinking, forced assembly and superblock clearing are not implemented.
+Create RAID0/1/5/6/10 from blank, unmounted disks or partitions on distinct physical disks. RAID0 has no redundancy. Inspect array/member state, add a spare/replacement, mark an offline healthy redundant array's member faulty, detach faulty/spare members, or stop an offline array. Membership changes are blocked during synchronization. Healthy offline RAID1/5/6 arrays with native 1.x metadata can grow their member count using existing spares. Outpost retains a recovery file in root-only `/var/lib/outpost-storage/reshape` on independent host storage. Keep that file until reshape is complete; interrupted assembly may require it. Filesystem growth is a separate operation.
+
+**Convert RAID level / layout** supports RAID1 ↔ RAID5 with two members, RAID5 → RAID6 using one existing spare, RAID6 → RAID5 (one member becomes a spare) and RAID5/6 layout changes (left/right symmetric/asymmetric, parity-first/last). Capacity is unchanged. The array must be healthy, idle, unmounted, native 1.x metadata and without inner holders. Restriping uses the same retained recovery file as growth.
+
+**Reduce RAID member count** for RAID1 changes only the slot count: first mark faulty and detach the mirrors to drop, so exactly the target count remains in sync. RAID5/6 shrinking requires plain unmounted ext4 directly on the array. Outpost verifies the component size against the array size, shrinks and verifies ext4, sets and verifies the reduced logical array size, then reshapes to fewer members. Dropped members become spares when the reshape finishes; detach them separately. A failure after the filesystem shrink leaves a smaller filesystem, and the reduced logical array size is not persistent until the reshape starts. RAID0/10 conversion or shrinking, forced assembly and superblock clearing are not implemented.
 
 Boot assembly writes a managed UUID entry to the distribution's mdadm configuration and preserves unrelated entries. It does not rebuild initramfs or configure the OS root array. Allow synchronization to complete and verify native health before trusting redundancy. RAID is not a backup.
 
@@ -30,9 +34,18 @@ crypttab controls support boot passphrase prompts or a new random key in an unus
 
 The supported recipe is **offline ext4 → one plain LUKS2 mapping → partition or linear LV**. Partition siblings must also be unmounted. LV targets must exactly align to VG extents. Outpost verifies LUKS metadata and backing-device identity, checks/shortens ext4, verifies filesystem size, shortens/verifies the mapping, closes it, reduces/verifies the outer device, then reopens it.
 
-Keep an independent data and header backup. A partial failure can leave a smaller filesystem or closed mapping: inspect actual filesystem, mapping and outer sizes before retrying or reopening. No automatic rollback can safely reverse every intermediate write. A second recipe supports **plain linear LVs -> one single-PV VG -> LUKS2 -> partition or linear outer LV**. Reduce individual LVs/filesystems beforehand if needed, and migrate high extents beforehand using native LVM tools. All affected filesystems must be offline. Outpost reduces the PV boundary with native allocated-extent checks, verifies its extent start/count against the payload size, deactivates the VG, then shortens the encryption and outer layer. Previously active LVs are reactivated after reopening. It does not automatically redistribute extents or select new sizes for multiple LVs. Failure may leave the VG inactive or its PV boundary smaller while the underlying device is still larger; inspect before recovery.
+Keep an independent data and header backup. A partial failure can leave a smaller filesystem or closed mapping: inspect actual filesystem, mapping and outer sizes before retrying or reopening. No automatic rollback can safely reverse every intermediate write. A second recipe supports **plain linear LVs -> one single-PV VG -> LUKS2 -> partition or linear outer LV**. Reduce individual LVs/filesystems beforehand if needed, and migrate high extents beforehand using native LVM tools. All affected filesystems must be offline. Outpost reduces the PV boundary with native allocated-extent checks, verifies its extent start/count against the payload size, deactivates the VG, then shortens the encryption and outer layer. Previously active LVs are reactivated after reopening. Failure may leave the VG inactive or its PV boundary smaller while the underlying device is still larger; inspect before recovery.
 
-Multi-PV inner VGs, nested child mappings, thin/snapshot/RAID stacks, integrity/reencryption and XFS/Btrfs filesystem shrinking are rejected. XFS does not support shrinking; arbitrary layered shrinking remains on the roadmap.
+A third recipe, **Shrink partition / LVM stack**, supports **plain linear LVs -> one single-PV VG -> partition** without encryption. The VG is deactivated before the partition is shortened in place, then previously active LVs are reactivated.
+
+Both single-PV VG recipes accept optional **LV targets** (`name=MiB`) and **extent compaction**:
+
+- Each targeted LV must be an active, unmounted ext4 LV, and its target must be smaller and a multiple of the VG extent size. Outpost checks, shrinks and verifies ext4, reduces the LV, then verifies its new size.
+- Compaction reads the PV segment map and moves every allocated extent at or above the new boundary into free extents below it with same-PV `pvmove --alloc anywhere`. The whole move plan is computed before the first move. Compaction requires the Migrate permission.
+- Before anything changes, Outpost checks against the real PE start and extent size that all LVs will fit below the boundary. Without compaction it refuses when allocated extents lie beyond it. After compaction it re-verifies the segment map before reducing the PV.
+- A failure part way can leave smaller LVs or moved extents. Both are consistent LVM states, but inspect them before retrying.
+
+Multi-PV VGs, nested child mappings, thin/snapshot/cache/RAID stacks inside the VG, integrity/reencryption and XFS/Btrfs filesystem shrinking are rejected. XFS does not support shrinking.
 
 ## SMART and whole-disk erasure
 
@@ -45,7 +58,14 @@ Secure erasure requires a whole unmounted, unreferenced disk, stable disk sequen
 
 ### Firmware sanitization
 
-Inspect **Firmware sanitize status**, then choose a supported block or cryptographic method under **Sanitize disk firmware**. ATA uses native SANITIZE block erase or crypto scramble on directly attached SATA/ATA drives; it does not set security passwords or attempt frozen-state recovery. NVMe uses the controller sanitize command. Outpost only accepts direct PCIe, one controller per subsystem, one reported namespace (namespace 1), unambiguous serial/capabilities and no sharing capability. Fabrics, multipath, extra/inactive namespaces, USB bridges and ambiguous inventory are rejected. Supported nvme-cli status formats include raw numeric SSTAT and device-keyed decoded SSTAT. Unknown formats fail closed.
+Inspect **Firmware sanitize status**, then choose a supported block or cryptographic method under **Sanitize disk firmware**. ATA uses native SANITIZE block erase or crypto scramble on directly attached SATA/ATA drives; it does not set security passwords or attempt frozen-state recovery. NVMe uses the controller sanitize command, which affects **every namespace in the subsystem**. Outpost accepts multiple namespaces and shared (multi-port/multi-controller) subsystems only when everything can be accounted for on this host:
+
+- Every controller with the subsystem NQN must be local PCIe.
+- For shared subsystems, the drive's own controller list must match the controller IDs attached here.
+- The allocated namespace list must equal the namespace IDs visible here.
+- Every namespace disk must pass the whole-disk erase checks: unmounted, unreferenced, without holders, and outside system/Outpost storage.
+
+The preview lists every affected namespace. SR-IOV controllers, fabrics, controllers attached to another host, inactive/unattached namespaces, USB bridges and ambiguous inventory are rejected. Supported nvme-cli status formats include raw numeric SSTAT and device-keyed decoded SSTAT. Unknown formats fail closed.
 
 Firmware jobs retain the privileged lock while polling completion, for up to 23 hours. Before submission, a root-only maintenance record is flushed under `/var/lib/outpost-storage/sanitize`. Errors, timeouts, restarts and unknown status leave this disk and its partitions blocked from mutations. Inspect native status through **Firmware sanitize status**; only a successful device completion report clears the record. A failed/frozen device needs native recovery; there is no force/failure-mode exit or fallback operation. A successful result is the firmware's completion report, not independent proof about every physical cell. Do not delete maintenance records to bypass unresolved hardware state.
 

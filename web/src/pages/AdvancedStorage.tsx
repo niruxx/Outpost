@@ -13,7 +13,7 @@ export const ADVANCED_TITLES = {
 export type AdvancedAction = keyof typeof ADVANCED_TITLES;
 export interface AdvancedFields extends ExpertFields { name?: string; vg?: string; lv?: string; sizeMb?: number; devices?: string[]; layout?: 'linear' | 'thin-pool' | 'thin'; pool?: string }
 export interface LvmState {
-  available: boolean; error: string | null;
+  available: boolean; error: string | null; moving?: boolean; moveProgress?: number;
   pvs: { path: string; uuid: string; vg: string; size: number; free: number; used: number }[];
   vgs: { name: string; uuid: string; size: number; free: number }[];
   lvs: { name: string; uuid: string; vg: string; path: string; size: number; attributes: string; kind: string; pool: string; origin: string }[];

@@ -2,7 +2,7 @@ import { ExpertDeviceControls, ExpertInventoryCard, ExpertOperationFields, type 
 import { AdvancedDeviceControls, AdvancedOperationFields, LvmPanel, ADVANCED_TITLES, type AdvancedAction, type AdvancedFields, type LvmState } from './AdvancedStorage.js';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Layout, PageHeader } from '../components/Layout.js';
-import { Badge, Button, Card, ErrorText, Field, Input, Modal, Notice, Select, Spinner } from '../components/ui.js';
+import { Badge, Button, Card, ErrorText, Field, Input, Modal, Notice, ProgressBar, Select, Spinner, formatDuration } from '../components/ui.js';
 import { Icon } from '../components/icons.js';
 import { api, ApiError } from '../api/client.js';
 import { setVisibleInterval } from '../lib/perf.js';
@@ -61,14 +61,15 @@ export function StoragePage() {
     if (!device) return;
     const pv = state?.lvm?.pvs.find(p => p.path === device.path), lv = state?.lvm?.lvs.find(l => l.path === device.path);
     setOperation({ action, device: device.path, vg: pv?.vg || lv?.vg || undefined, lv: lv?.name,
-      ...(['layerShrink', 'pvShrink'].includes(action) ? { sizeMb: 256 } : {}),
+      ...(['layerShrink', 'pvShrink', 'pvStackShrink'].includes(action) ? { sizeMb: 256 } : {}),
+      ...(action === 'raidShrink' ? { raidDevices: Math.max(2, (state?.raid?.find(r => r.device === device.path)?.raidDevices ?? 3) - 1) } : {}),
       ...(action === 'raidGrow' ? { raidDevices: (state?.raid?.find(r => r.device === device.path)?.raidDevices ?? 2) + 1 } : {}), ...fields });
   }
   return <Layout><div className="mx-auto max-w-7xl space-y-5 p-4 sm:p-8">
     <PageHeader title="Storage" subtitle="Disks, filesystems, mounts and persistent boot mounts on this host." action={<Button onClick={load}><Icon name="refresh" className="h-4 w-4" />Refresh</Button>} />
     <ErrorText>{error}</ErrorText>{loading && <Spinner />}
     {state && !state.available && <Notice tone="warning"><p>{state.error}</p><p className="mt-2">This feature requires Linux disk utilities and the privileged Outpost storage helper. Existing instances and backups continue to work.</p></Notice>}
-    {state?.busy && <Notice tone="info">A storage operation is running. Changes are temporarily disabled; do not disconnect its disk.</Notice>}
+    {state?.busy && <Notice tone="info"><p>A storage operation is running. Changes are temporarily disabled; do not disconnect its disk.</p>{state.jobs.filter(j => j.state === 'running').map(job => <JobProgress key={job.id} job={job} state={state} />)}</Notice>}
     {state?.available && <div className="grid items-start gap-5 lg:grid-cols-[320px_minmax(0,1fr)]">
       <div className="space-y-3">{state.devices.map((disk) => <Card key={disk.path} className="overflow-hidden p-2"><DeviceTree device={disk} depth={0} selected={selectedPath} onSelect={setSelectedPath} health={state.permissions.includes('health') ? state.health ?? {} : undefined} healthRefreshing={state.healthRefreshing} /></Card>)}{state.devices.length === 0 && <Card className="p-5 text-sm text-ink-400">No block devices found.</Card>}</div>
       {device && <div className="space-y-5"><Card className="space-y-4 p-5">
@@ -91,7 +92,7 @@ export function StoragePage() {
       </Card><Card className="space-y-3 p-5"><h3 className="font-medium text-ink-100">Persistent mounts · /etc/fstab</h3>{state.fstab.filter((e) => e.source === device.path || (!!device.uuid && e.source === `UUID=${device.uuid}`)).map((entry) => <div key={entry.source + entry.target} className="rounded-xl bg-surface-900 p-3 text-xs"><p className="break-all font-mono text-ink-200">{entry.target}</p><p className="mt-1 break-all text-ink-400">{entry.filesystem} · {entry.options}</p><p className="mt-1 text-ink-500">{entry.managed ? 'Managed by Outpost' : 'Existing system entry; edit outside Outpost'}</p></div>)}<p className="text-xs text-ink-400">Boot mounts use filesystem UUIDs, nofail, nodev and nosuid. Unmounting does not remove the boot entry. Remove it with Boot mount before formatting or wiping.</p></Card></div>}
     </div>}
     {state?.available && <LvmPanel lvm={state.lvm} permissions={state.permissions} busy={state.busy} onOpen={setOperation} />}
-    {!!state?.jobs.length && <Card className="space-y-3 p-5"><h2 className="font-medium text-ink-100">Recent storage operations</h2>{state.jobs.map((job) => <div key={job.id} className="rounded-xl bg-surface-900 p-3"><div className="flex flex-wrap items-center gap-2"><span className="text-sm text-ink-200">{TITLES[job.action as Action] ?? job.action} · {job.device}</span><Badge tone={job.state === 'done' ? 'green' : job.state === 'failed' ? 'red' : 'blue'}>{job.state}</Badge></div><p className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap break-words text-xs text-ink-400">{job.message}</p></div>)}</Card>}
+    {!!state?.jobs.length && <Card className="space-y-3 p-5"><h2 className="font-medium text-ink-100">Recent storage operations</h2>{state.jobs.map((job) => <div key={job.id} className="rounded-xl bg-surface-900 p-3"><div className="flex flex-wrap items-center gap-2"><span className="text-sm text-ink-200">{TITLES[job.action as Action] ?? job.action} · {job.device}</span><Badge tone={job.state === 'done' ? 'green' : job.state === 'failed' ? 'red' : 'blue'} pulse={job.state === 'running'}>{job.state}</Badge></div>{job.state === 'running' && <JobProgress job={job} state={state} />}<p className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap break-words text-xs text-ink-400">{job.message}</p></div>)}</Card>}
     {state?.available && <ExpertInventoryCard state={state} onSelect={setSelectedPath} />}
     <OperationModal operation={operation} permissions={state?.permissions ?? []} onClose={() => setOperation(null)} onStarted={() => { setOperation(null); void load(); }} />
   </div></Layout>;
@@ -141,7 +142,18 @@ function OperationModal({ operation, permissions, onClose, onStarted }: { operat
       {plan && <pre className="overflow-auto rounded-xl bg-surface-900 p-3 text-xs text-ink-300">{JSON.stringify(plan.operation, null, 2)}</pre>}
       {plan && needsCurrent && <Field label={draft.action === 'luksRemoveSlot' ? 'Passphrase for the surviving keyslot' : 'Current LUKS passphrase'}><Input type="password" autoComplete="off" value={secrets.passphrase ?? ''} disabled={busy} onChange={(e) => setSecrets({ ...secrets, passphrase: e.target.value })} /></Field>}
       {plan && needsNew && <><Field label="New LUKS passphrase"><Input type="password" autoComplete="new-password" value={secrets.newPassphrase ?? ''} disabled={busy} onChange={(e) => setSecrets({ ...secrets, newPassphrase: e.target.value })} /></Field><Field label="Repeat new passphrase"><Input type="password" autoComplete="new-password" value={repeatPassphrase} disabled={busy} onChange={(e) => setRepeatPassphrase(e.target.value)} /></Field></>}
+      {busy && <ProgressBar label={plan ? 'Starting the operation…' : 'Inspecting the device and building a preview…'} />}
       <ErrorText>{error}</ErrorText><div className="flex flex-wrap justify-end gap-2"><Button disabled={busy} onClick={onClose}>Cancel</Button>{plan ? <><Button disabled={busy} onClick={() => { setPlan(null); setConfirmation(''); }}>Edit / refresh preview</Button><Button variant={plan.destructive ? 'danger' : 'primary'} disabled={busy || !secretsReady || (plan.destructive && confirmation !== plan.confirmation)} onClick={execute}>{busy ? 'Starting…' : 'Apply operation'}</Button></> : <Button variant="primary" disabled={busy} onClick={preview}>{busy ? 'Checking device…' : 'Preview operation'}</Button>}</div>
     </div>}
   </Modal>;
+}
+
+/** Running job indicator: a real percentage where the host reports one, otherwise a sweep plus elapsed time. */
+function JobProgress({ job, state }: { job: Job; state: Overview }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(timer); }, []);
+  const array = state.raid?.find(r => r.device === job.device && r.sync !== 'idle' && r.progress);
+  const percent = array?.progress ? array.progress.done / array.progress.total * 100 : state.lvm?.moving && ['pvMove', 'pvStackShrink', 'layerShrink'].includes(job.action) ? state.lvm.moveProgress ?? null : null;
+  const label = array ? `${array.sync} of ${array.device}` : percent !== null ? 'Moving extents' : 'Working…';
+  return <ProgressBar className="mt-2" percent={percent} label={label} detail={`running for ${formatDuration((now - Date.parse(job.createdAt)) / 1000)}`} />;
 }

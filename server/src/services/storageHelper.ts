@@ -6,7 +6,7 @@ import crypto from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-export const EXPERT_ACTIONS = ['firmwareInfo', 'firmwareSanitize', 'raidGrow', 'lvCacheAttach', 'lvCacheDetach', 'lvCacheMode', 'raidInfo', 'raidCreate', 'raidAdd', 'raidFail', 'raidRemove', 'raidStop', 'raidBootAdd', 'raidBootRemove', 'pvMove', 'pvMoveAbort', 'pvShrink', 'luksInfo', 'luksAddKey', 'luksRemoveSlot', 'luksChangeSlot', 'luksHeaderBackup', 'crypttabSet', 'crypttabRemove', 'layerShrink', 'smartInfo', 'smartShort', 'smartLong', 'smartConveyance', 'smartAbort', 'secureErase'] as const;
+export const EXPERT_ACTIONS = ['firmwareInfo', 'firmwareSanitize', 'raidGrow', 'lvCacheAttach', 'lvCacheDetach', 'lvCacheMode', 'raidInfo', 'raidCreate', 'raidAdd', 'raidFail', 'raidRemove', 'raidStop', 'raidBootAdd', 'raidBootRemove', 'pvMove', 'pvMoveAbort', 'pvShrink', 'luksInfo', 'luksAddKey', 'luksRemoveSlot', 'luksChangeSlot', 'luksHeaderBackup', 'crypttabSet', 'crypttabRemove', 'layerShrink', 'pvStackShrink', 'raidReshape', 'raidShrink', 'smartInfo', 'smartShort', 'smartLong', 'smartConveyance', 'smartAbort', 'secureErase'] as const;
 export type StorageAction = 'mount' | 'unmount' | 'automount' | 'format' | 'wipe' | 'partition' | 'luksFormat' | 'luksOpen' | 'luksClose' | 'luksPassphrase' | 'luksGrow' | 'pvCreate' | 'pvRemove' | 'pvGrow' | 'vgCreate' | 'vgRename' | 'vgExtend' | 'vgReduce' | 'vgRemove' | 'lvCreate' | 'lvRename' | 'lvResize' | 'lvRemove' | 'lvSnapshot' | 'lvActivate' | 'lvDeactivate' | 'partitionGrow' | 'partitionShrink' | 'filesystemGrow' | typeof EXPERT_ACTIONS[number];
 export const ADVANCED_ACTIONS = ['luksFormat', 'luksOpen', 'luksClose', 'luksPassphrase', 'luksGrow', 'pvCreate', 'pvRemove', 'pvGrow', 'vgCreate', 'vgRename', 'vgExtend', 'vgReduce', 'vgRemove', 'lvCreate', 'lvRename', 'lvResize', 'lvRemove', 'lvSnapshot', 'lvActivate', 'lvDeactivate', 'partitionGrow', 'partitionShrink', 'filesystemGrow', ...EXPERT_ACTIONS];
 export function storagePermission(action: StorageAction): 'mount' | 'automount' | 'format' | 'wipe' | 'partition' | 'encrypt' | 'lvm' | 'resize' | 'raid' | 'migrate' | 'crypttab' | 'health' | 'erase' {
@@ -17,7 +17,7 @@ export function storagePermission(action: StorageAction): 'mount' | 'automount' 
   if (action === 'secureErase') return 'erase';
   if (action.startsWith('crypttab')) return 'crypttab';
   if (['pvMove', 'pvMoveAbort'].includes(action)) return 'migrate';
-  if (['layerShrink', 'pvShrink'].includes(action)) return 'resize';
+  if (['layerShrink', 'pvShrink', 'pvStackShrink'].includes(action)) return 'resize';
   if (action.startsWith('luks')) return 'encrypt';
   if (/^(pv|vg|lv)/.test(action)) return 'lvm';
   if (['partitionGrow', 'partitionShrink', 'filesystemGrow'].includes(action)) return 'resize';
@@ -32,6 +32,11 @@ export interface StorageHealth {
 export interface StorageOperation {
   sanitizeMethod?: 'ata-block' | 'ata-crypto' | 'nvme-block' | 'nvme-crypto';
   raidDevices?: number; cacheMode?: 'writethrough' | 'writeback';
+  raidLayout?: typeof RAID_LAYOUTS[number];
+  /** Inner LV name -> new size (MiB) for automatic ext4 LV shrinking before a PV boundary reduction. */
+  lvSizes?: Record<string, number>;
+  /** Move allocated extents below the new PV boundary (same-PV pvmove) before reducing it. */
+  compact?: boolean;
   action: StorageAction; device: string; mountpoint?: string; persistent?: boolean;
   enabled?: boolean; readOnly?: boolean; filesystem?: string; label?: string;
   name?: string; vg?: string; lv?: string; sizeMb?: number; devices?: string[]; layout?: 'linear' | 'thin-pool' | 'thin'; pool?: string;
@@ -50,8 +55,9 @@ export interface MountEntry { source: string; target: string; filesystem: string
 export interface PhysicalVolume { path: string; uuid: string; vg: string; size: number; free: number; used: number }
 export interface VolumeGroup { name: string; uuid: string; size: number; free: number; extentSize?: number }
 export interface LogicalVolume { name: string; uuid: string; vg: string; path: string; size: number; attributes: string; kind: string; pool: string; origin: string }
-export interface LvmInventory { available: boolean; error: string | null; pvs: PhysicalVolume[]; vgs: VolumeGroup[]; lvs: LogicalVolume[]; moving?: boolean }
-export interface RaidArray { device: string; uuid: string; name: string; level: string; raidDevices?: number; metadata?: string; degraded: number; sync: string; state: string; members: { path: string; state: string }[] }
+export interface LvmInventory { available: boolean; error: string | null; pvs: PhysicalVolume[]; vgs: VolumeGroup[]; lvs: LogicalVolume[]; moving?: boolean; moveProgress?: number }
+export const RAID_LAYOUTS = ['left-asymmetric', 'left-symmetric', 'right-asymmetric', 'right-symmetric', 'parity-first', 'parity-last'] as const;
+export interface RaidArray { device: string; uuid: string; name: string; level: string; raidDevices?: number; metadata?: string; layout?: number; componentSize?: number; progress?: { done: number; total: number; speedKiB?: number }; degraded: number; sync: string; state: string; members: { path: string; state: string }[] }
 export interface EncryptionInfo { device: string; slots: number[]; digest: string; error?: string }
 export interface CrypttabEntry { name: string; source: string; keyMode: 'prompt' | 'managed' | 'external'; options: string[]; managed: boolean }
 export interface StorageInventory { raid?: RaidArray[]; encryption?: EncryptionInfo[]; boot?: CrypttabEntry[]; configDigest?: string;  devices: StorageDevice[]; fstab: MountEntry[]; crypttab?: string[]; operationRunning?: boolean; lvm?: LvmInventory }
@@ -74,7 +80,7 @@ export interface StorageHost {
   withKeyFiles?(secrets: StorageSecrets, use: (files: { current?: string; next?: string }) => Promise<void>): Promise<void>;
 }
 function firmwareRecord(device: StorageDevice) { return `/var/lib/outpost-storage/sanitize/${crypto.createHash('sha256').update(device.serial || device.wwn).digest('hex')}.json`; }
-export async function firmwareStatus(host: StorageHost, device: StorageDevice) {
+export async function firmwareStatus(host: StorageHost, device: StorageDevice, namespaces: StorageDevice[] = [device]) {
   if (device.type !== 'disk' || !device.serial) fail('Firmware tools require a physical disk with a serial');
   if (device.transport === 'sata' || device.transport === 'ata') {
     const info = await host.run('hdparm', ['-I', device.path]);
@@ -85,19 +91,32 @@ export async function firmwareStatus(host: StorageHost, device: StorageDevice) {
     if (!Number.isInteger(state)) fail('ATA sanitize state is unknown');
     return { target: device.path, methods: [ ...(/^\s*\*?\s*BLOCK_ERASE_EXT command\s*$/m.test(info) ? ['ata-block'] : []), ...(/^\s*\*?\s*CRYPTO_SCRAMBLE_EXT command\s*$/m.test(info) ? ['ata-crypto'] : [])], state: state === 2 ? 'running' : state === 4 ? 'completed' : state === 0 ? 'idle' : 'blocked', raw: status };
   }
-  const match = device.kernel.match(/^(nvme\d+)n1$/);
-  if (device.transport !== 'nvme' || !match || !host.list) fail('NVMe sanitization requires one directly attached PCIe controller with namespace 1');
+  const match = device.kernel.match(/^(nvme\d+)n\d+$/);
+  if (device.transport !== 'nvme' || !match || !host.list) fail('NVMe sanitization requires a directly attached PCIe NVMe namespace');
   const controller = match[1], target = `/dev/${controller}`;
-  if ((await host.read(`/sys/class/nvme/${controller}/transport`)).trim() !== 'pcie') fail('NVMe fabrics/shared transports are not supported');
   const nqn = (await host.read(`/sys/class/nvme/${controller}/subsysnqn`)).trim();
   if (!nqn) fail('NVMe subsystem identity is unavailable');
-  const controllers = (await host.list('/sys/class/nvme')).filter(n => /^nvme\d+$/.test(n));
-  for (const other of controllers) if (other !== controller && (await host.read(`/sys/class/nvme/${other}/subsysnqn`)).trim() === nqn) fail('Shared/multipath NVMe subsystems cannot be sanitized here');
-  const namespaces = (await host.list(`/sys/class/nvme/${controller}`)).filter(n => /^nvme\d+n\d+$/.test(n));
-  if (namespaces.length !== 1 || namespaces[0] !== device.kernel) fail('All controller namespaces must be accounted for; only a single namespace is supported');
+  // Sanitize acts on the whole subsystem, so every controller sharing it must be local PCIe.
+  const controllers: string[] = [];
+  for (const name of (await host.list('/sys/class/nvme')).filter(n => /^nvme\d+$/.test(n)).sort()) if ((await host.read(`/sys/class/nvme/${name}/subsysnqn`)).trim() === nqn) controllers.push(name);
+  if (!controllers.includes(controller)) fail('NVMe controller identity is inconsistent');
+  for (const name of controllers) if ((await host.read(`/sys/class/nvme/${name}/transport`)).trim() !== 'pcie') fail('NVMe fabrics transports are not supported; every controller in the subsystem must be local PCIe');
   const id = JSON.parse(await host.run('nvme', ['id-ctrl', target, '--output-format=json']));
+  if (typeof id.sn !== 'string' || id.sn.trim() !== device.serial || !Number.isInteger(id.nn) || id.nn < 1 || !Number.isInteger(id.cmic)) fail('Controller serial or identity is ambiguous');
+  if (id.cmic & 4) fail('SR-IOV NVMe controllers are refused: virtual functions may be assigned to guests this host cannot inspect');
+  if (controllers.length > 1 || (id.cmic & 3)) {
+    // Multi-port/multi-controller: the subsystem's own controller list must match the controllers attached here.
+    const list = JSON.parse(await host.run('nvme', ['list-ctrl', target, '--output-format=json']));
+    const ids = Array.isArray(list?.ctrl_list) ? (list.ctrl_list as unknown[]).map(e => typeof e === 'number' ? e : (e as { ctrl_id?: unknown })?.ctrl_id) : null;
+    if (!ids || !ids.length || ids.some(i => !Number.isInteger(i))) fail('Unsupported NVMe controller list format; a shared subsystem cannot be verified');
+    const local = await Promise.all(controllers.map(async name => Number((await host.read(`/sys/class/nvme/${name}/cntlid`)).trim())));
+    const key = (values: unknown[]) => [...values as number[]].sort((a, b) => a - b).join(',');
+    if (local.some(i => !Number.isInteger(i)) || key(ids) !== key(local)) fail('The NVMe subsystem has controllers not attached to this host; another host may be using it');
+  }
   const ns = JSON.parse(await host.run('nvme', ['list-ns', target, '--all', '--output-format=json']));
-  if (typeof id.sn !== 'string' || id.sn.trim() !== device.serial || id.nn !== 1 || !Number.isInteger(id.cmic) || (id.cmic & 7) || !Array.isArray(ns.nsid_list) || ns.nsid_list.length !== 1 || ns.nsid_list[0] !== 1) fail('Controller serial, namespace inventory or sharing capability is ambiguous');
+  const allocated = Array.isArray(ns.nsid_list) && ns.nsid_list.every((n: unknown) => Number.isInteger(n) && (n as number) > 0) ? (ns.nsid_list as number[]) : null;
+  const visible = await Promise.all(namespaces.map(async n => Number((await host.read(`/sys/class/block/${n.kernel}/nsid`)).trim())));
+  if (!allocated?.length || allocated.length > id.nn || !namespaces.some(n => n.path === device.path) || visible.some(n => !Number.isInteger(n)) || new Set(visible).size !== visible.length || [...allocated].sort((a, b) => a - b).join(',') !== [...visible].sort((a, b) => a - b).join(',')) fail('Every allocated namespace must be attached and visible on this host; inactive or unaccounted namespaces cannot be sanitized here');
   if (!Number.isInteger(id.sanicap) || id.sanicap < 0) fail('NVMe sanitize capabilities are unavailable');
   const rawLog = JSON.parse(await host.run('nvme', ['sanitize-log', target, '--output-format=json']));
   // nvme-cli versions expose either a raw SSTAT or a device-keyed decoded object.
@@ -107,15 +126,15 @@ export async function firmwareStatus(host: StorageHost, device: StorageDevice) {
   if (!Number.isInteger(status)) fail('Unsupported NVMe sanitize log format; no reliable status is available');
   return { target, methods: [...(id.sanicap & 2 ? ['nvme-block'] : []), ...(id.sanicap & 1 ? ['nvme-crypto'] : [])], state: status === 2 ? 'running' : [1, 4].includes(status) ? 'completed' : status === 0 ? 'idle' : 'blocked', raw: JSON.stringify(rawLog) };
 }
-async function executeFirmware(host: StorageHost, device: StorageDevice, op: StorageOperation) {
-  const info = await firmwareStatus(host, device);
+async function executeFirmware(host: StorageHost, device: StorageDevice, op: StorageOperation, namespaces: StorageDevice[]) {
+  const info = await firmwareStatus(host, device, namespaces);
   if (op.action === 'firmwareInfo') {
     if (info.state === 'completed' && host.firmwarePending) await host.firmwarePending(device, false);
     return `Firmware sanitize: ${info.state}. Supported methods: ${info.methods.join(', ') || 'none'}.\n${info.raw}`;
   }
   if (!op.sanitizeMethod || !info.methods.includes(op.sanitizeMethod) || !['idle', 'completed'].includes(info.state)) fail('Requested firmware sanitize method is unsupported or the drive is busy/frozen/failed');
   if (!host.firmwarePending) fail('Update the helper for persistent firmware maintenance records');
-  if ((await host.read(`/sys/class/block/${device.kernel}/diskseq`)).trim() !== device.diskSeq) fail('Disk identity changed before firmware sanitization');
+  for (const target of namespaces) if ((await host.read(`/sys/class/block/${target.kernel}/diskseq`)).trim() !== target.diskSeq) fail('Disk identity changed before firmware sanitization');
   await host.firmwarePending(device, true);
   try {
     if (op.sanitizeMethod.startsWith('nvme')) await host.run('nvme', ['sanitize', info.target, `--sanact=${op.sanitizeMethod === 'nvme-block' ? 2 : 4}`]);
@@ -123,7 +142,7 @@ async function executeFirmware(host: StorageHost, device: StorageDevice, op: Sto
     const deadline = Date.now() + 23 * 60 * 60_000;
     for (;;) {
       await (host.pause ? host.pause(5000) : new Promise(resolve => setTimeout(resolve, 5000)));
-      const current = await firmwareStatus(host, device);
+      const current = await firmwareStatus(host, device, namespaces);
       if (current.state === 'completed') { await host.firmwarePending(device, false); return 'Firmware reports sanitize completed successfully. Completion is the device report, not independent verification of every physical cell.'; }
       if (current.state !== 'running' || Date.now() >= deadline) fail('Sanitize completion is not confirmed');
     }
@@ -218,6 +237,16 @@ export function validateStorageOperation(input: unknown): StorageOperation {
     if (raw.options !== undefined) { if (!Array.isArray(raw.options) || !raw.options.every(o => ['nofail', 'noauto', 'discard', 'x-systemd.device-timeout=10s'].includes(o))) fail('Unsupported crypttab options'); op.options = [...new Set(raw.options)]; }
     if (raw.eraseMethod !== undefined) { if (!['secure-discard', 'overwrite-verify'].includes(raw.eraseMethod)) fail('Choose secure-discard or overwrite-verify'); op.eraseMethod = raw.eraseMethod; }
     if (raw.layout !== undefined) { if (!['linear', 'thin-pool', 'thin'].includes(raw.layout)) fail('Unsupported LV layout'); op.layout = raw.layout; }
+    if (raw.raidLayout !== undefined) { if (!RAID_LAYOUTS.includes(raw.raidLayout)) fail(`Supported RAID layouts: ${RAID_LAYOUTS.join(', ')}`); op.raidLayout = raw.raidLayout; }
+    if (raw.compact !== undefined) { if (typeof raw.compact !== 'boolean') fail('compact must be boolean'); op.compact = raw.compact; }
+    if (raw.lvSizes !== undefined) {
+      if (!raw.lvSizes || typeof raw.lvSizes !== 'object' || Array.isArray(raw.lvSizes) || Object.keys(raw.lvSizes).length > 32) fail('LV targets must map up to 32 LV names to sizes in MiB');
+      op.lvSizes = Object.fromEntries(Object.entries(raw.lvSizes).map(([name, size]) => {
+        if (!/^[a-zA-Z0-9_][a-zA-Z0-9_+.-]{0,126}$/.test(name)) fail('Use simple LV names in LV targets');
+        if (!Number.isSafeInteger(size) || size < 16 || size > 16_777_216) fail('LV target sizes must be 16–16777216 MiB');
+        return [name, size];
+      }));
+    }
   }
   if (['mount', 'automount'].includes(raw.action)) {
     op.mountpoint = validateMountpoint(raw.mountpoint);
@@ -354,7 +383,7 @@ async function lvmInventory(host: StorageHost): Promise<LvmInventory> {
     const [pv, vg, lv] = await Promise.all([
       host.run('pvs', ['--reportformat', 'json', '--units', 'b', '--nosuffix', '-o', 'pv_name,pv_uuid,vg_name,pv_size,pv_free,pv_used']),
       host.run('vgs', ['--reportformat', 'json', '--units', 'b', '--nosuffix', '-o', 'vg_name,vg_uuid,vg_size,vg_free,vg_extent_size']),
-      host.run('lvs', ['--all', '--reportformat', 'json', '--units', 'b', '--nosuffix', '-o', 'lv_name,lv_uuid,vg_name,lv_path,lv_size,lv_attr,segtype,pool_lv,origin']),
+      host.run('lvs', ['--all', '--reportformat', 'json', '--units', 'b', '--nosuffix', '-o', 'lv_name,lv_uuid,vg_name,lv_path,lv_size,lv_attr,segtype,pool_lv,origin,copy_percent']),
     ]);
     const rows = (text: string, key: string): Record<string, string>[] => JSON.parse(text).report.flatMap((r: Record<string, unknown>) => r[key] ?? []);
     const num = (value: string) => Number(String(value).trim());
@@ -364,7 +393,8 @@ async function lvmInventory(host: StorageHost): Promise<LvmInventory> {
     if (host.canonicalDevice) for (const l of lvs) { try { l.path = await host.canonicalDevice(l.path); } catch { /* inactive */ } }
     const vgs = rows(vg, 'vg').map((v) => ({ name: v.vg_name.trim(), uuid: v.vg_uuid.trim(), size: num(v.vg_size), free: num(v.vg_free), extentSize: num(v.vg_extent_size ?? '0') }));
     if (pvs.some((p) => ![p.size, p.free, p.used].every((n) => Number.isFinite(n) && n >= 0)) || vgs.some((v) => ![v.size, v.free].every((n) => Number.isFinite(n) && n >= 0)) || lvs.some((l) => !Number.isFinite(l.size) || l.size < 0)) fail('Invalid LVM capacity report');
-    return { available: true, error: null, pvs, vgs, lvs, moving: rows(lv, 'lv').some(l => /pvmove/.test(l.lv_name)) };
+    const moves = rows(lv, 'lv').filter(l => /pvmove/.test(l.lv_name)).map(l => String(l.copy_percent ?? '').trim()).filter(t => /^\d+(\.\d+)?$/.test(t)).map(Number).filter(n => n <= 100);
+    return { available: true, error: null, pvs, vgs, lvs, moving: rows(lv, 'lv').some(l => /pvmove/.test(l.lv_name)), ...(moves.length ? { moveProgress: Math.min(...moves) } : {}) };
   } catch { return { available: false, error: 'LVM inventory unavailable. Install lvm2 and update the storage helper.', pvs: [], vgs: [], lvs: [] }; }
 }
 async function optionalRead(host: StorageHost, file: string) { try { return await host.read(file); } catch (error) { const code = (error as NodeJS.ErrnoException).code; if (code && code !== 'ENOENT' && code !== 'ENOTDIR') throw error; return ''; } }
@@ -398,7 +428,11 @@ async function expertInventory(host: StorageHost, devices: StorageDevice[]) {
       const md = `/sys/class/block/${device.kernel}/md`;
       const degradedText = (await host.read(`${md}/degraded`)).trim();
       if (!/^\d+$/.test(degradedText)) continue;
-      raid.push({ device: device.path, uuid: fields.MD_UUID ?? '', name: fields.MD_NAME ?? device.kernel, level: fields.MD_LEVEL ?? device.type, metadata: fields.MD_METADATA, raidDevices: Number(fields.MD_DEVICES), degraded: Number(degradedText), sync: (await host.read(`${md}/sync_action`)).trim(), state: (await host.read(`${md}/array_state`)).trim(), members });
+      const layoutText = (await optionalRead(host, `${md}/layout`)).trim(), componentText = (await optionalRead(host, `${md}/component_size`)).trim();
+      // sync_completed is "done / total" sectors while a resync/recovery/reshape/check runs, else "none".
+      const completed = (await optionalRead(host, `${md}/sync_completed`)).trim().match(/^(\d+)\s*\/\s*(\d+)$/), speed = (await optionalRead(host, `${md}/sync_speed`)).trim();
+      const progress = completed && Number(completed[2]) > 0 ? { done: Number(completed[1]), total: Number(completed[2]), ...(/^\d+$/.test(speed) ? { speedKiB: Number(speed) } : {}) } : undefined;
+      raid.push({ device: device.path, uuid: fields.MD_UUID ?? '', name: fields.MD_NAME ?? device.kernel, level: fields.MD_LEVEL ?? device.type, metadata: fields.MD_METADATA, raidDevices: Number(fields.MD_DEVICES), ...(/^\d+$/.test(layoutText) ? { layout: Number(layoutText) } : {}), ...(/^\d+$/.test(componentText) ? { componentSize: Number(componentText) * 1024 } : {}), ...(progress ? { progress } : {}), degraded: Number(degradedText), sync: (await host.read(`${md}/sync_action`)).trim(), state: (await host.read(`${md}/array_state`)).trim(), members });
     } catch { /* Visible lsblk device remains protected; no unsafe array management without metadata. */ }
   }
   const [crypt, mdDebian, mdOther] = await Promise.all(['/etc/crypttab', '/etc/mdadm/mdadm.conf', '/etc/mdadm.conf'].map(file => optionalRead(host, file)));
@@ -423,23 +457,163 @@ function blankMember(state: StorageInventory, target: string): StorageDevice {
   if (!device || device.critical !== false || device.readOnly || !['disk', 'part'].includes(device.type) || device.children.length || device.filesystem) fail(`Select a blank non-system disk/partition without holders: ${target}`);
   offlineTree(device); unreferenced(state, device); return device;
 }
+const M = 1048576;
+const LVM_NAME = /^[a-zA-Z0-9_][a-zA-Z0-9_+.-]*$/;
+export interface GroupPlan { name: string; extentSize: number; pvPath: string; active: string[]; shrink: { name: string; path: string; sizeMb: number; from: number }[]; compact: boolean; remaining: number }
+/** A VG whose only PV is `pvNode`, holding only plain linear LVs, optionally with ext4 LVs to shrink first. */
+function singlePvGroupPlan(state: StorageInventory, pvNode: StorageDevice, op: StorageOperation): GroupPlan {
+  const pv = state.lvm?.pvs.find(p => p.path === pvNode.path);
+  const group = state.lvm?.vgs.find(g => g.name === pv?.vg);
+  const members = state.lvm?.pvs.filter(p => p.vg === pv?.vg) ?? [];
+  const lvs = state.lvm?.lvs.filter(l => l.vg === pv?.vg) ?? [];
+  if (!pv || !group || !LVM_NAME.test(group.name) || !group.extentSize || !Number.isSafeInteger(group.extentSize) || members.length !== 1 || state.lvm?.moving || state.lvm?.vgs.filter(g => g.name === group.name).length !== 1) fail('Inner LVM shrinking requires an unambiguous, single-PV VG without extent moves');
+  if (!lvs.length || lvs.some(l => l.kind !== 'linear' || l.pool || l.origin || !LVM_NAME.test(l.name)) || pvNode.children.some(d => d.type !== 'lvm' || d.children.length || !lvs.some(l => l.path === d.path))) fail('Inner VG must contain only plain linear LVs without child mappings, snapshots or caches');
+  if (lvs.some(l => l.attributes[4] === 'a' && !pvNode.children.some(d => d.path === l.path))) fail('Every active LV must be present in the inspected mapping tree');
+  const shrink: GroupPlan['shrink'] = [];
+  for (const [name, sizeMb] of Object.entries(op.lvSizes ?? {})) {
+    const lv = lvs.find(l => l.name === name), node = pvNode.children.find(d => d.path === lv?.path);
+    if (!lv || !node || lv.attributes[4] !== 'a' || node.filesystem !== 'ext4') fail(`${name} must be an active, offline ext4 LV in ${group.name} to be shrunk automatically`);
+    if (sizeMb * M >= lv.size || (sizeMb * M) % group.extentSize) fail(`The target for ${name} must be smaller than its current size and a multiple of the ${group.extentSize} byte extent size`);
+    shrink.push({ name, path: lv.path, sizeMb, from: lv.size });
+  }
+  const remaining = lvs.reduce((sum, l) => sum + (shrink.find(x => x.name === l.name)?.sizeMb ?? l.size / M) * M, 0);
+  return { name: group.name, extentSize: group.extentSize, pvPath: pvNode.path, active: lvs.filter(l => l.attributes[4] === 'a').map(l => l.name), shrink, compact: op.compact === true, remaining };
+}
+function groupSteps(group: GroupPlan) {
+  return [
+    ...group.shrink.map(x => `Check, shrink and verify ext4 on ${group.name}/${x.name}, then reduce the LV to ${x.sizeMb} MiB`),
+    ...(group.compact ? ['Move allocated extents below the new PV boundary (same-PV pvmove)'] : []),
+    'Verify no allocated extents cross the boundary, then reduce and verify the PV boundary',
+    `Deactivate VG ${group.name}`,
+  ];
+}
+export function pvStackShrinkPlan(state: StorageInventory, op: StorageOperation) {
+  const nodes = all(state.devices), part = nodes.find(d => d.path === op.device);
+  if (!part || part.critical !== false || part.readOnly || part.type !== 'part' || part.filesystem !== 'LVM2_member') fail('Supported stack: non-system partition → single-PV VG → plain linear LVs');
+  if (!op.sizeMb || op.sizeMb * M >= part.size) fail('Choose a smaller partition size');
+  const parent = nodes.find(d => d.path === part.parentPath);
+  if (!parent || parent.type !== 'disk' || parent.critical !== false || parent.readOnly) fail('Partition parent must be a writable non-system physical disk');
+  offlineTree(parent);
+  const group = singlePvGroupPlan(state, part, op);
+  if (op.vg && op.vg !== group.name) fail('This partition belongs to a different volume group');
+  if (group.remaining > op.sizeMb * M) fail('The LVs will not fit in the smaller partition; choose smaller LV targets or a larger size');
+  return { device: part, group, steps: [...groupSteps(group), 'Shorten the partition without moving its start and verify its size', 'Reactivate previously active LVs'] };
+}
+export interface PvSegment { start: number; size: number; lv: string }
+async function pvSegments(host: StorageHost, pvPath: string) {
+  const report = JSON.parse(await host.run('pvs', ['--segments', '--reportformat', 'json', '--units', 'b', '--nosuffix', '-o', 'pv_name,pe_start,pvseg_start,pvseg_size,lv_name', pvPath]));
+  const rows = ((report.report ?? []) as Record<string, unknown>[]).flatMap(r => (r.pvseg ?? r.pv ?? []) as Record<string, string>[]);
+  const peStart = Number(rows[0]?.pe_start);
+  for (const row of rows) {
+    const name = String(row.pv_name ?? '').trim();
+    if ((host.canonicalDevice ? await host.canonicalDevice(name) : name) !== pvPath || Number(row.pe_start) !== peStart) fail('PV segment report does not match the selected PV; nothing was changed');
+  }
+  const segments: PvSegment[] = rows.map(r => ({ start: Number(r.pvseg_start), size: Number(r.pvseg_size), lv: String(r.lv_name ?? '').trim() })).sort((a, b) => a.start - b.start);
+  let next = 0;
+  for (const seg of segments) {
+    if (!Number.isSafeInteger(seg.start) || !Number.isSafeInteger(seg.size) || seg.size < 1 || seg.start !== next || (seg.lv && !LVM_NAME.test(seg.lv))) fail('PV segment map is incomplete or contains hidden/internal LVs; nothing was changed');
+    next += seg.size;
+  }
+  if (!segments.length || !Number.isSafeInteger(peStart) || peStart < 4096) fail('PV segment map is unavailable; nothing was changed');
+  return { peStart, segments };
+}
+/** Same-PV moves of every allocated extent at or above `boundary` into free extents below it. */
+export function planCompaction(segments: PvSegment[], boundary: number) {
+  const free = segments.filter(s => !s.lv && s.start < boundary).map(s => ({ start: s.start, end: Math.min(s.start + s.size, boundary) }));
+  const moves: { lv: string; from: number; to: number; size: number }[] = [];
+  for (const seg of segments.filter(s => s.lv && s.start + s.size > boundary)) {
+    for (let from = Math.max(seg.start, boundary), end = seg.start + seg.size; from < end;) {
+      const slot = free.find(f => f.end > f.start);
+      if (!slot) fail('Not enough free extents below the new boundary for compaction');
+      const size = Math.min(end - from, slot.end - slot.start);
+      moves.push({ lv: seg.lv, from, to: slot.start, size });
+      slot.start += size; from += size;
+    }
+  }
+  return moves;
+}
+/** Shrinks selected LVs, compacts extents, then reduces the PV to `payload` bytes. Returns the verified PV end. */
+async function reduceSinglePvGroup(host: StorageHost, group: GroupPlan, payload: number) {
+  const before = await pvSegments(host, group.pvPath);
+  const boundary = Math.floor((payload - before.peStart) / group.extentSize);
+  if (!Number.isSafeInteger(boundary) || boundary < 1) fail('The target is too small for the PV metadata area; nothing was changed');
+  const freed = group.shrink.reduce((n, x) => n + (x.from - x.sizeMb * M) / group.extentSize, 0);
+  const allocated = before.segments.filter(x => x.lv).reduce((n, x) => n + x.size, 0);
+  if (!Number.isSafeInteger(freed) || allocated - freed > boundary) fail('The LVs will not fit below the new PV boundary; choose smaller LV targets. Nothing was changed.');
+  if (!group.compact && before.segments.some(x => x.lv && x.start + x.size > boundary && !group.shrink.some(y => y.name === x.lv))) fail('Allocated extents lie beyond the new boundary. Enable extent compaction or move them first; nothing was changed.');
+  for (const lv of group.shrink) {
+    const actual = await shrinkAndVerifyExt4(host, lv.path, lv.sizeMb * M);
+    await host.run('lvreduce', ['--yes', '--size', `${lv.sizeMb}M`, `${group.name}/${lv.name}`]);
+    const size = Number(await host.run('blockdev', ['--getsize64', lv.path]));
+    if (size !== lv.sizeMb * M || size < actual) fail(`${group.name}/${lv.name} size verification failed after reduction; inspect it before continuing. The PV boundary is unchanged.`);
+  }
+  if (group.compact) {
+    // Planned in full before the first move, so a shortfall moves nothing.
+    for (const move of planCompaction((await pvSegments(host, group.pvPath)).segments, boundary)) {
+      await host.run('pvmove', ['--alloc', 'anywhere', '--name', move.lv, `${group.pvPath}:${move.from}-${move.from + move.size - 1}`, `${group.pvPath}:${move.to}-${move.to + move.size - 1}`]);
+    }
+  }
+  if ((await pvSegments(host, group.pvPath)).segments.some(x => x.lv && x.start + x.size > boundary)) fail('Allocated extents still cross the new boundary; the PV boundary and outer layers are unchanged');
+  await host.run('pvresize', ['--setphysicalvolumesize', `${payload}B`, '--yes', group.pvPath]);
+  const report = JSON.parse(await host.run('pvs', ['--reportformat', 'json', '--units', 'b', '--nosuffix', '-o', 'pv_name,pe_start,pv_pe_count', group.pvPath]));
+  const rows = report.report?.flatMap((r: { pv?: unknown[] }) => r.pv ?? []) ?? [];
+  const row = rows[0], start = Number(row?.pe_start), count = Number(row?.pv_pe_count), actual = start + count * group.extentSize;
+  if (rows.length !== 1 || (host.canonicalDevice ? await host.canonicalDevice(row.pv_name.trim()) : row.pv_name?.trim()) !== group.pvPath || !Number.isSafeInteger(start) || start < 4096 || !Number.isSafeInteger(count) || count < 1 || !Number.isSafeInteger(actual) || actual > payload) fail('PV extent boundary verification failed; encryption and outer layers are unchanged');
+  return actual;
+}
+export function raidChangePlan(state: StorageInventory, op: StorageOperation) {
+  const device = all(state.devices).find(d => d.path === op.device), array = state.raid?.find(r => r.device === op.device);
+  if (!device || !array?.raidDevices) fail('Reliable mdadm/sysfs array metadata is required');
+  const level = array.level.replace(/^raid/, ''), n = array.raidDevices, target = device.path;
+  const active = array.members.filter(m => m.state.split(',').includes('in_sync')), spares = array.members.filter(m => m.state.split(',').includes('spare'));
+  if (!['1.0', '1.1', '1.2'].includes(array.metadata ?? '') || array.members.length !== active.length + spares.length) fail('Native 1.x metadata and a known in-sync/spare state for every member are required');
+  if (op.action === 'raidReshape') {
+    if (device.children.length) fail('Release inner mappings, PVs and LVs before converting the array');
+    if (array.degraded !== 0 || active.length !== n) fail('Level/layout conversion requires a healthy array');
+    const goal = op.raidLevel ?? level, layout = op.raidLayout ? [`--layout=${op.raidLayout}`] : [];
+    if (goal === level) {
+      if (!['5', '6'].includes(level) || !op.raidLayout) fail('Choose a different RAID level, or a new layout for RAID5/6');
+      return { args: ['--grow', target, ...layout], backup: true, summary: `Change RAID${level} layout to ${op.raidLayout}` };
+    }
+    if (op.raidLayout && !(level === '5' && goal === '6')) fail('Change the layout in a separate step');
+    if (level === '1' && goal === '5') { if (n !== 2) fail('RAID1 → RAID5 needs exactly two mirrors; shrink the mirror first'); return { args: ['--grow', target, '--level=5'], backup: false, summary: 'Convert the two-mirror RAID1 to a two-member RAID5 (capacity unchanged)' }; }
+    if (level === '5' && goal === '1') { if (n !== 2) fail('RAID5 → RAID1 needs a two-member RAID5; shrink it to two members first'); return { args: ['--grow', target, '--level=1'], backup: false, summary: 'Convert the two-member RAID5 to a RAID1 mirror (capacity unchanged)' }; }
+    if (level === '5' && goal === '6') { if (!spares.length) fail('Add a healthy spare before converting RAID5 to RAID6'); return { args: ['--grow', target, '--level=6', `--raid-devices=${n + 1}`, ...layout], backup: true, summary: `Convert RAID5 to RAID6 using one spare (${n + 1} members, capacity unchanged)` }; }
+    if (level === '6' && goal === '5') { if (n < 4) fail('RAID6 → RAID5 needs at least four members'); return { args: ['--grow', target, '--level=5', `--raid-devices=${n - 1}`], backup: true, summary: `Convert RAID6 to RAID5 (${n - 1} members, capacity unchanged; one member becomes a spare)` }; }
+    fail('Supported conversions: RAID1 ↔ RAID5 (two members), RAID5 → RAID6 with a spare, RAID6 → RAID5, and RAID5/6 layout changes');
+  }
+  const next = op.raidDevices;
+  if (!next || next >= n) fail('Choose a smaller member count');
+  if (level === '1') {
+    if (next < 2 || active.length !== next || array.degraded !== n - next) fail('For RAID1, first mark faulty and detach the mirrors to drop so exactly the target count stays in sync');
+    return { args: ['--grow', target, `--raid-devices=${next}`], backup: false, summary: `Reduce RAID1 slots from ${n} to ${next} (capacity unchanged)` };
+  }
+  if (!['5', '6'].includes(level)) fail('Member-count shrinking supports RAID1, RAID5 and RAID6');
+  const parity = level === '5' ? 1 : 2;
+  if (array.degraded !== 0 || active.length !== n) fail('RAID5/6 shrinking requires a healthy array');
+  if (next < (level === '5' ? 2 : 4)) fail(`RAID${level} needs at least ${level === '5' ? 2 : 4} members`);
+  if (!array.componentSize || !Number.isSafeInteger(array.componentSize) || array.componentSize % 1024 || array.componentSize * (n - parity) !== device.size) fail('The RAID component size could not be verified against the array size');
+  if (device.filesystem !== 'ext4' || device.children.length) fail('RAID5/6 shrinking requires plain offline ext4 directly on the array; it is shrunk first');
+  const newSize = array.componentSize * (next - parity);
+  return { args: ['--grow', target, `--raid-devices=${next}`], backup: true, newSize, summary: `Shrink ext4 and the array to ${Math.floor(newSize / M)} MiB, then reshape RAID${level} from ${n} to ${next} members` };
+}
+/** NVMe sanitize covers every namespace of the controller; all of them must be visible here and pass erase checks. */
+export function firmwareTargets(state: StorageInventory, device: StorageDevice) {
+  const same = [...new Map(all(state.devices).filter(d => d.type === 'disk' && d.serial && d.serial === device.serial).map(d => [d.path, d])).values()];
+  if (device.transport !== 'nvme' ? same.length !== 1 : same.some(d => d.transport !== 'nvme')) fail('Disk serial is ambiguous');
+  return same.length ? same : [device];
+}
 export function layerShrinkPlan(state: StorageInventory, op: StorageOperation) {
   const nodes = all(state.devices), outer = nodes.find(d => d.path === op.device);
   if (!outer || outer.critical !== false || outer.readOnly || !['part', 'lvm'].includes(outer.type) || outer.filesystem !== 'crypto_LUKS' || outer.children.length !== 1) fail('Supported layered shrink: non-system partition or linear LV → LUKS2 mapping → offline ext4');
   const mapping = outer.children[0];
   if (mapping.type !== 'crypt' || !['ext4', 'LVM2_member'].includes(mapping.filesystem) || mapping.critical !== false || mapping.readOnly || !op.sizeMb || op.sizeMb * 1048576 >= outer.size) fail('Select a writable ext4 or LVM mapping and a smaller outer size');
-  let innerGroup: { name: string; extentSize: number; active: string[] } | undefined;
+  let innerGroup: GroupPlan | undefined;
   if (mapping.filesystem === 'ext4') {
     if (mapping.children.length) fail('Release holders above ext4 before shrinking');
   } else {
-    const pv = state.lvm?.pvs.find(p => p.path === mapping.path);
-    const group = state.lvm?.vgs.find(g => g.name === pv?.vg);
-    const members = state.lvm?.pvs.filter(p => p.vg === pv?.vg) ?? [];
-    const lvs = state.lvm?.lvs.filter(l => l.vg === pv?.vg) ?? [];
-    if (!pv || !group || !/^[a-zA-Z0-9_][a-zA-Z0-9_+.-]*$/.test(group.name) || !group.extentSize || members.length !== 1 || state.lvm?.moving || state.lvm?.vgs.filter(g => g.name === group.name).length !== 1) fail('Inner LVM shrinking requires an unambiguous, single-PV VG without extent moves');
-    if (!lvs.length || lvs.some(l => l.kind !== 'linear' || l.pool || l.origin || !/^[a-zA-Z0-9_][a-zA-Z0-9_+.-]*$/.test(l.name)) || mapping.children.some(d => d.type !== 'lvm' || d.children.length || !lvs.some(l => l.path === d.path))) fail('Inner VG must contain only plain linear LVs without child mappings, snapshots or caches');
-    if (lvs.some(l => l.attributes[4] === 'a' && !mapping.children.some(d => d.path === l.path))) fail('Every active LV must be present in the inspected mapping tree');
-    innerGroup = { name: group.name, extentSize: group.extentSize, active: lvs.filter(l => l.attributes[4] === 'a').map(l => l.name) };
+    innerGroup = singlePvGroupPlan(state, mapping, op);
+    if (innerGroup.remaining > op.sizeMb * M) fail('The inner LVs will not fit in the smaller device; choose smaller LV targets or a larger size');
   }
   offlineTree(outer);
   if (outer.type === 'part') {
@@ -454,15 +628,15 @@ export function layerShrinkPlan(state: StorageInventory, op: StorageOperation) {
   }
   const metadata = state.encryption?.find(e => e.device === outer.path);
   if (!metadata?.digest || !metadata.slots.length) fail('Verified LUKS2 metadata is required');
-  return { outer, mapping, innerGroup, steps: ['Verify passphrase and LUKS2 layout', innerGroup ? 'Reduce and verify inner PV boundary; deactivate its VG (LVs must already fit)' : 'Check, shrink and verify ext4', 'Shrink and verify dm-crypt mapping', 'Close mapping', `Shorten ${outer.type === 'part' ? 'partition without moving its start' : 'linear LV at an exact extent boundary'}`, 'Reopen the mapping', ...(innerGroup ? ['Reactivate previously active LVs'] : [])] };
+  return { outer, mapping, innerGroup, steps: ['Verify passphrase and LUKS2 layout', ...(innerGroup ? groupSteps(innerGroup) : ['Check, shrink and verify ext4']), 'Shrink and verify dm-crypt mapping', 'Close mapping', `Shorten ${outer.type === 'part' ? 'partition without moving its start' : 'linear LV at an exact extent boundary'}`, 'Reopen the mapping', ...(innerGroup ? ['Reactivate previously active LVs'] : [])] };
 }
 function checkExpertOperation(state: StorageInventory, op: StorageOperation): StorageDevice {
   const nodes = all(state.devices), device = nodes.find(d => d.path === op.device);
   if (!device) fail('Device is no longer available');
-  if (op.action === 'firmwareInfo') { if (nodes.filter(d => d.type === 'disk' && d.serial === device.serial).length !== 1) fail('Disk serial is ambiguous'); if (device.type !== 'disk') fail('Select a physical disk'); return device; }
+  if (op.action === 'firmwareInfo') { if (device.type !== 'disk') fail('Select a physical disk'); firmwareTargets(state, device); return device; }
   if (op.action === 'firmwareSanitize') {
-    if (nodes.filter(d => d.type === 'disk' && d.serial === device.serial).length !== 1) fail('Disk serial is ambiguous');
-    checkExpertOperation(state, { ...op, action: 'secureErase', eraseMethod: 'secure-discard' });
+    if (device.type !== 'disk') fail('Select a physical disk');
+    for (const target of firmwareTargets(state, device)) checkExpertOperation(state, { ...op, device: target.path, action: 'secureErase', eraseMethod: 'secure-discard' });
     if (!op.sanitizeMethod || !['ata', 'sata', 'nvme'].includes(device.transport)) fail('Select an ATA/NVMe firmware method for a direct-attached disk');
     return device;
   }
@@ -484,6 +658,7 @@ function checkExpertOperation(state: StorageInventory, op: StorageOperation): St
     return device;
   }
   if (op.action === 'layerShrink') { layerShrinkPlan(state, op); return device; }
+  if (op.action === 'pvStackShrink') { pvStackShrinkPlan(state, op); return device; }
   if (op.action === 'secureErase') {
     if (device.type !== 'disk' || !device.size || !Number.isSafeInteger(device.size) || !device.diskSeq || !(device.serial || device.wwn)) fail('Erase requires an identified whole physical disk with serial/WWN, kernel disk sequence and a valid capacity');
     offlineTree(device); unreferenced(state, device);
@@ -534,6 +709,7 @@ function checkExpertOperation(state: StorageInventory, op: StorageOperation): St
       if (active.length !== array.raidDevices || array.members.length !== active.length + spares.length || spares.length < op.raidDevices - array.raidDevices) fail('Add enough healthy spares before growing; every member state must be known');
       return device;
     }
+    if (op.action === 'raidReshape' || op.action === 'raidShrink') { offlineTree(device); raidChangePlan(state, op); return device; }
     if (op.action === 'raidStop') { offlineTree(device); if (device.children.length) fail('Release inner mappings/LVs before stopping the array'); unreferenced(state, device); return device; }
     if (op.devices?.length !== 1) fail('Choose exactly one member device');
     if (op.action === 'raidAdd') { blankMember(state, op.devices[0]); return device; }
@@ -747,12 +923,7 @@ async function executeLayerShrink(host: StorageHost, state: StorageInventory, op
     await host.run('cryptsetup', ['open', '--test-passphrase', '--key-file', files.current!, outer.path]);
     let actual: number;
     if (innerGroup) {
-      await host.run('pvresize', ['--setphysicalvolumesize', `${payload}B`, '--yes', mapping.path]);
-      const report = JSON.parse(await host.run('pvs', ['--reportformat', 'json', '--units', 'b', '--nosuffix', '-o', 'pv_name,pe_start,pv_pe_count', mapping.path]));
-      const rows = report.report?.flatMap((r: { pv?: unknown[] }) => r.pv ?? []) ?? [];
-      const row = rows[0], start = Number(row?.pe_start), count = Number(row?.pv_pe_count);
-      actual = start + count * innerGroup.extentSize;
-      if (rows.length !== 1 || (host.canonicalDevice ? await host.canonicalDevice(row.pv_name.trim()) : row.pv_name?.trim()) !== mapping.path || !Number.isSafeInteger(start) || start < 4096 || !Number.isSafeInteger(count) || count < 1 || !Number.isSafeInteger(actual) || actual > payload) fail('PV extent boundary verification failed; encryption and outer layers are unchanged');
+      actual = await reduceSinglePvGroup(host, innerGroup, payload);
       // No force: LVM refuses deactivation while any LV still has a consumer.
       await host.run('vgchange', ['--activate', 'n', innerGroup.name]);
     } else actual = await shrinkAndVerifyExt4(host, mapping.path, payload);
@@ -773,7 +944,7 @@ async function executeLayerShrink(host: StorageHost, state: StorageInventory, op
 async function executeExpertOperation(host: StorageHost, state: StorageInventory, op: StorageOperation, input?: StorageSecrets): Promise<string> {
   const device = checkExpertOperation(state, op);
   const secrets = validateStorageSecrets(op, input);
-  if (['firmwareInfo', 'firmwareSanitize'].includes(op.action)) return executeFirmware(host, device, op);
+  if (['firmwareInfo', 'firmwareSanitize'].includes(op.action)) return executeFirmware(host, device, op, firmwareTargets(state, device));
   if (op.action === 'raidGrow') {
     const array = state.raid!.find(r => r.device === device.path)!;
     if (!host.reshapeBackup) fail('Update the helper for persistent RAID reshape backups');
@@ -781,6 +952,35 @@ async function executeExpertOperation(host: StorageHost, state: StorageInventory
     try { await host.run('mdadm', ['--grow', device.path, `--raid-devices=${op.raidDevices}`, `--backup-file=${backup}`]); }
     catch (error) { fail(`Inspect RAID state before retrying. Preserve reshape recovery file ${backup}: ${error instanceof Error ? error.message : String(error)}`); }
     return `RAID growth requested; synchronization may still be running. Preserve recovery file ${backup} until mdadm confirms the reshape is complete. Filesystem capacity is unchanged; grow it separately.`;
+  }
+  if (op.action === 'raidReshape' || op.action === 'raidShrink') {
+    const array = state.raid!.find(r => r.device === device.path)!, plan = raidChangePlan(state, op);
+    if (plan.newSize) {
+      const component = Number((await host.read(`/sys/class/block/${device.kernel}/md/component_size`)).trim()) * 1024;
+      if (component !== array.componentSize) fail('RAID component size changed after the check; nothing was changed');
+      await shrinkAndVerifyExt4(host, device.path, plan.newSize);
+      await host.run('mdadm', ['--grow', device.path, `--array-size=${plan.newSize / 1024}`]);
+      const size = Number(await host.run('blockdev', ['--getsize64', device.path]));
+      if (size !== plan.newSize) fail('Array size verification failed after the filesystem was shrunk. The member count is unchanged; inspect before retrying.');
+    }
+    let backup: string | undefined;
+    if (plan.backup) { if (!host.reshapeBackup) fail('Update the helper for persistent RAID reshape backups'); backup = await host.reshapeBackup(array.uuid); }
+    try { await host.run('mdadm', [...plan.args, ...(backup ? [`--backup-file=${backup}`] : [])]); }
+    catch (error) { fail(`Inspect RAID state before retrying.${backup ? ` Preserve reshape recovery file ${backup}.` : ''}${plan.newSize ? ' The filesystem and logical array size were already reduced; the reduced array size is not persistent until the reshape starts.' : ''} ${error instanceof Error ? error.message : String(error)}`); }
+    return `${plan.summary}: requested. Reshape may continue in the background${backup ? `; preserve recovery file ${backup} until mdadm reports it complete` : ''}.${plan.newSize ? ' Dropped members become spares when the reshape finishes; detach them separately.' : ''}`;
+  }
+  if (op.action === 'pvStackShrink') {
+    const { device: part, group } = pvStackShrinkPlan(state, op), target = op.sizeMb! * M;
+    const geometry = await partitionGeometry(host, part);
+    if (target % geometry.sectorSize) fail('Target is not aligned to the disk sector size');
+    await reduceSinglePvGroup(host, group, target);
+    await host.run('vgchange', ['--activate', 'n', group.name]);
+    try {
+      await host.run('sfdisk', ['--lock', '--wipe', 'never', '--wipe-partitions', 'never', '-N', geometry.number, part.parentPath!], `,${target / geometry.sectorSize}\n`);
+      if (Number(await host.run('blockdev', ['--getsize64', part.path])) !== target) fail('Partition size does not match the verified plan');
+    } catch (error) { fail(`The PV boundary is reduced and VG ${group.name} is inactive. Inspect the partition before reactivating: ${error instanceof Error ? error.message : String(error)}`); }
+    for (const lv of group.active) await host.run('lvchange', ['--activate', 'y', `${group.name}/${lv}`]);
+    return `Verified LV/PV boundary → partition shrink completed for ${part.path}; previously active LVs reactivated. Refresh inventory.`;
   }
   if (op.action.startsWith('lvCache')) {
     const target = `${op.vg}/${op.lv}`;

@@ -29,7 +29,23 @@ export class ApiError extends Error {
   }
 }
 
+// In-flight request tracking for the global activity bar. Changes show at once; reads only when slow,
+// so background polling doesn't flash the bar every few seconds.
+let activeRequests = 0;
+const activityListeners = new Set<(active: number) => void>();
+function setActivity(delta: number) { activeRequests += delta; for (const listener of activityListeners) listener(activeRequests); }
+export function subscribeActivity(listener: (active: number) => void) { activityListeners.add(listener); listener(activeRequests); return () => { activityListeners.delete(listener); }; }
+function trackActivity<T>(work: Promise<T>, immediate: boolean): Promise<T> {
+  let counted = false;
+  const start = () => { counted = true; setActivity(1); };
+  const timer = immediate ? (start(), undefined) : setTimeout(start, 800);
+  return work.finally(() => { clearTimeout(timer); if (counted) setActivity(-1); });
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  return trackActivity(requestUntracked<T>(path, init), !!init.method && init.method !== 'GET');
+}
+async function requestUntracked<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = getToken();
   const headers: Record<string, string> = { ...((init.headers as Record<string, string>) ?? {}) };
   if (token) headers.Authorization = `Bearer ${token}`;
@@ -74,7 +90,7 @@ export interface UploadProgress {
   remainingSeconds: number | null; bytesPerSecond: number; processing: boolean;
 }
 function upload<T>(path: string, formData: FormData, onProgress?: (progress: UploadProgress) => void): Promise<T> {
-  return new Promise((resolve, reject) => {
+  return trackActivity(new Promise<T>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     const started = performance.now();
     xhr.open('POST', `/api${path}`);
@@ -99,7 +115,7 @@ function upload<T>(path: string, formData: FormData, onProgress?: (progress: Upl
     };
     report(0, null);
     xhr.send(formData);
-  });
+  }), true);
 }
 
 export const api = {

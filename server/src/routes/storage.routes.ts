@@ -14,8 +14,9 @@ function requireStorage(req: Request, permission: StoragePermission) {
 }
 function requireAdditionalStorage(req: Request, op: ReturnType<typeof validateStorageOperation>) {
   if (op.persistent || ['raidBootAdd', 'raidBootRemove'].includes(op.action)) requireStorage(req, 'automount');
-  if (['luksGrow', 'pvGrow', 'lvResize'].includes(op.action)) requireStorage(req, 'resize');
-  if (['pvMove', 'pvMoveAbort', 'pvShrink', 'layerShrink'].includes(op.action)) requireStorage(req, 'lvm');
+  if (['luksGrow', 'pvGrow', 'lvResize', 'raidShrink'].includes(op.action)) requireStorage(req, 'resize');
+  if (['pvMove', 'pvMoveAbort', 'pvShrink', 'layerShrink', 'pvStackShrink'].includes(op.action)) requireStorage(req, 'lvm');
+  if (op.compact) requireStorage(req, 'migrate');
   if (['crypttabSet', 'crypttabRemove', 'layerShrink'].includes(op.action)) requireStorage(req, 'encrypt');
 }
 export function createStorageRouter(manager: StorageManager = storageManager) {

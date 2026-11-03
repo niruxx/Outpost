@@ -1,3 +1,4 @@
+import { GlobalActivityBar } from './components/GlobalActivityBar.js';
 import { OperationsPage } from './pages/OperationsPage.js';
 import { Navigate, Route, BrowserRouter, Routes, useParams } from 'react-router-dom';
 import { MotionConfig } from 'framer-motion';
@@ -161,6 +162,7 @@ export default function App() {
       <AuthProvider>
         <ToastProvider>
           <ConfirmProvider>
+            <GlobalActivityBar />
             <AppRoutes />
           </ConfirmProvider>
         </ToastProvider>

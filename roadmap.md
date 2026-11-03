@@ -51,7 +51,7 @@ Planned features inspired by AMP and other game panels. These are development go
 - [x] Single-PV LVM-inside-LUKS boundary shrinking with existing linear LVs, verified before outer layers are reduced.
 - [x] Healthy RAID1/5/6 member-count growth with persistent reshape recovery files; LVM writethrough/writeback cache attachment, mode changes and flush/detachment.
 - [x] Capability-checked ATA/NVMe block/crypto firmware sanitization, persistent interruption guards and SMART summaries in disk lists.
-- [ ] Additional complex-stack shrink recipes, automatic multi-LV shrink/extent compaction, RAID level/layout conversion and shrink, and shared/multiple-namespace NVMe sanitization. See [supported limits](docs/expert-storage.md).
+- [x] Additional complex-stack shrink recipes, automatic multi-LV shrink/extent compaction, RAID level/layout conversion and shrink, and shared/multiple-namespace NVMe sanitization. See [supported limits](docs/expert-storage.md).
 
 ## Comparison and sources
 

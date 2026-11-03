@@ -1310,3 +1310,9 @@ body {
   [data-theme='outpost'] .ui-main { margin-top: 0; border-radius: 0; }
   .ui-page-title { font-size: 30px; }
 }
+
+/* Shared progress indicators (components/ui.tsx ProgressBar, GlobalActivityBar). */
+@keyframes ui-progress-sweep { from { left: -35%; } to { left: 100%; } }
+.ui-progress-sweep { animation: ui-progress-sweep 1.3s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .ui-progress-sweep { animation-duration: 3s; } }
+[data-effects='reduced'] .ui-progress-sweep { animation-duration: 3s; }

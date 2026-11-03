@@ -30,6 +30,7 @@ const host = {
     if (file.includes('/md/dev-')) return file.includes('sdg') ? 'spare' : 'in_sync';
     if (file.endsWith('/transport')) return 'pcie';
     if (file.endsWith('/subsysnqn')) return 'nqn.fixture';
+    if (file.endsWith('/nsid')) return '1';
     if (file.includes('/sanitize/') && pendingFile) return '{"pending":true}';
     throw Object.assign(new Error('Not present'), { code: 'ENOENT' });
   },
@@ -38,6 +39,7 @@ const host = {
     calls.push({ command, args, input });
     if (command === 'lsblk') return JSON.stringify({ blockdevices: blocks });
     if (command === 'findmnt') return JSON.stringify({ filesystems: [{ source: '/dev/sda', target: '/', 'maj:min': '8:0' }] });
+    if (command === 'pvs' && args[0] === '--segments') return JSON.stringify({ report: [{ pvseg: [{ pv_name: mapping.path, pe_start: String(M), pvseg_start: '0', pvseg_size: '16', lv_name: 'data' }, { pv_name: mapping.path, pe_start: String(M), pvseg_start: '16', pvseg_size: '16', lv_name: 'fast' }, { pv_name: mapping.path, pe_start: String(M), pvseg_start: '32', pvseg_size: '91', lv_name: '' }] }] });
     if (command === 'pvs') return JSON.stringify({ report: [{ pv: [{ pv_name: mapping.path, pv_uuid: 'PV', vg_name: 'vault', pv_size: String((pvResized ? 236 : 496) * M), pv_free: String(368 * M), pv_used: String(128 * M), pe_start: String(M), pv_pe_count: String(badPv ? 124 : 59) }] }] });
     if (command === 'vgs') return JSON.stringify({ report: [{ vg: [{ vg_name: 'vault', vg_uuid: 'VG', vg_size: String(496 * M), vg_free: String(368 * M), vg_extent_size: String(4 * M) }] }] });
     if (command === 'lvs') return JSON.stringify({ report: [{ lv: [data, cache].map(d => ({ lv_name: path.posix.basename(d.path), lv_uuid: d['maj:min'], vg_name: 'vault', lv_path: d.path, lv_size: String(d.size), lv_attr: '-wi-a-----', segtype: d === data ? cacheKind : 'linear', pool_lv: '', origin: '' })) }] });

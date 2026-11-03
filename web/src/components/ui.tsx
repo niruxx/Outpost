@@ -223,3 +223,29 @@ export const fadeInUp = {
 export const staggerContainer = {
   animate: { transition: { staggerChildren: 0.045 } },
 };
+
+/** Determinate when `percent` is known; otherwise an indeterminate sweep, so long work never looks frozen. */
+export function ProgressBar({ percent, label, detail, className = '' }: { percent?: number | null; label?: ReactNode; detail?: ReactNode; className?: string }) {
+  const known = typeof percent === 'number' && Number.isFinite(percent);
+  const value = known ? Math.max(0, Math.min(100, percent)) : null;
+  return (
+    <div className={`space-y-1 ${className}`}>
+      {(label || detail || known) && (
+        <div className="flex flex-wrap items-baseline justify-between gap-2 text-xs text-ink-300">
+          <span>{label}</span>
+          <span className="tabular-nums text-ink-400">{[known ? `${value!.toFixed(value! < 10 ? 1 : 0)}%` : null, detail].filter(Boolean).map((part, i) => <span key={i}>{i ? ' · ' : ''}{part}</span>)}</span>
+        </div>
+      )}
+      <div className="ui-progress relative h-1.5 overflow-hidden rounded-full bg-surface-700" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={value ?? undefined} aria-busy={!known}>
+        {known ? <div className="h-full rounded-full bg-accent-500 transition-[width] duration-500" style={{ width: `${value}%` }} />
+          : <div className="ui-progress-sweep absolute inset-y-0 w-1/3 rounded-full bg-accent-500" />}
+      </div>
+    </div>
+  );
+}
+
+/** Seconds → "2h 05m", "3m 12s", "8s". */
+export function formatDuration(seconds: number) {
+  const s = Math.max(0, Math.round(seconds)), h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+  return h ? `${h}h ${String(m).padStart(2, '0')}m` : m ? `${m}m ${String(s % 60).padStart(2, '0')}s` : `${s}s`;
+}
