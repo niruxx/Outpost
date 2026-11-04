@@ -3,16 +3,30 @@ import { setVisibleInterval } from '../../lib/perf.js';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useServerDetail } from './ServerContext.js';
 import { api, ApiError } from '../../api/client.js';
-import type { PlayerInfo } from '../../api/types.js';
+import type { PlayerDataSummary, PlayerInfo } from '../../api/types.js';
+import { PlayerDataEditor } from './PlayerDataEditor.js';
 import { Badge, Button, Card, ErrorText, Field, Input } from '../../components/ui.js';
 
 export function PlayersTab() {
-  const { serverId, running, can } = useServerDetail();
+  const { serverId, server, running, can } = useServerDetail();
+  const isJava = server?.platform === 'java';
   const canWrite = can('players');
   const [players, setPlayers] = useState<PlayerInfo[] | null>(null);
   const [error, setError] = useState('');
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [newName, setNewName] = useState('');
+  const [saved, setSaved] = useState<PlayerDataSummary[] | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
+
+  const loadSaved = useCallback(async () => {
+    if (!isJava) return;
+    try {
+      const res = await api.get<{ players: PlayerDataSummary[] }>(`/servers/${serverId}/playerdata`);
+      setSaved(res.players);
+    } catch {
+      setSaved([]);
+    }
+  }, [serverId, isJava]);
 
   const load = useCallback(async () => {
     try {
@@ -25,9 +39,10 @@ export function PlayersTab() {
 
   useEffect(() => {
     load();
-    const interval = setVisibleInterval(load, 4000);
+    loadSaved();
+    const interval = setVisibleInterval(() => { load(); loadSaved(); }, 4000);
     return () => interval();
-  }, [load]);
+  }, [load, loadSaved]);
 
   async function act(name: string, action: string, reason?: string) {
     setBusyKey(`${name}:${action}`);
@@ -85,6 +100,32 @@ export function PlayersTab() {
         </h2>
         <PlayerTable players={offline} canWrite={canWrite} running={running} busyKey={busyKey} onAction={act} />
       </section>
+
+      {isJava && (
+        <section>
+          <h2 className="mb-1 text-base font-medium text-ink-100">Player data ({saved?.length ?? 0})</h2>
+          <p className="mb-2 text-xs text-ink-400">Inventory, XP, health, location and abilities stored in the world's playerdata files.</p>
+          {saved && saved.length === 0 ? (
+            <p className="text-sm text-ink-500">No saved player files yet — players appear here after joining once.</p>
+          ) : (
+            <Card className="divide-y divide-surface-700/80 overflow-hidden">
+              {saved?.map((p) => (
+                <div key={p.uuid} className="flex flex-wrap items-center gap-3 px-4 py-3">
+                  <span className="font-medium text-ink-100">{p.name ?? 'Unknown player'}</span>
+                  <span className="font-mono text-xs text-ink-500">{p.uuid}</span>
+                  {p.online && <Badge tone="green" pulse>online</Badge>}
+                  <span className="text-xs text-ink-500">saved {new Date(p.modified).toLocaleString()}</span>
+                  <Button className="ml-auto" onClick={() => setEditing(p.uuid)}>
+                    {canWrite ? 'Edit data' : 'View data'}
+                  </Button>
+                </div>
+              ))}
+            </Card>
+          )}
+        </section>
+      )}
+
+      <PlayerDataEditor serverId={serverId} uuid={editing} running={running} canWrite={canWrite} onClose={() => { setEditing(null); loadSaved(); }} />
     </div>
   );
 }

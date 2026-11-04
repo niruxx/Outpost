@@ -51,6 +51,7 @@ import {
   launchSandboxed,
 } from '../services/processManager.js';
 import { getPlayerRoster } from '../services/playerService.js';
+import { getPlayerData, listPlayerData, updatePlayerData } from '../services/playerDataService.js';
 import {
   getEffectiveCreation,
   getServerPermissions,
@@ -878,6 +879,26 @@ serversRouter.get(
   })
 );
 
+const GAMEMODES = new Set(['survival', 'creative', 'adventure', 'spectator']);
+const LIVE_ITEM_RE = /^[a-z0-9_.-]+(?::[a-z0-9_./-]+)?$/;
+
+/** Live attribute/inventory actions for online Java players; each returns null on invalid input. */
+const LIVE_PLAYER_ACTIONS: Record<string, (name: string, body: Record<string, unknown>) => string | null> = {
+  gamemode: (name, b) => (typeof b.mode === 'string' && GAMEMODES.has(b.mode) ? `gamemode ${b.mode} ${name}` : null),
+  'xp-set-levels': (name, b) => (Number.isInteger(b.amount) && (b.amount as number) >= 0 ? `xp set ${name} ${b.amount} levels` : null),
+  'xp-add-levels': (name, b) => (Number.isInteger(b.amount) ? `xp add ${name} ${b.amount} levels` : null),
+  'xp-add-points': (name, b) => (Number.isInteger(b.amount) ? `xp add ${name} ${b.amount} points` : null),
+  give: (name, b) =>
+    typeof b.item === 'string' && LIVE_ITEM_RE.test(b.item) && Number.isInteger(b.count) && (b.count as number) >= 1 && (b.count as number) <= 6400
+      ? `give ${name} ${b.item} ${b.count}`
+      : null,
+  'clear-inventory': (name) => `clear ${name}`,
+  'clear-effects': (name) => `effect clear ${name}`,
+  heal: (name) => `effect give ${name} minecraft:instant_health 1 10 true`,
+  feed: (name) => `effect give ${name} minecraft:saturation 1 20 true`,
+  kill: (name) => `kill ${name}`,
+};
+
 const PLAYER_ACTIONS: Record<string, (name: string, arg?: string) => string> = {
   op: (name) => `op ${name}`,
   deop: (name) => `deop ${name}`,
@@ -897,14 +918,58 @@ serversRouter.post(
     const server = getServer(serverId);
     if (!server) throw new HttpError(404, 'Server not found');
     if (!isMinecraftPlatform(server.platform)) throw new HttpError(400, 'Only Minecraft instances have operator/player commands');
-    const builder = PLAYER_ACTIONS[action];
-    if (!builder) throw new HttpError(400, `Unknown player action: ${action}`);
+    const builder = PLAYER_ACTIONS[action] as ((name: string, arg?: string) => string) | undefined;
+    const live = LIVE_PLAYER_ACTIONS[action] as ((name: string, body: Record<string, unknown>) => string | null) | undefined;
+    if (!builder && !live) throw new HttpError(400, `Unknown player action: ${action}`);
+    if (live && server.platform !== 'java') throw new HttpError(400, 'Live player attribute actions are only available on Java instances');
+    if (live && !/^[A-Za-z0-9_]{1,16}$/.test(name)) throw new HttpError(400, 'Invalid player name');
     if (!isRunning(serverId)) {
       throw new HttpError(409, 'Start the server to manage players (actions are applied via the live console)');
     }
-    sendCommand(serverId, builder(name, req.body?.reason));
+    let command: string;
+    if (live) {
+      const built = live(name, (req.body ?? {}) as Record<string, unknown>);
+      if (!built) throw new HttpError(400, `Invalid arguments for ${action}`);
+      command = built;
+    } else {
+      command = builder!(name, req.body?.reason);
+    }
+    sendCommand(serverId, command);
     logAudit(req.auth!.sub, req.auth!.username, `player.${action}`, serverId, name);
     res.status(202).json({ ok: true });
+  })
+);
+
+serversRouter.get(
+  '/:serverId/playerdata',
+  requireServerAccess(),
+  asyncHandler(async (req, res) => {
+    const server = getServer(req.params.serverId);
+    if (!server) throw new HttpError(404, 'Server not found');
+    res.json({ players: listPlayerData(server) });
+  })
+);
+
+serversRouter.get(
+  '/:serverId/playerdata/:uuid',
+  requireServerAccess(),
+  asyncHandler(async (req, res) => {
+    const server = getServer(req.params.serverId);
+    if (!server) throw new HttpError(404, 'Server not found');
+    res.json({ player: await getPlayerData(server, req.params.uuid) });
+  })
+);
+
+serversRouter.put(
+  '/:serverId/playerdata/:uuid',
+  requireServerAccess(),
+  asyncHandler(async (req, res) => {
+    requirePermission(req, 'players');
+    const server = getServer(req.params.serverId);
+    if (!server) throw new HttpError(404, 'Server not found');
+    const player = await updatePlayerData(server, req.params.uuid, req.body ?? {});
+    logAudit(req.auth!.sub, req.auth!.username, 'player.data.edit', server.id, `${player.name ?? player.uuid}: ${Object.keys(req.body ?? {}).join(', ')}`);
+    res.json({ player });
   })
 );
 

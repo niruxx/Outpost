@@ -21,6 +21,14 @@ declare module 'prismarine-provider-anvil' {
 }
 
 declare module 'prismarine-nbt' {
-  export function parse(buffer: Buffer): Promise<{ parsed: unknown; type: string }>;
+  export interface NbtTag { type: string; value: any; name?: string }
+  export function parse(buffer: Buffer, format?: 'big' | 'little' | 'littleVarint'): Promise<{ parsed: NbtTag; type: string }>;
   export function simplify(nbt: unknown): Record<string, unknown>;
+  export function writeUncompressed(value: NbtTag, format?: 'big' | 'little' | 'littleVarint'): Buffer;
+  const nbt: {
+    parse: typeof parse;
+    simplify: typeof simplify;
+    writeUncompressed: typeof writeUncompressed;
+  };
+  export default nbt;
 }

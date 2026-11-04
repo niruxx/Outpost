@@ -225,6 +225,45 @@ export interface PlayerInfo {
   banned: boolean;
 }
 
+export interface PlayerItem {
+  slot: number;
+  id: string;
+  count: number;
+  hasExtra?: boolean;
+}
+
+export interface PlayerDataSummary {
+  uuid: string;
+  name: string | null;
+  online: boolean;
+  modified: number;
+}
+
+export interface PlayerData {
+  uuid: string;
+  name: string | null;
+  online: boolean;
+  dataVersion: number | null;
+  health: number | null;
+  foodLevel: number | null;
+  foodSaturation: number | null;
+  xpLevel: number | null;
+  xpProgress: number | null;
+  xpTotal: number | null;
+  score: number | null;
+  gameMode: number | null;
+  selectedSlot: number | null;
+  pos: [number, number, number] | null;
+  dimension: string | null;
+  air: number | null;
+  fire: number | null;
+  abilities: { flying: boolean; mayfly: boolean; invulnerable: boolean; instabuild: boolean; mayBuild: boolean };
+  inventory: PlayerItem[];
+  enderItems: PlayerItem[];
+  effects: { id: string; amplifier: number; duration: number }[];
+  attributes: { id: string; base: number }[];
+}
+
 export interface FileEntry {
   name: string;
   path: string;
