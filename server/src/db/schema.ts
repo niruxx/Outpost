@@ -260,4 +260,37 @@ CREATE TABLE IF NOT EXISTS player_samples (
   bots INTEGER,
   PRIMARY KEY (server_id, at)
 );
+
+-- Resource history: one averaged row per running instance per minute, kept for a week.
+CREATE TABLE IF NOT EXISTS server_metrics (
+  server_id TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+  at INTEGER NOT NULL, -- unix ms, start of the minute
+  cpu REAL, -- average CPU percent of the whole host
+  cpu_max REAL,
+  memory_mb REAL,
+  memory_max_mb REAL,
+  net_rx REAL, -- bytes per second
+  net_tx REAL,
+  disk_read REAL,
+  disk_write REAL,
+  PRIMARY KEY (server_id, at)
+);
+CREATE INDEX IF NOT EXISTS server_metrics_at ON server_metrics (at);
+
+-- In-panel event log (notification bell, instance activity) and each account's read watermark.
+CREATE TABLE IF NOT EXISTS panel_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  at INTEGER NOT NULL, -- unix ms
+  event TEXT NOT NULL, -- notificationService NOTIFY_EVENTS
+  severity TEXT NOT NULL, -- error | warning | notice | info
+  server_id TEXT REFERENCES servers(id) ON DELETE CASCADE,
+  server_name TEXT,
+  message TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS panel_events_server ON panel_events (server_id, id);
+CREATE INDEX IF NOT EXISTS panel_events_at ON panel_events (at);
+CREATE TABLE IF NOT EXISTS event_reads (
+  user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  last_read_id INTEGER NOT NULL DEFAULT 0
+);
 `;

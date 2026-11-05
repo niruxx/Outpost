@@ -69,6 +69,17 @@
 
   --font-sans: 'Inter';
   --grid-line: rgba(255, 255, 255, 0.03);
+
+  /* Chart series (components/charts.tsx `chartColor`). Full colors, not triplets. */
+  --chart-cpu: rgb(120 220 119);
+  --chart-memory: rgb(161 206 215);
+  --chart-disk: rgb(236 198 92);
+  --chart-net-in: rgb(158 202 255);
+  --chart-net-out: rgb(236 198 92);
+  --chart-disk-read: rgb(195 192 255);
+  --chart-disk-write: rgb(255 180 171);
+  --chart-neutral: rgb(214 199 160);
+  --chart-players: rgb(143 208 168);
 }
 
 html, body, #root {
@@ -1101,13 +1112,13 @@ body {
 [data-theme='outpost'] .wp-glow-1 {
   left: -25vmax;
   top: -35vmax;
-  background: radial-gradient(circle, rgba(120, 220, 119, 0.2) 0%, rgba(120, 220, 119, 0) 62%);
+  background: radial-gradient(circle, rgb(var(--accent-400) / 0.18) 0%, rgb(var(--accent-400) / 0) 62%);
   animation: wp-drift-a 46s ease-in-out infinite;
 }
 [data-theme='outpost'] .wp-glow-2 {
   right: -30vmax;
   bottom: -40vmax;
-  background: radial-gradient(circle, rgba(110, 200, 210, 0.16) 0%, rgba(110, 200, 210, 0) 60%);
+  background: radial-gradient(circle, rgb(var(--tertiary-400) / 0.14) 0%, rgb(var(--tertiary-400) / 0) 60%);
   animation: wp-drift-b 58s ease-in-out infinite;
 }
 [data-theme='outpost'] .wp-p {
@@ -1115,8 +1126,8 @@ body {
   width: 4px;
   height: 4px;
   border-radius: 50%;
-  background: rgb(150 240 150);
-  box-shadow: 0 0 10px 2px rgba(120, 220, 119, 0.6);
+  background: rgb(var(--accent-400));
+  box-shadow: 0 0 10px 2px rgb(var(--accent-400) / 0.6);
   animation-name: wp-twinkle;
   animation-timing-function: ease-in-out;
 }
@@ -1256,7 +1267,133 @@ body {
 }
 /* Material 3 Expressive: a quiet shell, generous shapes and clear tonal hierarchy.
    Scoped to Outpost so user-selected retro themes keep their own visual language. */
+/*
+ * Outpost palettes (lib/theme.ts sets <html data-palette>):
+ *   dark    "Nightfall" — cool graphite surfaces with a periwinkle accent (the default)
+ *   light   "Daylight"  — the same hues on paper-white surfaces
+ *   classic the original forest-green Outpost look
+ * Status colors (success/red/yellow) stay separate from the accent on purpose.
+ */
 :root[data-theme='outpost'] {
+  color-scheme: dark;
+  --surface-1000: 7 9 14;
+  --surface-950: 11 13 20;
+  --surface-900: 15 18 27;
+  --surface-850: 21 25 36;
+  --surface-800: 28 33 46;
+  --surface-700: 38 44 60;
+  --surface-600: 55 63 83;
+  --surface-500: 104 112 134;
+
+  --ink-50: 245 247 253;
+  --ink-100: 229 232 242;
+  --ink-200: 211 215 228;
+  --ink-300: 186 191 208;
+  --ink-400: 150 157 177;
+  --ink-500: 121 128 149;
+  --ink-600: 92 99 118;
+
+  --accent-400: 165 176 255;
+  --accent-500: 134 147 250;
+  --accent-600: 104 117 232;
+  --accent-on: 20 24 84;
+  --accent-container: 51 59 138;
+  --accent-on-container: 224 227 255;
+
+  --secondary-container: 40 46 72;
+  --secondary-on-container: 216 222 248;
+
+  --tertiary-400: 116 221 210;
+  --tertiary-container: 19 71 73;
+  --tertiary-on-container: 172 244 236;
+
+  --success-400: 112 224 162;
+  --success-500: 80 198 134;
+
+  --inverse: 229 232 242;
+  --inverse-on: 30 33 45;
+  --inverse-muted: 98 104 124;
+
+  --grid-line: rgba(255, 255, 255, 0.035);
+
+  --chart-cpu: rgb(165 176 255);
+  --chart-memory: rgb(116 221 210);
+  --chart-disk: rgb(242 196 104);
+  --chart-net-in: rgb(125 200 255);
+  --chart-net-out: rgb(242 196 104);
+  --chart-disk-read: rgb(214 164 255);
+  --chart-disk-write: rgb(255 154 142);
+  --chart-neutral: rgb(205 196 170);
+  --chart-players: rgb(112 224 162);
+}
+
+:root[data-theme='outpost'][data-palette='light'] {
+  color-scheme: light;
+  --surface-1000: 255 255 255;
+  --surface-950: 244 245 250;
+  --surface-900: 237 239 246;
+  --surface-850: 255 255 255;
+  --surface-800: 241 243 249;
+  --surface-700: 226 229 239;
+  --surface-600: 203 207 222;
+  --surface-500: 128 134 154;
+
+  --ink-50: 10 12 22;
+  --ink-100: 24 27 40;
+  --ink-200: 40 44 60;
+  --ink-300: 62 67 86;
+  --ink-400: 90 96 116;
+  --ink-500: 112 118 138;
+  --ink-600: 150 156 174;
+
+  --accent-400: 76 88 214;
+  --accent-500: 96 108 230;
+  --accent-600: 58 68 182;
+  --accent-on: 255 255 255;
+  --accent-container: 224 227 255;
+  --accent-on-container: 28 34 120;
+
+  --secondary-container: 226 230 250;
+  --secondary-on-container: 30 38 92;
+
+  --tertiary-400: 0 120 116;
+  --tertiary-container: 206 242 238;
+  --tertiary-on-container: 0 62 60;
+
+  --error-400: 186 26 26;
+  --error-container: 255 225 222;
+  --error-on-container: 120 10 10;
+
+  --success-400: 18 132 76;
+  --success-500: 30 156 94;
+  --red-300: 130 18 18;
+  --red-400: 186 26 26;
+  --red-500: 214 54 46;
+  --yellow-400: 140 96 0;
+  --yellow-500: 196 140 0;
+  --sky-400: 0 104 190;
+  --sky-500: 36 132 220;
+
+  --inverse: 30 33 45;
+  --inverse-on: 240 242 250;
+  --inverse-muted: 160 166 186;
+
+  --grid-line: rgba(0, 0, 0, 0.05);
+
+  --chart-cpu: rgb(76 88 214);
+  --chart-memory: rgb(0 140 132);
+  --chart-disk: rgb(190 128 0);
+  --chart-net-in: rgb(0 112 204);
+  --chart-net-out: rgb(190 128 0);
+  --chart-disk-read: rgb(140 72 210);
+  --chart-disk-write: rgb(210 70 56);
+  --chart-neutral: rgb(130 112 70);
+  --chart-players: rgb(18 132 76);
+}
+
+/* The original green Outpost: :root's MD3 tokens plus these tweaks. */
+:root[data-theme='outpost'][data-palette='classic'] {
+  color-scheme: dark;
   --surface-1000: 10 15 15;
   --surface-950: 15 21 21;
   --surface-900: 21 29 28;
@@ -1264,13 +1401,51 @@ body {
   --surface-800: 35 46 43;
   --surface-700: 46 58 54;
   --surface-600: 64 78 72;
+  --surface-500: 108 116 104;
+  --ink-50: 241 244 234;
+  --ink-100: 225 228 218;
+  --ink-200: 211 216 204;
+  --ink-300: 194 201 187;
+  --ink-400: 163 170 157;
+  --ink-500: 140 147 135;
+  --ink-600: 107 114 104;
   --accent-400: 181 232 155;
   --accent-500: 158 212 132;
+  --accent-600: 61 165 68;
   --accent-on: 25 54 16;
   --accent-container: 48 77 35;
   --accent-on-container: 207 246 183;
   --secondary-container: 51 72 62;
   --secondary-on-container: 211 235 217;
+  --tertiary-400: 161 206 215;
+  --tertiary-container: 31 77 85;
+  --tertiary-on-container: 188 235 244;
+  --success-400: 108 222 176;
+  --success-500: 76 196 150;
+  --inverse: 225 228 218;
+  --inverse-on: 46 49 43;
+  --inverse-muted: 90 97 85;
+  --grid-line: rgba(255, 255, 255, 0.03);
+  --chart-cpu: rgb(120 220 119);
+  --chart-memory: rgb(161 206 215);
+  --chart-disk: rgb(236 198 92);
+  --chart-net-in: rgb(158 202 255);
+  --chart-net-out: rgb(236 198 92);
+  --chart-disk-read: rgb(195 192 255);
+  --chart-disk-write: rgb(255 180 171);
+  --chart-neutral: rgb(214 199 160);
+  --chart-players: rgb(143 208 168);
+}
+
+/* Light surfaces need a hairline to separate cards from the page, and softer shadows. */
+[data-theme='outpost'][data-palette='light'] .ui-card {
+  box-shadow: 0 1px 2px rgba(20, 24, 40, 0.06), 0 0 0 1px rgb(var(--surface-700));
+}
+[data-theme='outpost'][data-palette='light'] .ui-sidebar {
+  box-shadow: 1px 0 0 rgb(var(--surface-700));
+}
+[data-theme='outpost'][data-palette='light'] .ui-modal {
+  box-shadow: 0 24px 60px -12px rgba(20, 24, 40, 0.28), 0 0 0 1px rgb(var(--surface-700));
 }
 [data-theme='outpost'] .ui-sidebar {
   background: rgb(var(--surface-950));
@@ -1316,3 +1491,8 @@ body {
 .ui-progress-sweep { animation: ui-progress-sweep 1.3s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) { .ui-progress-sweep { animation-duration: 3s; } }
 [data-effects='reduced'] .ui-progress-sweep { animation-duration: 3s; }
+
+/* Daylight: the glows are subtle washes and the fireflies are hidden (they read as dust on white). */
+[data-theme='outpost'][data-palette='light'] .wp-glow-1 { opacity: 0.55; }
+[data-theme='outpost'][data-palette='light'] .wp-glow-2 { opacity: 0.45; }
+[data-theme='outpost'][data-palette='light'] .wp-p { display: none; }

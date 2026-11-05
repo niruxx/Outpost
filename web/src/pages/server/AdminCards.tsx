@@ -336,12 +336,12 @@ function DangerZone() {
 }
 
 /** Admin-only section at the bottom of an instance's Configuration page. */
-export function InstanceAdminCards() {
+export function InstanceAdminCards({ showHeading = true }: { showHeading?: boolean }) {
   const { isAdmin, isOwner } = useServerDetail();
   if (!isAdmin && !isOwner) return null;
   return (
     <div className="stagger space-y-5">
-      <h2 className="pt-2 text-sm font-medium text-ink-400">{isAdmin ? 'Administration' : 'Ownership'}</h2>
+      {showHeading && <h2 className="pt-2 text-sm font-medium text-ink-400">{isAdmin ? 'Administration' : 'Ownership'}</h2>}
       {isAdmin && <OwnerCard />}
       {isAdmin && <SuspensionCard />}
       {isAdmin && <TransferCard />}

@@ -77,6 +77,7 @@ import { sanitizeLaunchConfig, launchConfigOf, launchVariables, resolveExecutabl
 import { getOnlinePlayers } from '../services/playerService.js';
 import { dockerConfigOf, enforceContainerPolicy, getEngineStatus, pullImage, sanitizeDockerConfig } from '../services/containerService.js';
 import { findTemplate } from '../services/catalogService.js';
+import { isHistoryRange, metricsHistory } from '../services/metricsHistoryService.js';
 
 export const serversRouter = Router();
 serversRouter.use(requireAuth);
@@ -1043,6 +1044,19 @@ serversRouter.get(
         loadAvg: process.platform === 'win32' ? null : os.loadavg()[0],
       },
     });
+  })
+);
+
+/** Saved resource history (`range` = 1h | 24h | 7d), averaged per bucket. */
+serversRouter.get(
+  '/:serverId/metrics/history',
+  requireServerAccess(),
+  asyncHandler(async (req, res) => {
+    const server = getServer(req.params.serverId);
+    if (!server) throw new HttpError(404, 'Server not found');
+    const range = req.query.range ?? '24h';
+    if (!isHistoryRange(range)) throw new HttpError(400, 'range must be 1h, 24h or 7d');
+    res.json(metricsHistory(server.id, range));
   })
 );
 

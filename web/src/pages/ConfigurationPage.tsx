@@ -1,5 +1,7 @@
 import { SystemJavaDefaultCard } from '../components/SystemJavaDefaultCard.js';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { SectionedLayout, type Section } from '../components/SectionedLayout.js';
+import type { IconName } from '../components/icons.js';
 import { saveEffects, useEffectsMode } from '../lib/perf.js';
 import { DbHostsCard } from '../components/DbHostsCard.js';
 import { ApiKeysCard } from '../components/ApiKeysCard.js';
@@ -9,7 +11,6 @@ import { TemplatesCard } from '../components/TemplatesCard.js';
 import { LanguageSelect, t } from '../i18n/index.js';
 import { ConsoleLogRetentionCard } from '../components/ConsoleLogRetentionCard.js';
 import { JavaRuntimesCard } from '../components/JavaRuntimesCard.js';
-import { PageHeader } from '../components/Layout.js';
 import { SystemLayout } from '../components/SystemLayout.js';
 import { Badge, Button, Card, CardTitle, ErrorText, Field, Input, Modal, Notice, Spinner } from '../components/ui.js';
 import { Icon } from '../components/icons.js';
@@ -26,7 +27,7 @@ import { AuditRetentionCard } from '../components/AuditRetentionCard.js';
 import { api, ApiError } from '../api/client.js';
 import type { NodeInfo, PanelNode, SandboxStatus, SystemInfo, WineStatus } from '../api/types.js';
 import { useAuth } from '../state/AuthContext.js';
-import { THEMES, saveTheme, saveWallpaper, storedTheme, storedWallpaper, type ThemeOption } from '../lib/theme.js';
+import { THEMES, saveColorMode, saveTheme, saveWallpaper, storedColorMode, storedTheme, storedWallpaper, type ColorMode, type ThemeOption } from '../lib/theme.js';
 
 function formatUptime(sec: number): string {
   const d = Math.floor(sec / 86400);
@@ -108,6 +109,7 @@ function ThemePreview({ theme }: { theme: ThemeOption }) {
 
 function AppearanceCard({ isAdmin }: { isAdmin: boolean }) {
   const [current, setCurrent] = useState(storedTheme);
+  const [mode, setMode] = useState<ColorMode>(storedColorMode);
   const [animated, setAnimated] = useState(() => storedWallpaper() === 'animated');
   const effects = useEffectsMode();
   function choose(id: ThemeOption['id']) {
@@ -138,6 +140,31 @@ function AppearanceCard({ isAdmin }: { isAdmin: boolean }) {
           );
         })}
       </div>
+      {current === 'outpost' && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-surface-900 p-3">
+          <span className="text-sm text-ink-200">
+            <span className="font-medium">{t('Color mode')}</span>
+            <span className="block text-xs text-ink-400">{t('Nightfall (dark) or Daylight (light). System follows your device.')}</span>
+          </span>
+          <div className="flex rounded-full border border-surface-500 p-0.5" role="radiogroup" aria-label={t('Color mode')}>
+            {(['system', 'dark', 'light'] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                role="radio"
+                aria-checked={mode === m}
+                onClick={() => {
+                  setMode(m);
+                  saveColorMode(m);
+                }}
+                className={`state-layer rounded-full px-3.5 py-1.5 text-xs font-medium ${mode === m ? 'bg-secondary-container text-secondary-on-container' : 'text-ink-300'}`}
+              >
+                {t(m === 'system' ? 'System' : m === 'dark' ? 'Dark' : 'Light')}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       <label className="mt-4 flex items-center gap-3 rounded-2xl bg-surface-900 p-3 text-sm text-ink-200">
         <input
           type="checkbox"
@@ -459,38 +486,87 @@ function AddNodeModal({ open, onClose, onAdded }: { open: boolean; onClose: () =
   );
 }
 
+/** Section ids double as `?section=` values and command-palette targets — keep them stable. */
+export const CONFIGURATION_SECTIONS: { id: string; label: string; icon: IconName; adminOnly?: boolean }[] = [
+  { id: 'account', label: 'Account & appearance', icon: 'player' },
+  { id: 'access', label: 'Access & security', icon: 'key' },
+  { id: 'host', label: 'Host & runtimes', icon: 'cpu' },
+  { id: 'notifications', label: 'Notifications', icon: 'bolt', adminOnly: true },
+  { id: 'integrations', label: 'Integrations', icon: 'plugin', adminOnly: true },
+  { id: 'data', label: 'Backups & data', icon: 'backup', adminOnly: true },
+  { id: 'danger', label: 'Danger zone', icon: 'warning', adminOnly: true },
+];
+
+function configurationSections(isAdmin: boolean): Section[] {
+  const content: Record<string, { description: string; content: ReactNode }> = {
+    account: {
+      description: 'How the panel looks for you, and your language.',
+      content: <AppearanceCard isAdmin={isAdmin} />,
+    },
+    access: {
+      description: isAdmin ? 'Sign-in protection, file access, API keys and the instance sandbox.' : 'Sign-in protection, file access and API keys.',
+      content: <>
+        <TwoFactorCard />
+        <SftpCard isAdmin={isAdmin} />
+        <ApiKeysCard isAdmin={isAdmin} />
+        {isAdmin && <SecurityCard />}
+      </>,
+    },
+    host: {
+      description: 'This machine, and the runtimes instances run on.',
+      content: <>
+        <HostCard />
+        {isAdmin ? <>
+          <SystemJavaDefaultCard />
+          <JavaRuntimesCard />
+          <WineCard />
+          <SteamCmdSettingsCard />
+        </> : (
+          <p className="text-sm text-ink-400">Panel-wide settings are only available to admins. Per-instance settings live in each instance's Configuration page.</p>
+        )}
+      </>,
+    },
+    notifications: {
+      description: 'Where Outpost sends alerts about crashes, backups and updates.',
+      content: <NotificationsCard />,
+    },
+    integrations: {
+      description: 'Other Outpost nodes, database hosts and third-party services.',
+      content: <>
+        <NodesCard />
+        <DbHostsCard />
+        <CurseForgeCard />
+      </>,
+    },
+    data: {
+      description: 'Off-site storage, templates, panel backups and how long logs are kept.',
+      content: <>
+        <OffsiteCard />
+        <EnvironmentBackupCard />
+        <TemplatesCard isAdmin />
+        <AuditRetentionCard />
+        <ConsoleLogRetentionCard />
+      </>,
+    },
+    danger: {
+      description: 'Irreversible actions for the whole panel.',
+      content: <FactoryResetCard />,
+    },
+  };
+  return CONFIGURATION_SECTIONS.filter((s) => isAdmin || !s.adminOnly).map((s) => ({
+    ...s,
+    ...content[s.id],
+    danger: s.id === 'danger',
+  }));
+}
+
 export function ConfigurationPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
   return (
     <SystemLayout>
-      <div className="stagger mx-auto max-w-5xl space-y-5">
-        <PageHeader title="Configuration" subtitle="Panel-wide settings for this Outpost host." />
-        <AppearanceCard isAdmin={isAdmin} />
-        <TwoFactorCard />
-        <SftpCard isAdmin={isAdmin} />
-        <ApiKeysCard isAdmin={isAdmin} />
-        <HostCard />
-        {isAdmin ? (
-          <>
-            <SecurityCard />
-            <WineCard />
-            <SystemJavaDefaultCard /><JavaRuntimesCard />
-            <NotificationsCard />
-            <AuditRetentionCard />
-            <ConsoleLogRetentionCard />
-            <TemplatesCard isAdmin />
-            <OffsiteCard />
-            <DbHostsCard />
-            <NodesCard />
-            <EnvironmentBackupCard />
-            <CurseForgeCard />
-            <SteamCmdSettingsCard />
-            <FactoryResetCard />
-          </>
-        ) : (
-          <p className="text-sm text-ink-400">Panel-wide settings are only available to admins. Per-instance settings live in each instance's Configuration page.</p>
-        )}
+      <div>
+        <SectionedLayout layoutId="configuration-sections" sections={configurationSections(isAdmin)} />
       </div>
     </SystemLayout>
   );

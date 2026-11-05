@@ -4,7 +4,7 @@
  * through their `ui-*` class hooks. The choice is per browser; an admin can also give an account
  * a theme that is applied whenever it signs in.
  */
-export type ThemeId = 'outpost' | 'xp' | 'minecraft' | 'vista' | 'aero';
+export type ThemeId = 'outpost' | 'classic' | 'xp' | 'minecraft' | 'vista' | 'aero';
 
 export interface ThemeOption {
   id: ThemeId;
@@ -22,10 +22,18 @@ export const THEMES: ThemeOption[] = [
   {
     id: 'outpost',
     label: 'Outpost',
-    description: 'The default dark Material look.',
-    chrome: '#11140f',
-    swatch: ['#11140f', '#1d211b', '#78dc77', '#e1e4da'],
-    preview: { sidebar: '#1d211b', radius: 8 },
+    description: 'Nightfall and Daylight — follows your system, or pick a mode.',
+    chrome: '#0b0d14',
+    swatch: ['#0f121b', '#151924', '#a5b0ff', '#e5e8f2'],
+    preview: { sidebar: 'linear-gradient(90deg, #0b0d14 50%, #f4f5fa 50%)', page: 'linear-gradient(90deg, #0f121b 50%, #edeff6 50%)', radius: 8 },
+  },
+  {
+    id: 'classic',
+    label: 'Outpost Classic',
+    description: 'The original forest-green Outpost look.',
+    chrome: '#0f1515',
+    swatch: ['#151d1c', '#1c2523', '#b5e89b', '#e1e4da'],
+    preview: { sidebar: '#0f1515', radius: 8 },
   },
   {
     id: 'xp',
@@ -86,10 +94,57 @@ export function storedTheme(): ThemeId {
   }
 }
 
+/** Outpost's color mode: follow the OS, or force dark (Nightfall) / light (Daylight). */
+export type ColorMode = 'system' | 'dark' | 'light';
+const MODE_KEY = 'outpost_color_mode';
+
+export function storedColorMode(): ColorMode {
+  try {
+    const v = localStorage.getItem(MODE_KEY);
+    return v === 'dark' || v === 'light' ? v : 'system';
+  } catch {
+    return 'system';
+  }
+}
+
+const systemLight = () => typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-color-scheme: light)').matches;
+
+let appliedTheme: ThemeId = 'outpost';
+let systemListener = false;
+
+/**
+ * Sets <html data-theme> (and data-palette for the Outpost family). Classic shares Outpost's
+ * shell styling, so it's data-theme="outpost" with the classic palette.
+ */
 export function applyTheme(id: ThemeId) {
-  document.documentElement.dataset.theme = id;
-  const meta = document.querySelector('meta[name="theme-color"]');
-  meta?.setAttribute('content', THEMES.find((t) => t.id === id)?.chrome ?? THEMES[0].chrome);
+  appliedTheme = id;
+  const root = document.documentElement;
+  root.dataset.theme = id === 'classic' ? 'outpost' : id;
+  let chrome = THEMES.find((t) => t.id === id)?.chrome ?? THEMES[0].chrome;
+  if (id === 'classic') root.dataset.palette = 'classic';
+  else if (id === 'outpost') {
+    const mode = storedColorMode();
+    const light = mode === 'light' || (mode === 'system' && systemLight());
+    root.dataset.palette = light ? 'light' : 'dark';
+    if (light) chrome = '#f4f5fa';
+  } else delete root.dataset.palette;
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', chrome);
+  // Follow OS light/dark switches live while in system mode.
+  if (!systemListener && typeof window !== 'undefined' && window.matchMedia) {
+    systemListener = true;
+    window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => {
+      if (appliedTheme === 'outpost' && storedColorMode() === 'system') applyTheme('outpost');
+    });
+  }
+}
+
+export function saveColorMode(mode: ColorMode) {
+  try {
+    localStorage.setItem(MODE_KEY, mode);
+  } catch {
+    // per-browser preference only
+  }
+  applyTheme(appliedTheme);
 }
 
 const WALLPAPER_KEY = 'outpost_wallpaper';

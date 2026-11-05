@@ -15,9 +15,13 @@ import { TemplateCard } from './TemplateCard.js';
 import { StatusPageCard } from './StatusPageCard.js';
 import { LimitsCard } from './LimitsCard.js';
 import { isMinecraftPlatform, isProxyLoader } from '../../api/types.js';
+import { SectionedLayout, type Section } from '../../components/SectionedLayout.js';
+import { UnsavedBar, useUnsavedChanges } from '../../lib/unsaved.js';
+import { useToast } from '../../components/Toast.js';
+import { t } from '../../i18n/index.js';
 
 export function SettingsTab() {
-  const { server, can, canConfig, refresh } = useServerDetail();
+  const { server, can, canConfig, refresh, isAdmin, isOwner } = useServerDetail();
   const canWrite = can('settings') || canConfig('property', 'server-ip') || ['name', 'minMemoryMb', 'maxMemoryMb', 'serverPort', 'extraJavaArgs', 'extraArgs', 'autoStart', 'steamLogin', 'steamExtraFlags', 'restartPolicy', 'restartDelaySec', 'restartMaxAttempts'].some((key) => canConfig('setting', key));
   const [name, setName] = useState('');
   const [minMemoryMb, setMinMemoryMb] = useState(1024);
@@ -34,36 +38,70 @@ export function SettingsTab() {
   const [steamExtraFlags, setSteamExtraFlags] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
-  const [saved, setSaved] = useState(false);
+  const toast = useToast();
+  // The last saved values, so the form knows when it has unsaved edits and can discard them.
+  const [baseline, setBaseline] = useState<GeneralForm | null>(null);
+  const current: GeneralForm = {
+    name, minMemoryMb, maxMemoryMb, serverPort, extraJavaArgs, extraArgs, autoStart,
+    restartPolicy, restartDelaySec, restartMaxAttempts, serverIp, steamLogin, steamExtraFlags,
+  };
+
+  function apply(form: GeneralForm) {
+    setName(form.name);
+    setMinMemoryMb(form.minMemoryMb);
+    setMaxMemoryMb(form.maxMemoryMb);
+    setServerPort(form.serverPort);
+    setExtraJavaArgs(form.extraJavaArgs);
+    setExtraArgs(form.extraArgs);
+    setAutoStart(form.autoStart);
+    setRestartPolicy(form.restartPolicy);
+    setRestartDelaySec(form.restartDelaySec);
+    setRestartMaxAttempts(form.restartMaxAttempts);
+    setServerIp(form.serverIp);
+    setSteamLogin(form.steamLogin);
+    setSteamExtraFlags(form.steamExtraFlags);
+  }
 
   useEffect(() => {
     if (!server) return;
-    setName(server.name);
-    setMinMemoryMb(server.min_memory_mb);
-    setMaxMemoryMb(server.max_memory_mb);
-    setServerPort(server.server_port);
-    setExtraJavaArgs(server.extra_java_args);
-    setExtraArgs(server.extra_args);
-    setAutoStart(!!server.auto_start);
-    setRestartPolicy(server.restart_policy ?? 'never');
-    setRestartDelaySec(server.restart_delay_sec ?? 10);
-    setRestartMaxAttempts(server.restart_max_attempts ?? 0);
-    setSteamLogin(server.steam_login || 'anonymous');
-    setSteamExtraFlags(server.steam_extra_flags || '');
+    const initial: GeneralForm = {
+      name: server.name,
+      minMemoryMb: server.min_memory_mb,
+      maxMemoryMb: server.max_memory_mb,
+      serverPort: server.server_port,
+      extraJavaArgs: server.extra_java_args,
+      extraArgs: server.extra_args,
+      autoStart: !!server.auto_start,
+      restartPolicy: server.restart_policy ?? 'never',
+      restartDelaySec: server.restart_delay_sec ?? 10,
+      restartMaxAttempts: server.restart_max_attempts ?? 0,
+      serverIp: '',
+      steamLogin: server.steam_login || 'anonymous',
+      steamExtraFlags: server.steam_extra_flags || '',
+    };
+    apply(initial);
+    setBaseline(initial);
     if (server.platform === 'java') {
       api
         .get<{ properties: PropertyEntry[] }>(`/servers/${server.id}/properties`)
-        .then((res) => setServerIp(res.properties.find((p) => p.key === 'server-ip')?.value ?? ''))
+        .then((res) => {
+          const ip = res.properties.find((p) => p.key === 'server-ip')?.value ?? '';
+          setServerIp(ip);
+          setBaseline((b) => (b ? { ...b, serverIp: ip } : b));
+        })
         .catch(() => {});
     }
     // Polling replaces the server object every three seconds; only initialize on instance changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [server?.id]);
 
+  const dirty = canWrite && !!baseline && (Object.keys(current) as (keyof GeneralForm)[]).some((k) => current[k] !== baseline[k]);
+  useUnsavedChanges(dirty, t('General settings'));
+
   async function saveGeneral() {
     setSaving(true);
     setSaveError('');
-    setSaved(false);
+    const snapshot = { ...current };
     try {
       await api.patch(`/servers/${server!.id}`, Object.fromEntries(Object.entries({
         name,
@@ -82,8 +120,8 @@ export function SettingsTab() {
         await api.put(`/servers/${server!.id}/properties`, { updates: { 'server-ip': serverIp } });
       }
       await refresh();
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
+      setBaseline(snapshot);
+      toast.success(t('Settings saved'));
     } catch (err) {
       setSaveError(err instanceof ApiError ? err.message : 'Failed to save');
     } finally {
@@ -93,8 +131,7 @@ export function SettingsTab() {
 
   if (!server) return null;
 
-  return (
-    <div className="stagger space-y-6">
+  const general = (
       <Card className="p-5">
         <h2 className="mb-4 text-base font-medium text-ink-100">General</h2>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -210,26 +247,10 @@ export function SettingsTab() {
           Memory and argument changes take effect the next time the server starts.
         </p>
         <ErrorText>{saveError}</ErrorText>
-        {canWrite && (
-          <div className="mt-4 flex items-center gap-3">
-            <Button variant="primary" onClick={saveGeneral} disabled={saving}>
-              {saving ? 'Saving…' : 'Save changes'}
-            </Button>
-            {saved && <span className="text-sm text-success-500">Saved</span>}
-          </div>
-        )}
       </Card>
+  );
 
-      <BackupStorageCard />
-      {server.platform === 'docker' ? <DockerCard /> : <LaunchCard />}
-      <IsolationCard />
-      <LimitsCard />
-      {server.platform !== 'docker' && <DatabasesCard />}
-      {server.platform !== 'docker' && server.platform !== 'bedrock' && <RconCard />}
-      <StatusPageCard />
-      <TemplateCard />
-
-      {!isMinecraftPlatform(server.platform) || isProxyLoader(server.loader) ? (
+  const gameConfig = !isMinecraftPlatform(server.platform) || isProxyLoader(server.loader) ? (
         <Card className="p-5">
           <h2 className="mb-2 text-base font-medium text-ink-100">Config files</h2>
           <p className="text-sm text-ink-400">
@@ -240,11 +261,98 @@ export function SettingsTab() {
         </Card>
       ) : (
         <PropertiesEditor serverId={server.id} canWrite={canWrite} />
-      )}
+      );
 
-      <InstanceAdminCards />
-    </div>
+  const sections: Section[] = [
+    {
+      id: 'general',
+      label: 'General',
+      icon: 'configuration',
+      description: 'Name, port, memory, launch arguments and automatic restarts.',
+      content: general,
+    },
+    {
+      id: 'game',
+      label: isMinecraftPlatform(server.platform) && !isProxyLoader(server.loader) ? 'server.properties' : 'Config files',
+      icon: 'edit',
+      description: 'The game’s own configuration.',
+      content: gameConfig,
+    },
+    {
+      id: 'runtime',
+      label: server.platform === 'docker' ? 'Container & limits' : 'Launch & limits',
+      icon: 'cpu',
+      description: 'How the process is started, what it can reach and how much it may use.',
+      content: <>
+        {server.platform === 'docker' ? <DockerCard /> : <LaunchCard />}
+        <LimitsCard />
+        <IsolationCard />
+      </>,
+    },
+    {
+      id: 'connectivity',
+      label: 'Connectivity',
+      icon: 'network',
+      description: 'Remote console, databases and the public status page.',
+      content: <>
+        {server.platform !== 'docker' && server.platform !== 'bedrock' && <RconCard />}
+        {server.platform !== 'docker' && <DatabasesCard />}
+        <StatusPageCard />
+      </>,
+    },
+    {
+      id: 'storage',
+      label: 'Storage & templates',
+      icon: 'disk',
+      description: 'Where backups are written, and saving this instance as a template.',
+      content: <>
+        <BackupStorageCard />
+        <TemplateCard />
+      </>,
+    },
+  ];
+  if (isAdmin || isOwner) {
+    sections.push({
+      id: 'admin',
+      label: isAdmin ? 'Administration' : 'Ownership',
+      icon: 'shield',
+      danger: true,
+      description: isAdmin ? 'Ownership, suspension, transfer and deletion.' : 'Deleting this instance.',
+      content: <InstanceAdminCards showHeading={false} />,
+    });
+  }
+
+  return (
+    <>
+      <SectionedLayout layoutId="instance-settings-sections" sections={sections} />
+      <UnsavedBar
+        dirty={dirty}
+        saving={saving}
+        message="Unsaved changes to General settings"
+        onSave={saveGeneral}
+        onDiscard={() => {
+          if (baseline) apply(baseline);
+          setSaveError('');
+        }}
+      />
+    </>
   );
+}
+
+interface GeneralForm {
+  name: string;
+  minMemoryMb: number;
+  maxMemoryMb: number;
+  serverPort: number;
+  extraJavaArgs: string;
+  extraArgs: string;
+  autoStart: boolean;
+  restartPolicy: RestartPolicy;
+  restartDelaySec: number;
+  restartMaxAttempts: number;
+  serverIp: string;
+  steamLogin: string;
+  steamExtraFlags: string;
 }
 
 function PropertiesEditor({ serverId, canWrite }: { serverId: string; canWrite: boolean }) {
@@ -257,6 +365,7 @@ function PropertiesEditor({ serverId, canWrite }: { serverId: string; canWrite: 
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [feedback, setFeedback] = useState('');
+  useUnsavedChanges(Object.keys(edited).length > 0, 'server.properties');
 
   async function load() {
     try {

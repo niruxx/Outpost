@@ -1,21 +1,24 @@
 import { useCallback, useEffect, useState } from 'react';
 import { setVisibleInterval } from '../lib/perf.js';
 import { t } from '../i18n/index.js';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { AnimatePresence, LayoutGroup, motion } from 'framer-motion';
 import { Layout, PageHeader } from '../components/Layout.js';
 import { StatusBadge, SuspendedBadge } from '../components/StatusBadge.js';
-import { Button, Card, Input, Select, Notice, Skeleton } from '../components/ui.js';
+import { Button, Card, Input, Select, Notice, Skeleton, Spinner } from '../components/ui.js';
 import { NewInstanceModal } from '../components/NewInstanceModal.js';
 import { GameTile, gameKindOf, gameLabel, instanceCategory, type InstanceCategory } from '../components/GameArt.js';
 import { HostOverview, formatBytes, formatDuration } from '../components/HostOverview.js';
-import { MiniBar } from '../components/charts.js';
+import { CHART, MiniBar } from '../components/charts.js';
+import { GameBanner } from '../components/GameBanner.js';
 import { EMPHASIZED } from '../components/motion.js';
 import { Icon, type IconName } from '../components/icons.js';
 import { useToast } from '../components/Toast.js';
 import { api, ApiError } from '../api/client.js';
 import type { InstanceListMetrics, ServerRecord } from '../api/types.js';
 import { useAuth } from '../state/AuthContext.js';
+import { useConfirm } from '../components/ConfirmDialog.js';
+import { usePinnedInstances } from '../lib/pins.js';
 
 type ViewMode = 'list' | 'grid' | 'box';
 const VIEW_KEY = 'outpost_instances_view';
@@ -120,6 +123,44 @@ interface RowProps {
   canAct: boolean;
   busy: boolean;
   act: (id: string, action: 'start' | 'stop' | 'restart' | 'retry-install') => void;
+  pinned: boolean;
+  togglePin: (id: string) => void;
+  /** Selection mode: the card toggles selection instead of opening the instance. */
+  selecting: boolean;
+  selected: boolean;
+  toggleSelect: (id: string) => void;
+}
+
+function PinButton({ server, pinned, togglePin, className = '' }: Pick<RowProps, 'server' | 'pinned' | 'togglePin'> & { className?: string }) {
+  const label = pinned ? 'Unpin' : 'Pin to top';
+  return (
+    <button
+      type="button"
+      onClick={() => togglePin(server.id)}
+      title={t(label)}
+      aria-label={`${t(label)}: ${server.name}`}
+      aria-pressed={pinned}
+      className={`ui-pin state-layer relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-opacity ${
+        pinned ? 'text-accent-400' : 'text-ink-500 opacity-0 focus-visible:opacity-100 group-hover/card:opacity-100 [@media(hover:none)]:opacity-100'
+      } ${className}`}
+    >
+      <Icon name="pin" className={`h-4 w-4 ${pinned ? 'fill-current' : ''}`} />
+    </button>
+  );
+}
+
+/** Round check indicator shown on every card while selecting. */
+function SelectMark({ selected }: { selected: boolean }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`pointer-events-none relative z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 transition-colors ${
+        selected ? 'border-accent-400 bg-accent-400 text-accent-on' : 'border-surface-500 bg-surface-900'
+      }`}
+    >
+      {selected && <Icon name="check" className="h-3.5 w-3.5" />}
+    </span>
+  );
 }
 
 /** CPU / RAM / players / uptime for one instance, computed once for every view. */
@@ -137,8 +178,8 @@ function useInstanceFigures({ server, metrics, hostMemMb }: Pick<RowProps, 'serv
   };
 }
 
-function Actions({ server, canAct, busy, act }: Pick<RowProps, 'server' | 'canAct' | 'busy' | 'act'>) {
-  if (!canAct || server.suspended) return null;
+function Actions({ server, canAct, busy, act, selecting }: Pick<RowProps, 'server' | 'canAct' | 'busy' | 'act' | 'selecting'>) {
+  if (!canAct || server.suspended || selecting) return null;
   if (server.status === 'install_failed')
     return <IconAction icon="restart" label="Retry install" disabled={busy} onClick={() => act(server.id, 'retry-install')} />;
   if (server.status === 'stopped' || server.status === 'crashed')
@@ -153,10 +194,26 @@ function Actions({ server, canAct, busy, act }: Pick<RowProps, 'server' | 'canAc
   return null;
 }
 
-/** Whole-card link without nesting buttons in an anchor: the link covers the card, actions sit above it. */
-function StretchedLink({ server }: { server: ServerRecord }) {
+/** Whole-card link without nesting buttons in an anchor: the link covers the card, actions sit above it.
+ *  While selecting, it becomes a checkbox-like toggle instead. */
+function StretchedLink({ server, selecting, selected, toggleSelect }: Pick<RowProps, 'server' | 'selecting' | 'selected' | 'toggleSelect'>) {
+  if (selecting) {
+    return (
+      <button
+        type="button"
+        role="checkbox"
+        aria-checked={selected}
+        aria-label={`${t('Select')} ${server.name}`}
+        onClick={() => toggleSelect(server.id)}
+        className="absolute inset-0 z-0 rounded-[inherit]"
+      />
+    );
+  }
   return <Link to={`/instances/${server.id}`} aria-label={`Open ${server.name}`} className="absolute inset-0 z-0 rounded-[inherit]" />;
 }
+
+/** Selected cards get an accent ring. */
+const selectedRing = (props: RowProps) => (props.selecting && props.selected ? 'ring-2 ring-accent-400' : '');
 
 function Badge({ server }: { server: ServerRecord }) {
   return server.suspended ? <SuspendedBadge /> : <StatusBadge status={server.status} />;
@@ -182,9 +239,9 @@ function ListRow(props: RowProps) {
   const { server } = props;
   const f = useInstanceFigures(props);
   return (
-    <div className="state-layer relative grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-2xl px-3 py-2.5 md:grid-cols-[auto_minmax(0,2fr)_110px_90px_90px_70px_80px_auto]">
-      <StretchedLink server={server} />
-      <GameTile kind={gameKindOf(server)} className="h-9 w-9 !rounded-xl" running={server.status === 'running'} />
+    <div className={`group/card state-layer relative grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-2xl px-3 py-2.5 md:grid-cols-[auto_minmax(0,2fr)_110px_90px_90px_70px_80px_auto] ${selectedRing(props)}`}>
+      <StretchedLink {...props} />
+      {props.selecting ? <span className="flex h-9 w-9 items-center justify-center"><SelectMark selected={props.selected} /></span> : <GameTile kind={gameKindOf(server)} className="h-9 w-9 !rounded-xl" running={server.status === 'running'} />}
       <div className="min-w-0">
         <p className="truncate text-sm font-medium text-ink-50">{server.name}</p>
         <p className="truncate text-xs text-ink-400">{subtitle(server)}</p>
@@ -200,6 +257,7 @@ function ListRow(props: RowProps) {
         <span className="md:hidden">
           <Badge server={server} />
         </span>
+        {!props.selecting && <PinButton {...props} />}
         <Actions {...props} />
       </div>
     </div>
@@ -210,9 +268,10 @@ function GridCard(props: RowProps) {
   const { server } = props;
   const f = useInstanceFigures(props);
   return (
-    <Card hover className="ui-instance-card relative flex h-full flex-col gap-5 p-5">
-      <StretchedLink server={server} />
+    <Card hover className={`ui-instance-card group/card relative flex h-full flex-col gap-5 p-5 ${selectedRing(props)}`}>
+      <StretchedLink {...props} />
         <div className="flex items-center gap-3">
+          {props.selecting && <SelectMark selected={props.selected} />}
           <GameTile kind={gameKindOf(server)} className="h-12 w-12" running={server.status === 'running'} />
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
@@ -221,7 +280,8 @@ function GridCard(props: RowProps) {
             </div>
             <p className="mt-0.5 truncate text-xs text-ink-400">{subtitle(server)}</p>
           </div>
-          <div className="relative z-10 flex shrink-0 gap-1">
+          <div className="relative z-10 flex shrink-0 items-center gap-1">
+            {!props.selecting && <PinButton {...props} />}
             <Actions {...props} />
           </div>
         </div>
@@ -246,10 +306,14 @@ function BoxCard(props: RowProps) {
   const f = useInstanceFigures(props);
   const kind = gameKindOf(server);
   return (
-    <Card hover className="relative flex h-full flex-col overflow-hidden">
-      <StretchedLink server={server} />
+    <Card hover className={`group/card relative flex h-full flex-col overflow-hidden ${selectedRing(props)}`}>
+      <StretchedLink {...props} />
         <div className="relative flex h-28 items-center justify-center bg-surface-900">
-          <GameTile kind={kind} className="h-20 w-20 !rounded-3xl shadow-card" running={server.status === 'running'} />
+          <GameBanner kind={kind} seed={server.id} fade={false} />
+          <div className="absolute left-2 top-2">
+            {props.selecting ? <span className="m-1 block"><SelectMark selected={props.selected} /></span> : <PinButton {...props} />}
+          </div>
+          <GameTile kind={kind} className="h-16 w-16 !rounded-3xl shadow-card ring-4 ring-black/10" running={server.status === 'running'} />
           <div className="absolute right-3 top-3">
             <Badge server={server} />
           </div>
@@ -265,7 +329,7 @@ function BoxCard(props: RowProps) {
                 <span>CPU</span>
                 <span className="tabular-nums">{f.cpu !== null ? `${f.cpu}%` : '—'}</span>
               </div>
-              <MiniBar percent={f.cpu} color="#78dc77" />
+              <MiniBar percent={f.cpu} color={CHART.cpu} />
             </div>
             <div>
               <div className="mb-1 flex justify-between">
@@ -275,7 +339,7 @@ function BoxCard(props: RowProps) {
                   {f.memLimit ? ` / ${formatBytes(f.memLimit * 1048576)}` : ''}
                 </span>
               </div>
-              <MiniBar percent={f.memPct} color="#a1ced7" />
+              <MiniBar percent={f.memPct} color={CHART.memory} />
             </div>
             <div className="flex justify-between pt-1 text-ink-400">
               <span>{f.players !== null && f.live ? `${f.players} players online` : f.live ? 'Running' : 'Offline'}</span>
@@ -296,6 +360,61 @@ const CONTAINER: Record<ViewMode, string> = {
   box: 'grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4',
 };
 
+type BulkAction = 'start' | 'restart' | 'stop' | 'backup';
+
+const BULK: Record<BulkAction, { label: string; icon: IconName; doing: string; done: string; eligible: (s: ServerRecord) => boolean; skipReason: string }> = {
+  start: { label: 'Start', icon: 'play', doing: 'Starting', done: 'Started', eligible: (s) => s.status === 'stopped' || s.status === 'crashed', skipReason: 'already running or busy' },
+  restart: { label: 'Restart', icon: 'restart', doing: 'Restarting', done: 'Restarted', eligible: (s) => s.status === 'running' || s.status === 'starting', skipReason: 'not running' },
+  stop: { label: 'Stop', icon: 'stop', doing: 'Stopping', done: 'Stopped', eligible: (s) => s.status === 'running' || s.status === 'starting', skipReason: 'not running' },
+  backup: { label: 'Back up', icon: 'backup', doing: 'Backing up', done: 'Backed up', eligible: (s) => !['installing', 'updating', 'install_failed'].includes(s.status), skipReason: 'installing or updating' },
+};
+
+/** Runs `task` over `items`, at most `limit` at a time; never rejects. */
+async function runLimited<T>(items: T[], limit: number, task: (item: T) => Promise<void>): Promise<void> {
+  const queue = [...items];
+  await Promise.all(Array.from({ length: Math.min(limit, queue.length) }, async () => {
+    for (let item = queue.shift(); item !== undefined; item = queue.shift()) await task(item);
+  }));
+}
+
+/** Sticky bar shown while selecting instances. */
+function BulkBar({
+  count, visibleCount, busy, progress, onSelectAll, onClear, onRun, onDone,
+}: {
+  count: number; visibleCount: number; busy: BulkAction | null; progress: { done: number; total: number } | null;
+  onSelectAll: () => void; onClear: () => void; onRun: (a: BulkAction) => void; onDone: () => void;
+}) {
+  const allSelected = visibleCount > 0 && count >= visibleCount;
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 16 }}
+      transition={{ duration: 0.25, ease: EMPHASIZED }}
+      className="ui-bulk-bar sticky bottom-4 z-20 mx-auto mt-6 flex w-fit max-w-full flex-wrap items-center gap-2 rounded-[1.75rem] bg-surface-800 py-2 pl-5 pr-2 shadow-card ring-1 ring-surface-600"
+      role="toolbar"
+      aria-label={t('Bulk actions')}
+    >
+      <span className="text-sm font-medium tabular-nums text-ink-100" aria-live="polite">
+        {busy && progress ? `${t(BULK[busy].doing)} ${progress.done}/${progress.total}…` : `${count} ${t('selected')}`}
+      </span>
+      <button type="button" onClick={allSelected ? onClear : onSelectAll} disabled={!!busy || !visibleCount} className="state-layer rounded-full px-3 py-1.5 text-xs font-medium text-accent-400 disabled:opacity-40">
+        {allSelected ? t('Clear') : `${t('Select all')} (${visibleCount})`}
+      </button>
+      <span className="mx-1 hidden h-6 w-px bg-surface-600 sm:block" />
+      {(Object.keys(BULK) as BulkAction[]).map((a) => (
+        <Button key={a} variant={a === 'stop' ? 'danger' : 'default'} disabled={!count || !!busy} onClick={() => onRun(a)} className="!px-3 !py-1.5" title={t(BULK[a].label)}>
+          {busy === a ? <Spinner className="h-4 w-4" /> : <Icon name={BULK[a].icon} className="h-4 w-4" />}
+          <span className="hidden sm:inline">{t(BULK[a].label)}</span>
+        </Button>
+      ))}
+      <button type="button" onClick={onDone} disabled={!!busy} aria-label={t('Done selecting')} title={t('Done selecting')} className="state-layer ml-1 rounded-full p-2 text-ink-300 disabled:opacity-40">
+        <Icon name="close" className="h-4 w-4" />
+      </button>
+    </motion.div>
+  );
+}
+
 export function InstancesPage() {
   const { user, creation, refreshCreation } = useAuth();
   const toast = useToast();
@@ -309,6 +428,46 @@ export function InstancesPage() {
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [filter, setFilter] = useState<'all' | InstanceCategory>(readFilter);
+  const [params, setParams] = useSearchParams();
+  const confirm = useConfirm();
+  const { isPinned, toggle: togglePin } = usePinnedInstances();
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const [bulkBusy, setBulkBusy] = useState<BulkAction | null>(null);
+  const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null);
+
+  function toggleSelect(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function stopSelecting() {
+    setSelecting(false);
+    setSelected(new Set());
+  }
+
+  // Esc leaves selection mode (unless a bulk action is still running).
+  useEffect(() => {
+    if (!selecting) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !bulkBusy) stopSelecting();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [selecting, bulkBusy]);
+
+  // `/?new=1` (the command palette's "New instance") opens the create dialog once.
+  useEffect(() => {
+    if (params.get('new') !== '1' || !creation) return;
+    if (creation.canCreate && !(creation.maxInstances && creation.owned >= creation.maxInstances)) setCreateOpen(true);
+    else toast.error(creation.canCreate ? 'You’ve reached your instance limit' : 'Your account can’t create instances');
+    setParams((prev) => { const next = new URLSearchParams(prev); next.delete('new'); return next; }, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params, creation]);
 
   function changeFilter(next: 'all' | InstanceCategory) {
     setFilter(next);
@@ -365,6 +524,48 @@ export function InstancesPage() {
     }
   }
 
+  async function runBulk(action: BulkAction) {
+    const chosen = (servers ?? []).filter((s) => selected.has(s.id));
+    const eligible = chosen.filter((s) => !s.suspended && BULK[action].eligible(s));
+    const skipped = chosen.length - eligible.length;
+    if (!eligible.length) {
+      toast.error(`${t('Nothing to do')} — ${chosen.length === 1 ? chosen[0].name : `${chosen.length} ${t('instances')}`}: ${t(BULK[action].skipReason)}`);
+      return;
+    }
+    if (action === 'stop' || action === 'restart') {
+      const ok = await confirm({
+        title: `${t(BULK[action].label)} ${eligible.length} ${eligible.length === 1 ? t('instance') : t('instances')}?`,
+        message: `${eligible.map((s) => s.name).join(', ')}. ${t('Anyone connected will be disconnected.')}`,
+        confirmLabel: t(BULK[action].label),
+        tone: action === 'stop' ? 'danger' : undefined,
+      });
+      if (!ok) return;
+    }
+    setBulkBusy(action);
+    setBulkProgress({ done: 0, total: eligible.length });
+    const failures: string[] = [];
+    // Backups are disk-heavy, so fewer at once.
+    await runLimited(eligible, action === 'backup' ? 2 : 4, async (s) => {
+      try {
+        if (action === 'backup') await api.post(`/servers/${s.id}/backups`, { label: 'Bulk backup' });
+        else await api.post(`/servers/${s.id}/${action}`);
+      } catch (err) {
+        failures.push(`${s.name}: ${err instanceof ApiError ? err.message : t('failed')}`);
+      }
+      setBulkProgress((p) => (p ? { ...p, done: p.done + 1 } : p));
+    });
+    setBulkBusy(null);
+    setBulkProgress(null);
+    const succeeded = eligible.length - failures.length;
+    const summary = [
+      succeeded ? `${t(BULK[action].done)} ${succeeded}` : '',
+      skipped ? `${t('skipped')} ${skipped} (${t(BULK[action].skipReason)})` : '',
+    ].filter(Boolean).join(' · ');
+    if (failures.length) toast.error(`${summary ? `${summary} · ` : ''}${failures.length} ${t('failed')} — ${failures.join('; ')}`);
+    else toast.success(summary);
+    await load();
+  }
+
   const Row = view === 'list' ? ListRow : view === 'grid' ? GridCard : BoxCard;
   const counts = (servers ?? []).reduce<Partial<Record<InstanceCategory, number>>>((acc, s) => {
     const c = instanceCategory(s);
@@ -377,7 +578,11 @@ export function InstancesPage() {
     (activeFilter === 'all' || instanceCategory(s) === activeFilter) &&
     (statusFilter === 'all' || (statusFilter === 'running' ? s.status === 'running' : s.status !== 'running')) &&
     `${s.name} ${subtitle(s)}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()),
-  );
+  // Pinned instances first; otherwise keep the server's order (Array.sort is stable).
+  ).sort((a, b) => Number(isPinned(b.id)) - Number(isPinned(a.id)));
+  const canActOn = (s: ServerRecord) => canAct || s.created_by === user?.id;
+  const selectableVisible = visible.filter((s) => canActOn(s) && !s.suspended);
+  const selectedCount = (servers ?? []).filter((s) => selected.has(s.id)).length;
 
   return (
     <Layout>
@@ -455,7 +660,22 @@ export function InstancesPage() {
               </button>
             ))}
           </div>
-          <ViewSwitcher mode={view} onChange={changeView} />
+          <div className="flex items-center gap-2">
+            {(servers ?? []).some((s) => canActOn(s) && !s.suspended) && (
+              <button
+                type="button"
+                onClick={() => (selecting ? stopSelecting() : setSelecting(true))}
+                aria-pressed={selecting}
+                className={`state-layer flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium ${
+                  selecting ? 'border-transparent bg-secondary-container text-secondary-on-container' : 'border-surface-500 text-ink-300'
+                }`}
+              >
+                <Icon name="checklist" className="h-4 w-4" />
+                {t(selecting ? 'Done' : 'Select')}
+              </button>
+            )}
+            <ViewSwitcher mode={view} onChange={changeView} />
+          </div>
         </div>
 
         {servers === null ? (
@@ -511,9 +731,14 @@ export function InstancesPage() {
                       server={server}
                       metrics={metrics[server.id]}
                       hostMemMb={hostMemMb}
-                      canAct={canAct || server.created_by === user?.id}
+                      canAct={canActOn(server)}
                       busy={busyId === server.id}
                       act={act}
+                      pinned={isPinned(server.id)}
+                      togglePin={togglePin}
+                      selecting={selecting && canActOn(server) && !server.suspended}
+                      selected={selected.has(server.id)}
+                      toggleSelect={toggleSelect}
                     />
                   </motion.div>
                 ))}
@@ -521,6 +746,20 @@ export function InstancesPage() {
             </motion.div>
           </LayoutGroup>
         )}
+        <AnimatePresence>
+          {selecting && (
+            <BulkBar
+              count={selectedCount}
+              visibleCount={selectableVisible.length}
+              busy={bulkBusy}
+              progress={bulkProgress}
+              onSelectAll={() => setSelected(new Set(selectableVisible.map((s) => s.id)))}
+              onClear={() => setSelected(new Set())}
+              onRun={runBulk}
+              onDone={stopSelecting}
+            />
+          )}
+        </AnimatePresence>
       </div>
 
       <NewInstanceModal

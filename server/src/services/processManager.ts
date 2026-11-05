@@ -9,6 +9,7 @@ import { pickRuntime } from './javaRuntimeService.js';
 import { activeRcon, rconLaunchArgs, rconSend } from './rconService.js';
 import { proxyLaunchArgs } from './proxyService.js';
 import { readProcessStats, clearStatsSample, emptyStats, type ProcessStats } from './statsService.js';
+import { flushStats, recordStats } from './metricsHistoryService.js';
 import { addonLaunchEnv } from './pluginService.js';
 import { upnpOnStart, upnpOnStop } from './upnpService.js';
 import { minimalEnv, sandboxApplies, wrapInSandbox } from './sandboxService.js';
@@ -641,6 +642,7 @@ export async function startServer(serverId: string, options: { auto?: boolean } 
     logger.info(`Server ${serverId} exited`, { code, signal });
     const inst = running.get(serverId);
     if (inst?.statsTimer) clearInterval(inst.statsTimer);
+    flushStats(serverId);
     if (inst?.forceKillTimer) clearTimeout(inst.forceKillTimer);
     if (child.pid) clearStatsSample(child.pid);
     const wasManual = inst?.manualStop ?? false;
@@ -690,6 +692,7 @@ export async function startServer(serverId: string, options: { auto?: boolean } 
     }
     instance.lastStats = stats;
     publish(consoleTopic(serverId), { type: 'stats', ...stats });
+    recordStats(serverId, stats);
   }, STATS_INTERVAL_MS);
 }
 

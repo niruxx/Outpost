@@ -4,7 +4,7 @@ import { useServerDetail } from './ServerContext.js';
 import { api, ApiError } from '../../api/client.js';
 import { Badge, Button, Card, CardTitle, Input, Notice, Spinner } from '../../components/ui.js';
 import { Icon } from '../../components/icons.js';
-import { Sparkline, type ChartPoint } from '../../components/charts.js';
+import { CHART, Sparkline, type ChartPoint } from '../../components/charts.js';
 import { useToast } from '../../components/Toast.js';
 import { useConfirm } from '../../components/ConfirmDialog.js';
 
@@ -173,7 +173,7 @@ export function BrowserStatsCard() {
           <span>Players, last {hours === 24 ? '24 hours' : '7 days'}</span>
           <span>Peak {peak}</span>
         </div>
-        <Sparkline data={series} color="#8fd0a8" formatValue={(v) => `${v} player${v === 1 ? '' : 's'}`} emptyLabel="History builds up once a minute while the server runs." height={56} />
+        <Sparkline data={series} color={CHART.players} formatValue={(v) => `${v} player${v === 1 ? '' : 's'}`} emptyLabel="History builds up once a minute while the server runs." height={56} />
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-ink-400">

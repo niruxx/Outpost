@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { prep } from '../db/db.js';
 import { logger } from '../utils/logger.js';
 import { HttpError } from '../utils/asyncHandler.js';
+import { recordEvent } from './eventLogService.js';
 
 /**
  * Outgoing notifications: instance and backup events posted to webhooks. Discord webhook URLs
@@ -184,6 +185,8 @@ const lastSent = new Map<string, number>();
 
 /** Posts an event to every enabled webhook that subscribes to it (and covers this instance). */
 export function notify(event: NotifyEvent, server: { id: string; name: string } | null, message: string): void {
+  // Always lands in the panel's own inbox, whether or not any webhook wants it.
+  recordEvent(event, server, message);
   let hooks: Webhook[];
   try {
     hooks = listWebhooks();

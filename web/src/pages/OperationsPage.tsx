@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { PageHeader } from '../components/Layout.js';
 import { SystemLayout } from '../components/SystemLayout.js';
+import { SectionedLayout, type Section } from '../components/SectionedLayout.js';
 import { Badge, Button, Card, ErrorText, Field, Input, Select } from '../components/ui.js';
 import { Icon } from '../components/icons.js';
 import { StatusBadge } from '../components/StatusBadge.js';
@@ -16,8 +16,16 @@ interface Node { id: string; name: string; url: string; error: string | null; po
 interface Placement { id: string; node_id: string; server_id: string | null; status: string; error: string | null }
 export function OperationsPage() {
   const { user } = useAuth(); const admin = user?.role === 'admin';
-  const [tab, setTab] = useState(admin ? 'fleet' : 'steam');
-  return <SystemLayout><div className="space-y-5"><PageHeader title="Operations" subtitle="Manage hosts, network assignments, Steam accounts and server modpacks." /><div className="flex flex-wrap gap-2">{[...(admin ? ['fleet', 'allocations'] : []), 'steam', 'curseforge'].map(t => <Button key={t} variant={tab === t ? 'primary' : 'default'} onClick={() => setTab(t)}>{({ fleet: 'Host fleet', allocations: 'IP / port pools', steam: 'My Steam accounts', curseforge: 'CurseForge modpacks' })[t]}</Button>)}</div>{tab === 'fleet' ? <FleetPanel /> : tab === 'allocations' ? <AllocationsPanel /> : tab === 'steam' ? <SteamAccountsPanel /> : <CurseForgePacksPanel />}</div></SystemLayout>;
+  // Same side-section layout as Configuration; the active section is linkable via ?section=.
+  const sections: Section[] = [
+    ...(admin ? [
+      { id: 'fleet', label: 'Host fleet', icon: 'node', description: 'Registered Outpost hosts and how instances are placed on them.', content: <FleetPanel /> },
+      { id: 'allocations', label: 'IP / port pools', icon: 'port', description: 'Address and primary-port pools handed out to new instances.', content: <AllocationsPanel /> },
+    ] satisfies Section[] : []),
+    { id: 'steam', label: 'My Steam accounts', icon: 'key', description: 'Encrypted Steam logins for games that need an owned license.', content: <SteamAccountsPanel /> },
+    { id: 'curseforge', label: 'CurseForge modpacks', icon: 'plugin', description: 'Pinned modpacks you can install onto instances.', content: <CurseForgePacksPanel /> },
+  ];
+  return <SystemLayout><SectionedLayout layoutId="operations-sections" sections={sections} /></SystemLayout>;
 }
 function NodePolicyForm({ node, reload }: { node: Node; reload: () => Promise<void> }) {
   const [value, setValue] = useState(node.policy), [error, setError] = useState(''), [busy, setBusy] = useState(false);

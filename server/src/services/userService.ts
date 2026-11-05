@@ -76,7 +76,7 @@ export function disabledMessage(reason: string | null): string {
 export const FIREWALL_ACCESS = ['none', 'view', 'instances', 'manage'] as const;
 
 /** Theme ids the web app ships (web/src/lib/theme.ts). */
-export const THEME_IDS = ['outpost', 'xp', 'minecraft', 'vista', 'aero'] as const;
+export const THEME_IDS = ['outpost', 'classic', 'xp', 'minecraft', 'vista', 'aero'] as const;
 
 export function setUserTheme(id: string, theme: (typeof THEME_IDS)[number] | null) {
   prep('UPDATE users SET theme = ? WHERE id = ?').run(theme, id);

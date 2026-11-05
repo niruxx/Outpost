@@ -164,6 +164,38 @@ function tileOf(kind: GameKind): string {
   return appIcon(kind)?.tile ?? marked(kind)?.tile ?? TILE[kind as DrawnKind] ?? TILE.steam;
 }
 
+const DRAWN_ACCENT: Record<DrawnKind, string> = {
+  'minecraft-java': '#7cc35a',
+  'minecraft-bedrock': '#b8c0c8',
+  palworld: '#5cc8f0',
+  valheim: '#d9a35a',
+  zomboid: '#d94a3d',
+  terraria: '#7fb2e5',
+  quake: '#e0623a',
+  custom: '#c2c9bb',
+  docker: '#4aa3df',
+  steam: '#8fb6ff',
+};
+
+/** The emblem's signature color — banners and accents are drawn from it. */
+export function kindAccent(kind: GameKind): string {
+  const m = marked(kind);
+  return appIcon(kind)?.color ?? m?.mark.color ?? DRAWN_ACCENT[kind as DrawnKind] ?? DRAWN_ACCENT.steam;
+}
+
+/** The tile's two gradient stops as hex colors (lighter first). */
+export function kindTileColors(kind: GameKind): [string, string] {
+  const found = tileOf(kind).match(/#[0-9a-fA-F]{6}/g);
+  return found && found.length >= 2 ? [found[0], found[1]] : ['#22303f', '#141c26'];
+}
+
+/** The Steam App ID behind a kind, if any. */
+export function kindAppId(kind: GameKind): string | null {
+  if (kind.startsWith('steam:')) return kind.slice(6).split(':')[0];
+  const drawn = Object.entries(DRAWN_APP).find(([, k]) => k === kind);
+  return drawn ? drawn[0] : null;
+}
+
 function Emblem({ kind }: { kind: GameKind }) {
   const app = appIcon(kind);
   if (app) {

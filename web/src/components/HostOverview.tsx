@@ -6,11 +6,11 @@ import { api } from '../api/client.js';
 import type { SystemInfo, SystemMetrics } from '../api/types.js';
 import { Card } from './ui.js';
 import { Icon, type IconName } from './icons.js';
-import { Gauge, Sparkline, type ChartPoint } from './charts.js';
+import { CHART, Gauge, Sparkline, type ChartPoint } from './charts.js';
 import { AnimatedNumber, EMPHASIZED } from './motion.js';
 
 const HISTORY = 45; // ~90s at the 2s poll
-const COLORS = { cpu: '#78dc77', memory: '#a1ced7', disk: '#ecc65c', rx: '#9ecaff', tx: '#ffb4ab', read: '#c3c0ff', write: '#f5b971' };
+const COLORS = { cpu: CHART.cpu, memory: CHART.memory, disk: CHART.disk, rx: CHART.netIn, tx: CHART.diskWrite, read: CHART.diskRead, write: CHART.netOut };
 
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${Math.round(bytes)} B`;

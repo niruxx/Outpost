@@ -8,7 +8,8 @@ import { Button, Card, Input, Spinner } from '../../components/ui.js';
 import { ConsoleHistory } from './ConsoleHistory.js';
 
 // Terminal palette: status hues follow the MD3 scheme; plain output stays a neutral light gray.
-function lineColor(stream: string, line: string): string {
+/** Console line colors — fixed light-on-dark, since the terminal stays dark in every theme. */
+export function lineColor(stream: string, line: string): string {
   if (stream === 'stderr') return 'text-red-400';
   if (stream === 'system') return 'text-sky-400';
   if (/\bWARN\b/.test(line)) return 'text-yellow-400';

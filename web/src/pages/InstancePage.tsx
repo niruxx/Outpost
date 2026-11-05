@@ -3,11 +3,13 @@ import { Cs2Tab } from './server/Cs2Tab.js';
 import { setVisibleInterval } from '../lib/perf.js';
 import { Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import { motion, LayoutGroup } from 'framer-motion';
-import { Layout, NavItem, NavSectionLabel } from '../components/Layout.js';
-import { StatusBadge, SuspendedBadge } from '../components/StatusBadge.js';
+import { Layout, NavItem, NavSectionLabel, useRail } from '../components/Layout.js';
+import { t } from '../i18n/index.js';
+import { StatusBadge, StatusDot, SuspendedBadge } from '../components/StatusBadge.js';
 import { Button, Card } from '../components/ui.js';
 import { Logo } from '../components/Logo.js';
-import { gameLabel, GameTile, GameWatermark, gameKindOf } from '../components/GameArt.js';
+import { gameLabel, GameTile, gameKindOf } from '../components/GameArt.js';
+import { GameBanner } from '../components/GameBanner.js';
 import { Icon } from '../components/icons.js';
 import { useToast } from '../components/Toast.js';
 import { ServerDetailProvider, useServerDetail } from './server/ServerContext.js';
@@ -28,6 +30,7 @@ import { WorkshopTab } from './server/WorkshopTab.js';
 import { WineTab } from './server/WineTab.js';
 import { RewindTab } from './server/RewindTab.js';
 import { useEndpoint } from '../hooks/useEndpoint.js';
+import { usePinnedInstances } from '../lib/pins.js';
 import { api, ApiError } from '../api/client.js';
 import { isMinecraftPlatform, isProxyLoader, type ServerRecord } from '../api/types.js';
 import { ProxyTab } from './server/ProxyTab.js';
@@ -41,45 +44,68 @@ function InstanceNav({ server, onNavigate }: { server: ServerRecord; onNavigate:
   const proxy = isProxyLoader(server.loader);
   const world = !steam && !proxy;
   const kind = gameKindOf(server);
+  const addons = server.platform === 'java' || server.platform === 'bedrock' || server.platform === 'steam';
+  // Only label the game group when something lands in it.
+  const game = world || proxy || addons || isCs2 || isGmodServer(server) || hasBrowserStats(server);
+  const rail = useRail();
   return (
     <LayoutGroup id="instance-nav">
     <nav className="space-y-1">
-      <NavLink to="/" onClick={onNavigate} className="state-layer flex h-12 items-center gap-3 rounded-full px-4 text-sm font-medium text-ink-300">
-        <Icon name="back" />
-        Return to Menu
+      <NavLink
+        to="/"
+        onClick={onNavigate}
+        title={rail ? t('All instances') : undefined}
+        aria-label={rail ? t('All instances') : undefined}
+        className={`state-layer flex h-10 items-center gap-3 rounded-full text-sm font-medium text-ink-300 ${rail ? 'justify-center' : 'px-4'}`}
+      >
+        <Icon name="back" className="h-[18px] w-[18px]" />
+        {!rail && t('All instances')}
       </NavLink>
 
+      {rail ? (
+        <div className="my-3 flex justify-center" title={`${server.name} · ${gameLabel(kind)}`}>
+          <span className="relative">
+            <GameTile kind={kind} className="h-10 w-10" running={server.status === 'running'} />
+            <span className="absolute -bottom-0.5 -right-0.5"><StatusDot status={server.status} suspended={!!server.suspended} /></span>
+          </span>
+        </div>
+      ) : (
       <div className="ui-sidebar-panel my-3 flex items-center gap-3 rounded-2xl bg-surface-850 p-3">
         <GameTile kind={kind} className="h-10 w-10" running={server.status === 'running'} />
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium text-ink-50">{server.name}</p>
           <p className="truncate text-xs text-ink-400">{gameLabel(kind)}</p>
         </div>
+        <StatusDot status={server.status} suspended={!!server.suspended} />
       </div>
+      )}
 
+      <NavSectionLabel>Overview</NavSectionLabel>
       <NavItem to="status" icon="status" label="Status" onClick={onNavigate} />
       <NavItem to="console" icon="console" label="Console" onClick={onNavigate} />
-      <NavItem to="backups" icon="backup" label="Backup Schedule" onClick={onNavigate} />
-      <NavItem to="tasks" icon="clock" label="Tasks & Automation" onClick={onNavigate} />
-      <NavItem to="configuration" icon="configuration" label="Configuration" onClick={onNavigate} />
       <NavItem to="files" icon="folder" label="File Management" onClick={onNavigate} />
-      <NavItem to="upnp" icon="router" label="UPnP" onClick={onNavigate} />
 
-      <NavSectionLabel>Manage</NavSectionLabel>
-      {(server.platform === 'java' || server.platform === 'bedrock' || server.platform === 'steam') && (
-        <NavItem to="plugins" icon="plugin" label={addonNavLabel(server)} onClick={onNavigate} />
-      )}
-      {proxy && <NavItem to="network" icon="node" label="Network" onClick={onNavigate} />}
-      {isCs2 && <NavItem to="cs2" icon="bolt" label="CS2" onClick={onNavigate} />}
-      {isGmodServer(server) && <NavItem to="gmod" icon="bolt" label="Garry's Mod" onClick={onNavigate} />}
-      {server.platform === 'steam' && <NavItem to="workshop" icon="box" label="Workshop" onClick={onNavigate} />}
-      {(server.platform === 'steam' || server.platform === 'custom') && <NavItem to="wine" icon="wine" label="Wine" onClick={onNavigate} />}
+      {game && <NavSectionLabel>{gameLabel(kind)}</NavSectionLabel>}
       {(world || hasBrowserStats(server)) && <NavItem to="players" icon="player" label="Players" onClick={onNavigate} />}
       {world && <NavItem to="operator" icon="shield" label="Operators" onClick={onNavigate} />}
       {world && <NavItem to="whitelist" icon="checklist" label="Whitelist" onClick={onNavigate} />}
+      {addons && <NavItem to="plugins" icon="plugin" label={addonNavLabel(server)} onClick={onNavigate} />}
+      {server.platform === 'steam' && <NavItem to="workshop" icon="box" label="Workshop" onClick={onNavigate} />}
+      {proxy && <NavItem to="network" icon="node" label="Network" onClick={onNavigate} />}
+      {isCs2 && <NavItem to="cs2" icon="bolt" label="CS2" onClick={onNavigate} />}
+      {isGmodServer(server) && <NavItem to="gmod" icon="bolt" label="Garry's Mod" onClick={onNavigate} />}
       {world && <NavItem to="maps" icon="map" label="Map" onClick={onNavigate} />}
+
+      <NavSectionLabel>Data</NavSectionLabel>
+      <NavItem to="backups" icon="backup" label="Backups" onClick={onNavigate} />
       {world && <NavItem to="rewind" icon="refresh" label="World Rewind" onClick={onNavigate} />}
+
+      <NavSectionLabel>Settings</NavSectionLabel>
+      <NavItem to="configuration" icon="configuration" label="Configuration" onClick={onNavigate} />
+      <NavItem to="tasks" icon="clock" label="Tasks & Automation" onClick={onNavigate} />
       <NavItem to="update" icon="update" label="Versions & updates" onClick={onNavigate} />
+      {(server.platform === 'steam' || server.platform === 'custom') && <NavItem to="wine" icon="wine" label="Wine" onClick={onNavigate} />}
+      <NavItem to="upnp" icon="router" label="UPnP" onClick={onNavigate} />
     </nav>
     </LayoutGroup>
   );
@@ -212,7 +238,24 @@ function OwnerChip() {
   );
 }
 
-function InstanceTopBar({ server }: { server: ServerRecord }) {
+function HeaderPin({ serverId }: { serverId: string }) {
+  const { isPinned, toggle } = usePinnedInstances();
+  const pinned = isPinned(serverId);
+  return (
+    <button
+      type="button"
+      onClick={() => toggle(serverId)}
+      aria-pressed={pinned}
+      title={pinned ? 'Unpin from sidebar' : 'Pin to sidebar'}
+      aria-label={pinned ? 'Unpin from sidebar' : 'Pin to sidebar'}
+      className={`state-layer rounded-full p-1.5 ${pinned ? 'text-accent-400' : 'text-ink-500'}`}
+    >
+      <Icon name="pin" className={`h-4 w-4 ${pinned ? 'fill-current' : ''}`} />
+    </button>
+  );
+}
+
+function InstanceTopBar({ server, compact }: { server: ServerRecord; compact: boolean }) {
   const kind = gameKindOf(server);
   const endpoint = useEndpoint(server.id, server.server_port);
   const live = server.status === 'running' || server.status === 'starting';
@@ -220,24 +263,25 @@ function InstanceTopBar({ server }: { server: ServerRecord }) {
     <motion.header
       initial={{ opacity: 0, y: -6 }}
       animate={{ opacity: 1, y: 0 }}
-      className="ui-card relative overflow-hidden rounded-3xl bg-surface-850 px-5 py-5 sm:px-6"
+      className="ui-card ui-instance-header relative overflow-hidden rounded-3xl bg-surface-850"
     >
+      {/* Per-game banner; content sits on the card below it, so it reads in light mode too.
+          The console keeps it short to leave room for the log. */}
       <motion.div
-        className="pointer-events-none absolute -right-6 -top-10"
-        // Fades in once and then holds still. It used to sway forever, which repainted the whole
-        // header ~60 times a second and kept laptop GPUs busy.
-        initial={{ opacity: 0, rotate: 12, scale: 0.9 }}
-        animate={{ opacity: 0.09, rotate: 14, scale: 1 }}
-        transition={{ duration: 0.6 }}
+        className={`relative ${compact ? 'h-16 sm:h-20' : 'h-28 sm:h-36'}`}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.5 }}
       >
-        <GameWatermark kind={kind} className="h-56 w-56" />
+        <GameBanner kind={kind} seed={server.id} />
       </motion.div>
-      <div className="relative flex flex-wrap items-start gap-4">
-        <GameTile kind={kind} className="h-14 w-14" running={server.status === 'running'} />
-        <div className="min-w-0 flex-1">
+      <div className={`relative flex flex-wrap items-end gap-4 px-5 sm:px-6 ${compact ? '-mt-7' : '-mt-10'}`}>
+        <GameTile kind={kind} className={`${compact ? 'h-14 w-14' : 'h-16 w-16'} shadow-card ring-4 ring-surface-850`} running={server.status === 'running'} />
+        <div className="min-w-0 flex-1 pt-8">
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="truncate text-2xl font-normal text-ink-50">{server.name}</h1>
             {server.suspended ? <SuspendedBadge /> : <StatusBadge status={server.status} />}
+            <HeaderPin serverId={server.id} />
           </div>
           <p className="mt-0.5 text-sm text-ink-400">
             {gameLabel(kind)}
@@ -245,9 +289,11 @@ function InstanceTopBar({ server }: { server: ServerRecord }) {
             {server.platform === 'docker' && <span className="font-mono"> · 🐳 {server.version}</span>}
           </p>
         </div>
-        <LifecycleActions />
+        <div className="pb-1">
+          <LifecycleActions />
+        </div>
       </div>
-      <div className="relative mt-4 flex flex-wrap items-center gap-2">
+      <div className="relative mt-4 flex flex-wrap items-center gap-2 px-5 pb-5 sm:px-6">
         <CopyChip
           icon="globe"
           label={live ? 'Endpoint' : 'IP'}
@@ -336,7 +382,7 @@ function InstancePageInner() {
   return (
     <Layout fill={onConsole} sidebar={(close) => <InstanceNav server={server} onNavigate={close} />}>
       <div className={`mx-auto flex max-w-6xl flex-col gap-5 px-4 py-6 sm:px-8 ${onConsole ? 'h-full' : ''}`}>
-        <InstanceTopBar server={server} />
+        <InstanceTopBar server={server} compact={onConsole} />
         {server.suspended === 1 && isAdmin && (
           <div className="flex items-center gap-3 rounded-2xl bg-error-container px-4 py-3 text-sm text-error-on-container">
             <Icon name="lock" className="h-5 w-5" />

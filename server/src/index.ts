@@ -38,6 +38,8 @@ import { catalogRouter } from './routes/catalog.routes.js';
 import { nodeLinkRouter } from './routes/nodeLink.routes.js';
 import { tasksRouter } from './routes/tasks.routes.js';
 import { notificationsRouter } from './routes/notifications.routes.js';
+import { eventsRouter } from './routes/events.routes.js';
+import { pruneEvents } from './services/eventLogService.js';
 import { auditRouter } from './routes/audit.routes.js';
 import { firewallRouter } from './routes/firewall.routes.js';
 import { workshopRouter } from './routes/workshop.routes.js';
@@ -57,6 +59,7 @@ import { startSftp, stopSftp } from './services/sftpService.js';
 import { consoleLogsRouter, consoleLogSettingsRouter } from './routes/consoleLogs.routes.js';
 import { browserStatsRouter } from './routes/browserStats.routes.js';
 import { startBrowserStats } from './services/browserStatsService.js';
+import { startMetricsHistory } from './services/metricsHistoryService.js';
 import { gmodRouter } from './routes/gmod.routes.js';
 import { proxyRouter } from './routes/proxy.routes.js';
 import { rconRouter } from './routes/rcon.routes.js';
@@ -147,6 +150,7 @@ app.use('/api/storage', storageRouter);
 app.use('/api/catalog', catalogRouter);
 app.use('/api/node-link', nodeLinkRouter);
 app.use('/api/notifications', notificationsRouter);
+app.use('/api/events', eventsRouter);
 app.use('/api/audit', auditRouter);
 app.use('/api/firewall', firewallRouter);
 
@@ -242,6 +246,8 @@ async function bootstrap() {
   }
   startAuditPruning();
   startBrowserStats(isRunning);
+  startMetricsHistory();
+  pruneEvents();
   initRewind();
   recoverInterruptedTransfers();
 

@@ -1,4 +1,6 @@
 import { GlobalActivityBar } from './components/GlobalActivityBar.js';
+import { CommandPalette } from './components/CommandPalette.js';
+import { UnsavedChangesGuard } from './lib/unsaved.js';
 import { OperationsPage } from './pages/OperationsPage.js';
 import { Navigate, Route, BrowserRouter, Routes, useParams } from 'react-router-dom';
 import { MotionConfig } from 'framer-motion';
@@ -164,6 +166,8 @@ export default function App() {
           <ConfirmProvider>
             <GlobalActivityBar />
             <AppRoutes />
+            <CommandPalette />
+            <UnsavedChangesGuard />
           </ConfirmProvider>
         </ToastProvider>
       </AuthProvider>

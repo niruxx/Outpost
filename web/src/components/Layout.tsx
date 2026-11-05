@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { setVisibleInterval } from '../lib/perf.js';
 import { PanelUpdateBanner } from './PanelUpdateBanner.js';
 import { t, tc } from '../i18n/index.js';
@@ -13,6 +13,25 @@ import type { ServerRecord, SystemInfo } from '../api/types.js';
 import { GameTile, gameKindOf } from './GameArt.js';
 import { StatusDot } from './StatusBadge.js';
 import { Wallpaper } from './Wallpaper.js';
+import { CommandPaletteTrigger, openCommandPalette } from './CommandPalette.js';
+import { usePinnedInstances } from '../lib/pins.js';
+import { NotificationBell } from './NotificationBell.js';
+
+/**
+ * Desktop sidebar can shrink to an icon rail. Everything rendered inside the drawer reads this
+ * to draw its compact form (icons with tooltips); the phone drawer is always full width.
+ */
+const RailContext = createContext(false);
+export const useRail = () => useContext(RailContext);
+const RAIL_KEY = 'outpost_sidebar_rail';
+
+function readRail(): boolean {
+  try {
+    return localStorage.getItem(RAIL_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
 
 /** One MD3 navigation-drawer item: full-width pill, secondary-container indicator when active. */
 export function NavItem({
@@ -28,13 +47,14 @@ export function NavItem({
   end?: boolean;
   onClick?: () => void;
 }) {
+  const rail = useRail();
   return (
-    <NavLink to={to} end={end} onClick={onClick} className="group block">
+    <NavLink to={to} end={end} onClick={onClick} className="group block" title={rail ? t(label) : undefined} aria-label={rail ? t(label) : undefined}>
       {({ isActive }) => (
         <span
-          className={`ui-nav-item state-layer relative flex h-12 items-center gap-3 rounded-full px-4 text-sm font-medium transition-colors duration-200 ${
-            isActive ? 'text-secondary-on-container' : 'text-ink-300'
-          }`}
+          className={`ui-nav-item state-layer relative flex h-12 items-center gap-3 rounded-full text-sm font-medium transition-colors duration-200 ${
+            rail ? 'justify-center px-0' : 'px-4'
+          } ${isActive ? 'text-secondary-on-container' : 'text-ink-300'}`}
         >
           {isActive && (
             // One shared indicator that slides between items (MD3 navigation drawer).
@@ -47,7 +67,7 @@ export function NavItem({
           <span className="relative z-10 transition-transform duration-200 group-hover:translate-x-0.5">
             <Icon name={icon} className="h-5 w-5" />
           </span>
-          <span className="relative z-10 truncate">{t(label)}</span>
+          {!rail && <span className="relative z-10 truncate">{t(label)}</span>}
         </span>
       )}
     </NavLink>
@@ -55,6 +75,8 @@ export function NavItem({
 }
 
 export function NavSectionLabel({ children }: { children: ReactNode }) {
+  // In the rail a group label becomes a short divider.
+  if (useRail()) return <div className="mx-auto my-3 h-px w-8 bg-surface-600" role="separator" />;
   return <p className="px-4 pb-1 pt-4 text-xs font-medium text-ink-400">{tc(children)}</p>;
 }
 
@@ -79,6 +101,18 @@ function useSidebarInstances(): ServerRecord[] | null {
 }
 
 function InstanceNavItem({ server, onClick }: { server: ServerRecord; onClick?: () => void }) {
+  if (useRail()) {
+    return (
+      <NavLink to={`/instances/${server.id}`} onClick={onClick} className="block" title={server.name} aria-label={server.name}>
+        <span className="ui-nav-item state-layer relative flex h-10 items-center justify-center rounded-full">
+          <span className="relative">
+            <GameTile kind={gameKindOf(server)} className="h-7 w-7 !rounded-lg" />
+            <span className="absolute -bottom-0.5 -right-0.5"><StatusDot status={server.status} suspended={!!server.suspended} /></span>
+          </span>
+        </span>
+      </NavLink>
+    );
+  }
   return (
     <NavLink to={`/instances/${server.id}`} onClick={onClick} className="group block" title={server.name}>
       <span className="ui-nav-item state-layer relative flex h-10 items-center gap-3 rounded-full px-4 text-sm text-ink-300">
@@ -87,6 +121,96 @@ function InstanceNavItem({ server, onClick }: { server: ServerRecord; onClick?: 
         <StatusDot status={server.status} suspended={!!server.suspended} />
       </span>
     </NavLink>
+  );
+}
+
+const COLLAPSED_KEY = 'outpost_sidebar_instances_collapsed';
+const SIDEBAR_LIMIT = 8;
+// Survives the drawer remounting on every page, but not a reload: a long list starts trimmed.
+let sidebarShowAll = false;
+
+function readCollapsed(): boolean {
+  try {
+    return localStorage.getItem(COLLAPSED_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+/** A sidebar group label that folds its group away. */
+function CollapsibleSectionLabel({ open, onToggle, count, children }: { open: boolean; onToggle: () => void; count: number; children: ReactNode }) {
+  if (useRail()) return <div className="mx-auto my-3 h-px w-8 bg-surface-600" role="separator" />;
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={open}
+      className="group flex w-full items-center gap-1 px-4 pb-1 pt-4 text-left text-xs font-medium text-ink-400 hover:text-ink-200"
+    >
+      <span className="flex-1">{tc(children)}</span>
+      <span className="tabular-nums opacity-70">{count}</span>
+      <Icon name="chevronDown" className={`h-3.5 w-3.5 transition-transform duration-200 ${open ? '' : '-rotate-90'}`} />
+    </button>
+  );
+}
+
+/** Pinned instances get their own group; the rest fold away and trim to the first few. */
+function SidebarInstances({ servers, onNavigate }: { servers: ServerRecord[]; onNavigate?: () => void }) {
+  const { pinned } = usePinnedInstances();
+  const [collapsed, setCollapsed] = useState(readCollapsed);
+  const [showAll, setShowAll] = useState(sidebarShowAll);
+  const rail = useRail();
+  const byId = new Map(servers.map((s) => [s.id, s]));
+  const pinnedServers = pinned.map((id) => byId.get(id)).filter((s): s is ServerRecord => !!s);
+  const rest = servers.filter((s) => !pinned.includes(s.id));
+  const shown = showAll ? rest : rest.slice(0, SIDEBAR_LIMIT);
+
+  function toggleCollapsed() {
+    setCollapsed((c) => {
+      try {
+        localStorage.setItem(COLLAPSED_KEY, c ? '0' : '1');
+      } catch {
+        /* per-browser preference only */
+      }
+      return !c;
+    });
+  }
+
+  return (
+    <>
+      {pinnedServers.length > 0 && (
+        <>
+          <NavSectionLabel>Pinned</NavSectionLabel>
+          {pinnedServers.map((s) => <InstanceNavItem key={s.id} server={s} onClick={onNavigate} />)}
+        </>
+      )}
+      {rest.length > 0 && (
+        <>
+          <CollapsibleSectionLabel open={!collapsed} onToggle={toggleCollapsed} count={rest.length}>
+            {pinnedServers.length ? 'Other instances' : 'Instances'}
+          </CollapsibleSectionLabel>
+          {(!collapsed || rail) && (
+            <>
+              {shown.map((s) => <InstanceNavItem key={s.id} server={s} onClick={onNavigate} />)}
+              {rest.length > SIDEBAR_LIMIT && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    sidebarShowAll = !showAll;
+                    setShowAll(!showAll);
+                  }}
+                  title={rail ? (showAll ? t('Show fewer') : `${t('Show')} ${rest.length - SIDEBAR_LIMIT} ${t('more')}`) : undefined}
+                  className={`state-layer flex h-9 w-full items-center gap-3 rounded-full text-xs font-medium text-accent-400 ${rail ? 'justify-center' : 'px-4'}`}
+                >
+                  <Icon name={showAll ? 'chevronUp' : 'chevronDown'} className="h-4 w-4" />
+                  {!rail && (showAll ? t('Show fewer') : `${t('Show')} ${rest.length - SIDEBAR_LIMIT} ${t('more')}`)}
+                </button>
+              )}
+            </>
+          )}
+        </>
+      )}
+    </>
   );
 }
 
@@ -116,14 +240,7 @@ function MainNav({ onNavigate }: { onNavigate?: () => void }) {
         <NavItem to="/firewall" icon="shieldCheck" label="Firewall" onClick={onNavigate} />
       )}
       {user?.role === 'admin' && <NavItem to="/audit" icon="checklist" label="Audit Log" onClick={onNavigate} />}
-      {servers && servers.length > 0 && (
-        <>
-          <NavSectionLabel>Instances</NavSectionLabel>
-          {servers.map((s) => (
-            <InstanceNavItem key={s.id} server={s} onClick={onNavigate} />
-          ))}
-        </>
-      )}
+      {servers && servers.length > 0 && <SidebarInstances servers={servers} onNavigate={onNavigate} />}
     </nav>
     </LayoutGroup>
   );
@@ -132,6 +249,29 @@ function MainNav({ onNavigate }: { onNavigate?: () => void }) {
 function DrawerFooter({ system }: { system: SystemInfo | null }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  if (useRail()) {
+    return (
+      <div className="mt-auto flex flex-col items-center gap-2 pt-4">
+        <div
+          className="flex h-10 w-10 items-center justify-center rounded-full bg-accent-container text-sm font-medium text-accent-on-container"
+          title={`${user?.username} (${user?.role})`}
+        >
+          {user?.username?.slice(0, 1).toUpperCase()}
+        </div>
+        <button
+          onClick={() => {
+            logout();
+            navigate('/login');
+          }}
+          title={t('Sign out')}
+          aria-label={t('Sign out')}
+          className="state-layer rounded-full p-2 text-ink-300"
+        >
+          <Icon name="logout" />
+        </button>
+      </div>
+    );
+  }
   return (
     <div className="mt-auto space-y-3 px-1 pt-4">
       <div className="ui-sidebar-panel flex items-center gap-3 rounded-2xl bg-surface-850 p-3 transition-colors hover:bg-surface-800">
@@ -239,6 +379,17 @@ export function Layout({
 }) {
   const [system, setSystem] = useState<SystemInfo | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [rail, setRail] = useState(readRail);
+  function toggleRail() {
+    setRail((r) => {
+      try {
+        localStorage.setItem(RAIL_KEY, r ? '0' : '1');
+      } catch {
+        /* per-browser preference only */
+      }
+      return !r;
+    });
+  }
   const location = useLocation();
   const { user } = useAuth();
 
@@ -265,25 +416,59 @@ export function Layout({
     lastNavKey = navKey;
     return changed;
   });
-  const drawer = (device: 'desktop' | 'mobile') => (
-    <div className="flex h-full flex-col px-3 py-4">
-      <div className="mb-4 flex items-center gap-3 px-4 py-2">
-        <motion.div whileHover={{ rotate: -8, scale: 1.06 }} transition={{ type: 'spring', stiffness: 400, damping: 15 }}>
-          <Logo className="h-8 w-8 shrink-0 rounded-lg" />
-        </motion.div>
-        <div><span className="text-xl font-semibold tracking-tight text-ink-50">Outpost</span><p className="text-[11px] text-ink-400">{t('Your server workspace')}</p></div>
-      </div>
-      <DrawerScroll positionKey={`${user?.id}:${navKey}:${device}`} animate={animateNav}>
-        {sidebar ? sidebar(close) : <MainNav onNavigate={close} />}
-      </DrawerScroll>
-      <DrawerFooter system={system} />
-    </div>
-  );
+  const drawer = (device: 'desktop' | 'mobile') => {
+    const compact = device === 'desktop' && rail;
+    return (
+      <RailContext.Provider value={compact}>
+        <div className={`flex h-full flex-col py-4 ${compact ? 'px-2' : 'px-3'}`}>
+          <div className={`mb-4 flex items-center gap-3 py-2 ${compact ? 'flex-col px-0' : 'px-4'}`}>
+            <motion.div whileHover={{ rotate: -8, scale: 1.06 }} transition={{ type: 'spring', stiffness: 400, damping: 15 }}>
+              <Logo className="h-8 w-8 shrink-0 rounded-lg" />
+            </motion.div>
+            {!compact && (
+              <div className="min-w-0 flex-1">
+                <span className="text-xl font-semibold tracking-tight text-ink-50">Outpost</span>
+                <p className="truncate text-[11px] text-ink-400">{t('Your server workspace')}</p>
+              </div>
+            )}
+            <div className={`flex items-center gap-0.5 ${compact ? 'flex-col' : ''}`}>
+              {device === 'desktop' && <NotificationBell compact={compact} />}
+              {device === 'desktop' && (
+                <button
+                  type="button"
+                  onClick={toggleRail}
+                  title={t(compact ? 'Expand sidebar' : 'Collapse sidebar')}
+                  aria-label={t(compact ? 'Expand sidebar' : 'Collapse sidebar')}
+                  aria-expanded={!compact}
+                  className="state-layer rounded-full p-2 text-ink-400"
+                >
+                  <Icon name="chevronRight" className={`h-4 w-4 transition-transform duration-200 ${compact ? '' : 'rotate-180'}`} />
+                </button>
+              )}
+            </div>
+          </div>
+          <div className="px-1">
+            <CommandPaletteTrigger compact={compact} />
+          </div>
+          <DrawerScroll positionKey={`${user?.id}:${navKey}:${device}`} animate={animateNav}>
+            {sidebar ? sidebar(close) : <MainNav onNavigate={close} />}
+          </DrawerScroll>
+          <DrawerFooter system={system} />
+        </div>
+      </RailContext.Provider>
+    );
+  };
 
   return (
     <div className="ui-app relative isolate flex h-screen bg-surface-950">
       <Wallpaper />
-      <aside className="ui-sidebar relative z-[1] hidden w-72 shrink-0 bg-surface-900 md:block">{drawer('desktop')}</aside>
+      <aside
+        className={`ui-sidebar relative z-[1] hidden shrink-0 bg-surface-900 transition-[width] duration-300 ease-out md:block ${rail ? 'w-20' : 'w-72'}`}
+        data-rail={rail ? 'true' : undefined}
+      >
+        {/* Separate highlight namespaces, so the indicator doesn't fly across when the rail toggles. */}
+        <LayoutGroup id={rail ? 'rail' : 'drawer'}>{drawer('desktop')}</LayoutGroup>
+      </aside>
 
       {/* Phone drawer. It stays mounted and slides with CSS: when closed it ignores every touch, so
           its backdrop can never be left covering the page (an interrupted exit animation used to
@@ -311,7 +496,11 @@ export function Layout({
             </svg>
           </button>
           <Logo className="h-6 w-6 rounded-md" />
-          <span className="font-medium text-ink-50">Outpost</span>
+          <span className="flex-1 font-medium text-ink-50">Outpost</span>
+          <NotificationBell compact />
+          <button onClick={openCommandPalette} aria-label={t('Search')} className="state-layer rounded-full p-2 text-ink-200">
+            <Icon name="search" className="h-5 w-5" />
+          </button>
         </div>
         <PanelUpdateBanner />
         <main className="ui-main min-h-0 flex-1 overflow-y-auto">

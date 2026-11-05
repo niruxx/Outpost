@@ -1,4 +1,22 @@
-import { useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
+
+/** Theme-aware chart series colors (index.css `--chart-*`), usable anywhere a CSS color is. */
+export const CHART = {
+  cpu: 'var(--chart-cpu)',
+  memory: 'var(--chart-memory)',
+  disk: 'var(--chart-disk)',
+  netIn: 'var(--chart-net-in)',
+  netOut: 'var(--chart-net-out)',
+  diskRead: 'var(--chart-disk-read)',
+  diskWrite: 'var(--chart-disk-write)',
+  neutral: 'var(--chart-neutral)',
+  players: 'var(--chart-players)',
+} as const;
+
+/** A translucent version of any CSS color (hex or var()), e.g. for icon chips. */
+export function tint(color: string, percent: number): string {
+  return `color-mix(in srgb, ${color} ${percent}%, transparent)`;
+}
 
 export interface ChartPoint {
   t: number;
@@ -12,17 +30,27 @@ export function Sparkline({
   formatValue,
   emptyLabel,
   height = 48,
+  domain,
+  gapMs,
+  formatTime,
 }: {
   data: ChartPoint[];
   color: string;
   formatValue: (v: number) => string;
   emptyLabel: string;
   height?: number;
+  /** Place points by time across [from, to] instead of evenly — for saved history with gaps. */
+  domain?: [number, number];
+  /** Break the line where consecutive points are further apart than this (instance was offline). */
+  gapMs?: number;
+  /** Adds the point's time to the hover tooltip. */
+  formatTime?: (t: number) => string;
 }) {
   const width = 100; // viewBox units; scales responsively via SVG width=100%
   const pad = 3;
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
+  const gradientId = `spark-${useId().replace(/:/g, '')}`;
 
   const values = data.map((d) => d.value);
   if (values.length < 2) {
@@ -30,13 +58,26 @@ export function Sparkline({
   }
 
   const max = Math.max(1, ...values);
+  const span = domain ? Math.max(1, domain[1] - domain[0]) : 0;
   const points = values.map((v, i) => {
-    const x = pad + (i / (values.length - 1)) * (width - pad * 2);
+    const frac = domain ? Math.max(0, Math.min(1, (data[i].t - domain[0]) / span)) : i / (values.length - 1);
+    const x = pad + frac * (width - pad * 2);
     const y = height - pad - (v / max) * (height - pad * 2);
     return [x, y] as const;
   });
-  const linePath = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p[0].toFixed(2)},${p[1].toFixed(2)}`).join(' ');
-  const areaPath = `${linePath} L${points[points.length - 1][0].toFixed(2)},${height - pad} L${pad},${height - pad} Z`;
+  // Split into runs wherever the gap between samples is too long to draw through.
+  const runs: (readonly [number, number])[][] = [];
+  points.forEach((p, i) => {
+    if (i === 0 || (gapMs && data[i].t - data[i - 1].t > gapMs)) runs.push([]);
+    runs[runs.length - 1].push(p);
+  });
+  const fmt = (p: readonly [number, number]) => `${p[0].toFixed(2)},${p[1].toFixed(2)}`;
+  // A lone sample gets a tiny horizontal tick so it still shows.
+  const linePath = runs.map((run) => (run.length === 1 ? `M${fmt(run[0])} l0.6,0` : run.map((p, i) => `${i === 0 ? 'M' : 'L'}${fmt(p)}`).join(' '))).join(' ');
+  const areaPath = runs
+    .filter((run) => run.length > 1)
+    .map((run) => `${run.map((p, i) => `${i === 0 ? 'M' : 'L'}${fmt(p)}`).join(' ')} L${run[run.length - 1][0].toFixed(2)},${height - pad} L${run[0][0].toFixed(2)},${height - pad} Z`)
+    .join(' ');
   const last = points[points.length - 1];
   const hover = hoverIdx !== null ? points[hoverIdx] : null;
 
@@ -67,12 +108,12 @@ export function Sparkline({
         onMouseLeave={() => setHoverIdx(null)}
       >
         <defs>
-          <linearGradient id={`grad-${color.replace('#', '')}`} x1="0" y1="0" x2="0" y2="1">
+          <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor={color} stopOpacity="0.28" />
             <stop offset="100%" stopColor={color} stopOpacity="0" />
           </linearGradient>
         </defs>
-        <path d={areaPath} fill={`url(#grad-${color.replace('#', '')})`} stroke="none" />
+        <path d={areaPath} fill={`url(#${gradientId})`} stroke="none" />
         <path d={linePath} fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
         <circle cx={last[0]} cy={last[1]} r="1.8" fill={color} />
         {hover && (
@@ -81,8 +122,9 @@ export function Sparkline({
         {hover && <circle cx={hover[0]} cy={hover[1]} r="2.2" fill={color} stroke="black" strokeOpacity="0.4" />}
       </svg>
       {hoverIdx !== null && (
-        <div className="pointer-events-none absolute -top-7 rounded-md bg-inverse px-2 py-1 text-[11px] font-medium text-inverse-on shadow-card" style={{ left: `${(hover![0] / width) * 100}%`, transform: 'translateX(-50%)' }}>
+        <div className="pointer-events-none absolute -top-7 z-10 whitespace-nowrap rounded-md bg-inverse px-2 py-1 text-[11px] font-medium text-inverse-on shadow-card" style={{ left: `${(hover![0] / width) * 100}%`, transform: 'translateX(-50%)' }}>
           {formatValue(values[hoverIdx])}
+          {formatTime && <span className="ml-1.5 opacity-70">{formatTime(data[hoverIdx].t)}</span>}
         </div>
       )}
     </div>
