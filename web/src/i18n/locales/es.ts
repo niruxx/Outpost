@@ -37,6 +37,7 @@ export const es: Dictionary = {
   "Console logs": "Registros de consola",
   "Console log history": "Historial de la consola",
   "Log history": "Historial",
+  "Jump to latest": "Ir a lo más reciente",
   "Automatic updates": "Actualizaciones automáticas",
   "RCON console": "Consola RCON",
   "Launch with Wine": "Iniciar con Wine",

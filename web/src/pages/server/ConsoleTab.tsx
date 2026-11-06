@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
 import { t } from '../../i18n/index.js';
 import { motion } from 'framer-motion';
 import { useServerDetail } from './ServerContext.js';
@@ -25,14 +25,59 @@ export function ConsoleTab() {
   const [history, setHistory] = useState<string[]>([]);
   const [historyIdx, setHistoryIdx] = useState(-1);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [autoScroll, setAutoScroll] = useState(true);
+  // Follow the newest output unless the user has scrolled away from the bottom.
+  // A ref drives the pinning so it never lags a render; the state only drives the "Jump to latest" button.
+  const followRef = useRef(true);
+  const [following, setFollowing] = useState(true);
+  const lastPinnedTop = useRef<number | null>(null);
   const [showHistory, setShowHistory] = useState(false);
 
+  function setFollow(next: boolean) {
+    followRef.current = next;
+    setFollowing(next);
+  }
+
+  function pinToBottom() {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+    lastPinnedTop.current = el.scrollTop;
+  }
+
+  // Pin before paint so new lines never flash in above the fold.
+  useLayoutEffect(() => {
+    if (followRef.current) pinToBottom();
+  }, [lines]);
+
+  // Stay pinned when the panel resizes (window resize, install progress card appearing, etc.).
   useEffect(() => {
-    if (autoScroll && scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [lines, autoScroll]);
+    const el = scrollRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => {
+      if (followRef.current) pinToBottom();
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  function onConsoleScroll(e: React.UIEvent<HTMLDivElement>) {
+    const el = e.currentTarget;
+    // Ignore the scroll event our own pinning produced.
+    if (lastPinnedTop.current !== null && Math.abs(el.scrollTop - lastPinnedTop.current) < 2) return;
+    lastPinnedTop.current = null;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+    if (atBottom !== followRef.current) setFollow(atBottom);
+  }
+
+  function onConsoleWheel(e: React.WheelEvent<HTMLDivElement>) {
+    // Scrolling up is an explicit request to stop following, even before the position changes.
+    if (e.deltaY < 0 && followRef.current) setFollow(false);
+  }
+
+  function jumpToLatest() {
+    setFollow(true);
+    pinToBottom();
+  }
 
   async function submitCommand(e: FormEvent) {
     e.preventDefault();
@@ -113,14 +158,12 @@ export function ConsoleTab() {
         </Card>
       )}
 
-      <Card className="ui-terminal min-h-0 flex-1 overflow-hidden !rounded-2xl !bg-surface-1000">
+      <Card className="ui-terminal relative min-h-0 flex-1 overflow-hidden !rounded-2xl !bg-surface-1000">
         <div
           ref={scrollRef}
-          onScroll={(e) => {
-            const el = e.currentTarget;
-            setAutoScroll(el.scrollHeight - el.scrollTop - el.clientHeight < 40);
-          }}
-          className="console-view h-full overflow-y-auto px-4 py-3 text-[13px] leading-relaxed"
+          onScroll={onConsoleScroll}
+          onWheel={onConsoleWheel}
+          className="console-view h-full overflow-y-auto px-4 py-3 text-[13px] leading-relaxed [overflow-anchor:none]"
         >
           {lines.length === 0 ? (
             <p className="text-slate-500">{t('No console output yet.')}</p>
@@ -133,6 +176,15 @@ export function ConsoleTab() {
             ))
           )}
         </div>
+        {!following && lines.length > 0 && (
+          <button
+            type="button"
+            onClick={jumpToLatest}
+            className="absolute bottom-3 right-4 rounded-full bg-accent-500 px-3 py-1 text-xs font-medium text-white shadow-lg hover:bg-accent-400"
+          >
+            {t('Jump to latest')} ↓
+          </button>
+        )}
       </Card>
 
       <ConsoleHistory serverId={serverId} open={showHistory} onClose={() => setShowHistory(false)} canDelete={can('settings')} />

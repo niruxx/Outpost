@@ -32,6 +32,7 @@ export const pt: Dictionary = {
   "Console logs": "Logs do console",
   "Console log history": "Histórico do console",
   "Log history": "Histórico",
+  "Jump to latest": "Ir para o mais recente",
   "Automatic updates": "Atualizações automáticas",
   "RCON console": "Console RCON",
   "Launch with Wine": "Iniciar com Wine",
