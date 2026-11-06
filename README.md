@@ -92,6 +92,9 @@ The dashboard adapts to smaller screens with stacked cards and a navigation draw
 >
 > With **Docker** it installs `docker.io` / `moby-engine` / `docker`, enables `docker.service` + `docker.socket` and adds you to the `docker` group (root-equivalent — log out and back in afterwards). With **Podman** it installs `podman`, enables your user's `podman.socket` (what Portainer talks to) and turns on lingering so it runs without a login. Either way it can pre-download the Portainer image.
 
+> [!TIP]
+> On **macOS**, `./install-macos.sh` installs the Xcode command-line tools, Homebrew, Node.js, Java 21 and Docker Desktop (or `--engine=podman`), builds and verifies the panel, and can run it in the background at login with launchd. Run `./install-macos.sh --help` for options.
+
 ```bash
 git clone <this-repo-url> Outpost && cd Outpost
 npm run setup        # 📦 install dependencies
@@ -691,7 +694,7 @@ Open ports: the panel's `8642` only needs to reach admins (consider HTTPS via a 
 
 **🪟 Windows service** — with [NSSM](https://nssm.cc/download): `nssm install Outpost` → Path `C:\Program Files\nodejs\node.exe`, Startup directory = the Outpost folder, Arguments `server\dist\index.js` → `nssm start Outpost`.
 
-**🍎 launchd** — `~/Library/LaunchAgents/com.outpost.panel.plist`:
+**🍎 launchd** — easiest: run `./install-macos.sh` and answer yes to the background service. To write it by hand, `~/Library/LaunchAgents/com.outpost.panel.plist` (use `/opt/homebrew/bin/npm` on Apple Silicon, and add `EnvironmentVariables` → `PATH` containing that folder, because launchd doesn't load your shell profile):
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>

@@ -71,6 +71,7 @@ confirm() {
 # ---------------------------------------------------------------------------
 heading "Outpost installer"
 
+[[ "$(uname -s)" == "Darwin" ]] && die "This script is for Linux. On macOS run ./install-macos.sh instead."
 [[ "$(uname -s)" == "Linux" ]] || die "This script is for Linux (Debian/Ubuntu, Arch/Manjaro, Fedora/RHEL). Detected: $(uname -s)."
 
 if [[ $EUID -eq 0 ]]; then
