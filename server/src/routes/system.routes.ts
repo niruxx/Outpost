@@ -6,6 +6,7 @@ import { requireAuth, requireRole } from '../auth/middleware.js';
 import { findJava, getJavaVersion } from '../services/javaService.js';
 import { getPrimaryAddress, listHostAddresses } from '../services/networkService.js';
 import { getHostMetrics } from '../services/hostMetricsService.js';
+import { getTemperatures } from '../services/temperatureService.js';
 import { listServers } from '../services/serverService.js';
 import { getRuntimeInfo } from '../services/processManager.js';
 import { getUserServerAccess } from '../services/userService.js';
@@ -68,7 +69,7 @@ systemRouter.get(
     }
     const count = (pred: (s: (typeof servers)[number]) => boolean) => servers.filter(pred).length;
     res.json({
-      host: getHostMetrics(),
+      host: { ...getHostMetrics(), temperatures: await getTemperatures() },
       instances: {
         total: servers.length,
         running: count((s) => s.status === 'running'),

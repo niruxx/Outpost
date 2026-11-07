@@ -538,6 +538,27 @@ export interface HostMetrics {
   network: { rxRate: number | null; txRate: number | null; rxTotal: number | null; txTotal: number | null };
   uptimeSec: number;
   panelUptimeSec: number;
+  temperatures?: HostTemperatures;
+}
+
+export type SensorCategory = 'cpu' | 'memory' | 'chipset' | 'drive' | 'gpu' | 'motherboard' | 'other';
+
+export interface TemperatureSensor {
+  id: string;
+  chip: string;
+  device: string;
+  label: string;
+  category: SensorCategory;
+  celsius: number;
+  high: number | null;
+  critical: number | null;
+  readAt?: string;
+}
+
+export interface HostTemperatures {
+  supported: boolean;
+  sampledAt: string;
+  sensors: TemperatureSensor[];
 }
 
 export interface SystemMetrics {

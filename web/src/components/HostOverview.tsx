@@ -8,6 +8,7 @@ import { Card } from './ui.js';
 import { Icon, type IconName } from './icons.js';
 import { CHART, Gauge, Sparkline, type ChartPoint } from './charts.js';
 import { AnimatedNumber, EMPHASIZED } from './motion.js';
+import { HostTemperatures } from './HostTemperatures.js';
 
 const HISTORY = 45; // ~90s at the 2s poll
 const COLORS = { cpu: CHART.cpu, memory: CHART.memory, disk: CHART.disk, rx: CHART.netIn, tx: CHART.diskWrite, read: CHART.diskRead, write: CHART.netOut };
@@ -253,6 +254,8 @@ export function HostOverview() {
           </motion.div>
         ))}
       </motion.div>
+
+      <HostTemperatures data={host.temperatures} />
 
       <AnimatePresence initial={false}>
         {showDetails && (
