@@ -726,6 +726,7 @@ export interface Webhook {
 }
 
 export interface AuditEntry {
+  hasFileChange?: boolean;
   id: number;
   userId: string | null;
   username: string | null;

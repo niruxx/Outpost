@@ -107,10 +107,11 @@ export interface AuditRow {
   server_name: string | null;
   target_username: string | null;
   webhook_name: string | null;
+  has_file_change: number;
 }
 
 export const MAX_PAGE = 200;
-export const AUDIT_SELECT = `SELECT a.*, s.name AS server_name, u.username AS target_username, w.name AS webhook_name
+export const AUDIT_SELECT = `SELECT a.id, a.user_id, a.username, a.action, a.target, a.detail, a.created_at, a.ip, a.user_agent, (a.file_change IS NOT NULL) AS has_file_change, s.name AS server_name, u.username AS target_username, w.name AS webhook_name
   FROM audit_log a
   LEFT JOIN servers s ON s.id = a.target
   LEFT JOIN users u ON u.id = a.target
@@ -126,6 +127,7 @@ export function shapeAudit(r: AuditRow) {
     targetLabel: r.server_name ?? r.target_username ?? r.webhook_name ?? null,
     targetKind: r.server_name ? 'server' : r.target_username ? 'user' : r.webhook_name ? 'webhook' : null,
     detail: r.detail,
+    hasFileChange: !!r.has_file_change,
     ip: r.ip,
     userAgent: r.user_agent,
     agent: describeAgent(r.user_agent),

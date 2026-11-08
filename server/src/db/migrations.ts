@@ -33,6 +33,9 @@ export function runMigrations(db: DatabaseSync): void {
   addUserThemeColumn(db);
   addWorkshopColumn(db);
   addAuditClientColumns(db);
+  if (!db.prepare("SELECT 1 FROM pragma_table_info('audit_log') WHERE name = 'file_change'").get()) {
+    db.exec('ALTER TABLE audit_log ADD COLUMN file_change TEXT');
+  }
   addRewindColumn(db);
   addRconAndAutoUpdateColumns(db);
   addUserDisabledColumns(db);

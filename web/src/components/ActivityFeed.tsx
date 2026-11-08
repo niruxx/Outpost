@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { t } from '../i18n/index.js';
 import type { AuditEntry, PageView, PresenceTab } from '../api/types.js';
+import { api } from '../api/client.js';
 import { Badge } from './ui.js';
 import { Icon, type IconName } from './icons.js';
 
@@ -112,6 +113,40 @@ export function presenceLabel(online: boolean, active: boolean) {
   return t(!online ? 'Offline' : active ? 'Active now' : 'Panel open in background');
 }
 
+interface FileChange { path: string; reason?: string; created?: boolean; line?: number; before?: string; after?: string }
+function FileChanges({ id }: { id: number }) {
+  const [open, setOpen] = useState(false);
+  const [change, setChange] = useState<FileChange | null>(null);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  async function toggle() {
+    setOpen(!open);
+    if (open || change || loading) return;
+    setLoading(true);
+    setError('');
+    try { setChange(await api.get<FileChange>(`/activity/actions/${id}/changes`)); }
+    catch (err) { setError(err instanceof Error ? err.message : 'Unable to load changes'); }
+    finally { setLoading(false); }
+  }
+  return <div className="mt-2">
+    <button type="button" onClick={toggle} aria-expanded={open} className="text-xs text-accent-400 hover:underline">{t(open ? 'Hide changes' : 'View changes')}</button>
+    {open && <div className="mt-2 space-y-2 text-xs">
+      {loading && <p>{t('Loading?')}</p>}
+      {error && <p role="alert" className="text-red-400">{error}</p>}
+      {change && <>
+        <p className="break-all font-mono">{change.path}{change.created ? ' (new file)' : ''}</p>
+        {change.reason ? <p>{t(change.reason)}</p> : <>
+          <p className="text-ink-400">{t('Changed region starting at line')} {change.line} ? {t('Common secret fields are hidden.')}</p>
+          <div className="grid gap-2 lg:grid-cols-2">
+            <div><p>{t('Before')}</p><pre className="max-h-80 overflow-auto whitespace-pre-wrap break-all rounded bg-red-500/10 p-3">{change.before || t('(empty)')}</pre></div>
+            <div><p>{t('After')}</p><pre className="max-h-80 overflow-auto whitespace-pre-wrap break-all rounded bg-success-400/10 p-3">{change.after || t('(empty)')}</pre></div>
+          </div>
+        </>}
+      </>}
+    </div>}
+  </div>;
+}
+
 /** Timeline of audit entries. `showUser` adds who did it (for mixed feeds). */
 export function ActionList({ entries, showUser = false, showTarget = true, empty }: { entries: AuditEntry[]; showUser?: boolean; showTarget?: boolean; empty: string }) {
   const now = useNow();
@@ -139,6 +174,7 @@ export function ActionList({ entries, showUser = false, showTarget = true, empty
                 </span>
               )}
             </div>
+            {e.hasFileChange && <FileChanges id={e.id} />}
             {e.detail && <p className="mt-0.5 break-words text-xs text-ink-400">{e.detail}</p>}
             <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-ink-500">
               <Badge tone={actionTone(e.action)}>{e.action}</Badge>

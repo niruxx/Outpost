@@ -198,12 +198,12 @@ export function userHasServerAccess(userId: string, serverId: string): boolean {
 }
 
 /** Records an action. The client's address and browser are added from the current request, if any. */
-export function logAudit(userId: string | null, username: string | null, action: string, target?: string, detail?: string) {
+export function logAudit(userId: string | null, username: string | null, action: string, target?: string, detail?: string, fileChange?: string) {
   const ctx = requestContext();
   if (ctx) ctx.audited = true;
   prep(
-    'INSERT INTO audit_log (user_id, username, action, target, detail, ip, user_agent) VALUES (?, ?, ?, ?, ?, ?, ?)'
-  ).run(userId, username, action, target ?? null, detail?.slice(0, 2000) ?? null, ctx?.ip ?? null, ctx?.userAgent ?? null);
+    'INSERT INTO audit_log (user_id, username, action, target, detail, ip, user_agent, file_change) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(userId, username, action, target ?? null, detail?.slice(0, 2000) ?? null, ctx?.ip ?? null, ctx?.userAgent ?? null, fileChange ?? null);
 }
 
 // ---------------------------------------------------------------------------

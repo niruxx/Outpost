@@ -43,6 +43,12 @@ activityRouter.get('/users', requireRole('admin'), (_req, res) => {
   res.json({ users: userSummaries() });
 });
 
+activityRouter.get('/actions/:id/changes', requireRole('admin'), (req, res) => {
+  const row = prep('SELECT file_change FROM audit_log WHERE id = ?').get(req.params.id) as { file_change: string | null } | undefined;
+  if (!row?.file_change) throw new HttpError(404, 'No file changes recorded for this activity');
+  res.json(JSON.parse(row.file_change));
+});
+
 /** Everyone's actions, newest first (the "All users" tab). */
 activityRouter.get('/actions', requireRole('admin'), (req, res) => {
   res.json(auditPage({ action: req.query.action, search: req.query.search }, req.query));
@@ -69,7 +75,7 @@ serverActivityRouter.get(
     if (!admin && server.created_by !== req.auth!.sub) throw new HttpError(403, 'Only admins and the instance owner can see its activity');
     const result = auditPage({ server: server.id, action: req.query.action, search: req.query.search }, req.query);
     // Client addresses are for admins only.
-    const entries = admin ? result.entries : result.entries.map((e) => ({ ...e, ip: null, userAgent: null, agent: null }));
+    const entries = admin ? result.entries : result.entries.map((e) => ({ ...e, hasFileChange: false, ip: null, userAgent: null, agent: null }));
     const viewers = presence({ serverId: server.id }).map((t) => (admin ? t : { ...t, ip: null, agent: null }));
     res.json({ ...result, entries, viewers });
   }),

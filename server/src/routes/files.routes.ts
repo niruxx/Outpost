@@ -16,7 +16,8 @@ import {
   writeTextFile,
 } from '../services/fileService.js';
 import { logAudit } from '../services/userService.js';
-import { safeJoinReal } from '../utils/paths.js';
+import { fileChange, snapshotFile, snapshotBuffer } from '../services/fileChangeService.js';
+import { instanceDir, safeJoinReal } from '../utils/paths.js';
 import type { Role } from '../types/index.js';
 
 export const filesRouter = Router({ mergeParams: true });
@@ -52,8 +53,10 @@ filesRouter.put(
     if (typeof filePath !== 'string' || typeof content !== 'string') {
       throw new HttpError(400, 'path and content are required');
     }
+    const target = safeJoinReal(instanceDir(req.params.serverId), filePath);
+    const before = snapshotFile(target);
     await writeTextFile(req.params.serverId, filePath, content);
-    logAudit(req.auth!.sub, req.auth!.username, 'file.write', req.params.serverId, filePath);
+    logAudit(req.auth!.sub, req.auth!.username, 'file.write', req.params.serverId, filePath, fileChange(filePath, before, snapshotBuffer(Buffer.from(content))));
     res.json({ ok: true });
   })
 );
@@ -122,9 +125,12 @@ filesRouter.post(
       } catch {
         throw new HttpError(400, `Refusing to write ${name}: it would land outside the instance folder`);
       }
+      const before = snapshotFile(target);
       fs.writeFileSync(target, file.buffer);
+      const relative = path.relative(instanceDir(req.params.serverId), target).split(path.sep).join('/');
+      logAudit(req.auth!.sub, req.auth!.username, 'file.upload', req.params.serverId, relative, fileChange(relative, before, snapshotBuffer(file.buffer)));
     }
-    logAudit(req.auth!.sub, req.auth!.username, 'file.upload', req.params.serverId, `${files.length} file(s) -> ${dirPath}`);
+
     res.status(201).json({ uploaded: files.map((f) => f.originalname) });
   })
 );
