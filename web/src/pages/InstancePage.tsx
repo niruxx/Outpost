@@ -30,6 +30,7 @@ import { WorkshopTab } from './server/WorkshopTab.js';
 import { WineTab } from './server/WineTab.js';
 import { RewindTab } from './server/RewindTab.js';
 import { useEndpoint } from '../hooks/useEndpoint.js';
+import { usePublicAddress } from '../hooks/usePublicAddress.js';
 import { usePinnedInstances } from '../lib/pins.js';
 import { api, ApiError } from '../api/client.js';
 import { isMinecraftPlatform, isProxyLoader, type ServerRecord } from '../api/types.js';
@@ -111,17 +112,18 @@ function InstanceNav({ server, onNavigate }: { server: ServerRecord; onNavigate:
   );
 }
 
-function CopyChip({ icon, label, value, copyValue }: { icon: 'globe' | 'port'; label: string; value: string; copyValue?: string }) {
+function CopyChip({ icon, label, value, copyValue, hint }: { icon: 'globe' | 'port'; label: string; value: string; copyValue?: string; hint?: string }) {
   const toast = useToast();
   return (
     <button
+      disabled={!copyValue && (value === '…' || value === 'Unavailable')}
       onClick={() => {
         navigator.clipboard
           ?.writeText(copyValue ?? value)
           .then(() => toast.success(`Copied ${copyValue ?? value}`))
           .catch(() => toast.error('Clipboard unavailable'));
       }}
-      title={`Copy ${label.toLowerCase()}`}
+      title={hint ?? `Copy ${label.toLowerCase()}`}
       className="state-layer flex items-center gap-2 rounded-lg border border-surface-600 px-3 py-1.5 text-left transition-transform active:scale-[0.97]"
     >
       <Icon name={icon} className="h-4 w-4 text-accent-400" />
@@ -258,7 +260,9 @@ function HeaderPin({ serverId }: { serverId: string }) {
 function InstanceTopBar({ server, compact }: { server: ServerRecord; compact: boolean }) {
   const kind = gameKindOf(server);
   const endpoint = useEndpoint(server.id, server.server_port);
+  const publicAddress = usePublicAddress();
   const live = server.status === 'running' || server.status === 'starting';
+  const publicIp = publicAddress?.address ?? null;
   return (
     <motion.header
       initial={{ opacity: 0, y: -6 }}
@@ -296,9 +300,23 @@ function InstanceTopBar({ server, compact }: { server: ServerRecord; compact: bo
       <div className="relative mt-4 flex flex-wrap items-center gap-2 px-5 pb-5 sm:px-6">
         <CopyChip
           icon="globe"
-          label={live ? 'Endpoint' : 'IP'}
+          label="Local IP"
           value={endpoint?.host ?? '…'}
           copyValue={endpoint ? `${endpoint.host}:${endpoint.port}` : undefined}
+          hint="Copy the LAN address — for players on the same network"
+        />
+        <CopyChip
+          icon="globe"
+          label="Public IP"
+          value={publicAddress === undefined ? '…' : publicIp ?? 'Unavailable'}
+          copyValue={publicIp && endpoint ? `${publicIp}:${endpoint.port}` : publicIp ?? undefined}
+          hint={
+            !publicIp
+              ? "Couldn't determine this network's public address"
+              : publicAddress?.behindNat
+                ? 'Copy the public address — your router is behind another NAT/CGNAT, so outside players may not reach it'
+                : 'Copy the public address — for players outside your network (needs the port forwarded)'
+          }
         />
         <CopyChip icon="port" label="Port" value={`${server.server_port}/${(endpoint?.protocol ?? 'tcp').toUpperCase()}`} copyValue={String(server.server_port)} />
         {endpoint?.webUrl && (

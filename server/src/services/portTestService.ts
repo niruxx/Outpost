@@ -2,6 +2,7 @@ import net from 'node:net';
 import { HttpError } from '../utils/asyncHandler.js';
 import { isRunning } from './processManager.js';
 import { discoverGateway, getExternalIp, getSpecificMapping } from './upnpService.js';
+import { isPrivateOrCgnat, lookupPublicIp } from './publicAddressService.js';
 import type { ServerRecord } from '../types/index.js';
 
 /**
@@ -31,25 +32,6 @@ export interface PortTestResult {
 
 const EXTERNAL_CHECK_URL = 'https://portchecker.io/api/v1/query';
 export const EXTERNAL_CHECK_HOST = 'portchecker.io';
-/** Only asked when the router won't say (no UPnP, or a hand-made forward) and the outside check runs. */
-const PUBLIC_IP_URL = 'https://api.ipify.org?format=json';
-
-async function lookupPublicIp(): Promise<string | null> {
-  try {
-    const res = await fetch(PUBLIC_IP_URL, { signal: AbortSignal.timeout(8000) });
-    if (!res.ok) return null;
-    const ip = ((await res.json()) as { ip?: string }).ip ?? '';
-    return net.isIPv4(ip) ? ip : null;
-  } catch {
-    return null;
-  }
-}
-
-/** CGNAT (100.64/10) and private ranges: a router whose WAN address is one of these sits behind another NAT. */
-function isPrivateOrCgnat(ip: string): boolean {
-  const [a, b] = ip.split('.').map(Number);
-  return a === 10 || a === 127 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127) || (a === 169 && b === 254);
-}
 
 function tcpConnect(host: string, port: number, timeoutMs = 2500): Promise<boolean> {
   return new Promise((resolve) => {

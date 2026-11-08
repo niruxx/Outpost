@@ -217,6 +217,12 @@ export interface EndpointInfo {
   addresses: HostAddress[];
 }
 
+export interface PublicAddressInfo {
+  address: string | null;
+  source: 'router' | 'lookup' | null;
+  behindNat: boolean;
+}
+
 export interface PlayerInfo {
   name: string;
   online: boolean;

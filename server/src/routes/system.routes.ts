@@ -5,6 +5,7 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 import { requireAuth, requireRole } from '../auth/middleware.js';
 import { findJava, getJavaVersion } from '../services/javaService.js';
 import { getPrimaryAddress, listHostAddresses } from '../services/networkService.js';
+import { getPublicAddress } from '../services/publicAddressService.js';
 import { getHostMetrics } from '../services/hostMetricsService.js';
 import { getTemperatures } from '../services/temperatureService.js';
 import { listServers } from '../services/serverService.js';
@@ -34,6 +35,15 @@ systemRouter.get(
       uptimeSec: Math.round(os.uptime()),
       panel: { version: panelVersion().version, commit: panelVersion().commit, commitDate: panelVersion().commitDate },
     });
+  })
+);
+
+/** This network's internet-facing address (router via UPnP, else an online lookup). Cached host-wide;
+ *  separate from `/` so the local address isn't held up by router discovery. */
+systemRouter.get(
+  '/public-address',
+  asyncHandler(async (req, res) => {
+    res.json(await getPublicAddress(req.query.refresh === '1'));
   })
 );
 
