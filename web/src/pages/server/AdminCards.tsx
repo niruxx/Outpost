@@ -3,7 +3,7 @@ import { setVisibleInterval } from '../../lib/perf.js';
 import { Link, useNavigate } from 'react-router-dom';
 import { useServerDetail } from './ServerContext.js';
 import { api, ApiError } from '../../api/client.js';
-import type { PanelNode, PublicUser, TransferState } from '../../api/types.js';
+import type { PanelNode, PublicUser, ServerRecord, TransferState } from '../../api/types.js';
 import { Button, Card, CardTitle, ErrorText, Field, Input, Notice, Select, Spinner } from '../../components/ui.js';
 import { Icon } from '../../components/icons.js';
 import { useToast } from '../../components/Toast.js';
@@ -298,6 +298,69 @@ function OwnerCard() {
   );
 }
 
+function DuplicateCard() {
+  const { server, running } = useServerDetail();
+  const toast = useToast();
+  const navigate = useNavigate();
+  const [name, setName] = useState('');
+  const [port, setPort] = useState('');
+  const [copyFiles, setCopyFiles] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  if (!server) return null;
+  if (server.platform === 'docker') return null;
+  const blocked = running ? 'Stop the instance first so its files are copied consistently.' : server.status === 'installing' ? 'Wait for the install to finish.' : null;
+
+  async function duplicate() {
+    setBusy(true);
+    setError(null);
+    try {
+      const body: Record<string, unknown> = { name: name.trim() || undefined, copyFiles };
+      if (port.trim()) body.serverPort = Number(port);
+      const res = await api.post<{ server: ServerRecord }>(`/servers/${server!.id}/duplicate`, body);
+      toast.success(`Created “${res.server.name}” on port ${res.server.server_port}`);
+      navigate(`/instances/${res.server.id}/console`);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Failed to duplicate instance');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card className="p-5">
+      <CardTitle>Duplicate instance</CardTitle>
+      <p className="mb-3 text-sm text-ink-400">
+        Makes a new instance with the same software, settings{copyFiles ? ', worlds, mods and config files' : ''} on its own port. Backups, restore points,
+        RCON, UPnP rules, automatic updates and the status page aren’t copied.
+      </p>
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="min-w-[220px] flex-1">
+          <Field label="Name">
+            <Input value={name} onChange={(e) => setName(e.target.value)} maxLength={100} placeholder={`${server.name} (copy)`} />
+          </Field>
+        </div>
+        <div className="w-36">
+          <Field label="Port">
+            <Input value={port} onChange={(e) => setPort(e.target.value.replace(/\D/g, ''))} inputMode="numeric" placeholder="Next free" />
+          </Field>
+        </div>
+      </div>
+      <label className="mt-3 flex items-center gap-2 text-sm text-ink-300">
+        <input type="checkbox" checked={copyFiles} onChange={(e) => setCopyFiles(e.target.checked)} className="accent-[rgb(var(--accent-400))]" />
+        Copy files (worlds, mods, configs) — otherwise install a fresh copy with the same settings
+      </label>
+      {error && <ErrorText>{error}</ErrorText>}
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-xs text-ink-500">{blocked ?? (server.platform === 'steam' || server.platform === 'custom' ? 'If the game reads its port from launch arguments or config files, update them in the copy.' : '')}</p>
+        <Button variant="primary" disabled={busy || !!blocked} onClick={duplicate}>
+          {busy ? <Spinner /> : <Icon name="copy" className="h-4 w-4" />} Duplicate
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
 function DangerZone() {
   const { server, running } = useServerDetail();
   const toast = useToast();
@@ -345,6 +408,7 @@ export function InstanceAdminCards({ showHeading = true }: { showHeading?: boole
       {isAdmin && <OwnerCard />}
       {isAdmin && <SuspensionCard />}
       {isAdmin && <TransferCard />}
+      <DuplicateCard />
       <DangerZone />
     </div>
   );

@@ -10,10 +10,12 @@ import { Router, type Request, type Response } from 'express';
 import fs from 'node:fs';
 import os from 'node:os';
 import { asyncHandler, HttpError } from '../utils/asyncHandler.js';
+import { prep } from '../db/db.js';
 import { requireAuth, requireConfigItems, requirePermission, requireRole, requireServerAccess } from '../auth/middleware.js';
 import {
   createServerRecord,
   deleteServerRecord,
+  duplicateServerRecord,
   getServer,
   listServers,
   setServerJar,
@@ -811,6 +813,99 @@ serversRouter.delete(
     deleteServerRecord(server.id);
     logAudit(req.auth!.sub, req.auth!.username, 'server.delete', server.id);
     res.status(204).end();
+  })
+);
+
+/** First port at or after `from` that no instance or allocation is using. */
+function nextFreePort(from: number): number {
+  const used = new Set((prep('SELECT server_port AS port FROM servers UNION SELECT port FROM allocations WHERE port IS NOT NULL').all() as { port: number }[]).map((r) => r.port));
+  for (let port = Math.max(1024, from); port <= 65535; port++) if (!used.has(port)) return port;
+  throw new HttpError(409, 'No free port left to give the copy');
+}
+
+/** Copy an instance: its settings and (unless asked not to) every file. The source must be stopped
+ *  so the copy isn't a half-written world. Answers right away; the copy shows "installing" while
+ *  files are copied, then "stopped". */
+serversRouter.post(
+  '/:serverId/duplicate',
+  requireServerAccess(),
+  asyncHandler(async (req, res) => {
+    const source = getServer(req.params.serverId);
+    if (!source) throw new HttpError(404, 'Server not found');
+    const isAdmin = req.auth!.role === 'admin';
+    if (!isAdmin && source.created_by !== req.auth!.sub) throw new HttpError(403, 'Only admins and the instance’s owner can duplicate it');
+    if (source.suspended) throw new HttpError(409, 'Suspended instances can’t be duplicated');
+    if (source.platform === 'docker') throw new HttpError(400, 'Container instances can’t be duplicated yet — their host ports and volumes would clash. Create a new one from the same image instead.');
+    if (source.status === 'installing') throw new HttpError(409, 'Wait for the instance to finish installing');
+    if (isRunning(source.id)) throw new HttpError(409, 'Stop the instance before duplicating it, so its files are copied in a consistent state');
+
+    const name = typeof req.body?.name === 'string' && req.body.name.trim() ? req.body.name.trim().slice(0, 100) : `${source.name} (copy)`;
+    const copyFiles = req.body?.copyFiles !== false;
+
+    // Same account policy as creating an instance from scratch.
+    const creation = getEffectiveCreation(req.auth!.sub, req.auth!.role);
+    if (!creation.canCreate) throw new HttpError(403, "Your account can't create instances — ask an admin");
+    if (!creation.allowedPlatforms.includes(source.platform)) throw new HttpError(403, `Your account can't create ${source.platform} instances`);
+    if (source.platform === 'custom' && !isAdmin) throw new HttpError(403, 'Only admins can create custom instances');
+    if (creation.maxInstances && creation.owned >= creation.maxInstances) throw new HttpError(403, `You already own ${creation.owned} of your ${creation.maxInstances} allowed instances`);
+    if (creation.maxMemoryMb && source.max_memory_mb > creation.maxMemoryMb) throw new HttpError(400, `Max memory is limited to ${creation.maxMemoryMb} MB per instance for your account`);
+    if (source.steam_login.startsWith('account:') && !isAdmin) ownSteamAccount(req.auth!.sub, source.steam_login.slice(8));
+
+    const requested = Number(req.body?.serverPort);
+    const port = Number.isInteger(requested) && requested > 0 ? requested : nextFreePort(source.server_port + 1);
+    if (port < 1 || port > 65535) throw new HttpError(400, 'Port must be 1–65535');
+    if (port === source.server_port) throw new HttpError(400, 'Pick a different port from the original, or the two will clash');
+    assertManualPort(port);
+
+    const copy = duplicateServerRecord(source, { name, serverPort: port, createdBy: req.auth!.sub, keepIsolation: isAdmin });
+    if (!isAdmin) grantOwnerAccess(req.auth!.sub, copy.id);
+    logAudit(req.auth!.sub, req.auth!.username, 'server.duplicate', copy.id, `from “${source.name}” (${source.id})${copyFiles ? '' : ', settings only'}`);
+    res.status(201).json({ server: getServer(copy.id) });
+
+    const fail = (err: unknown) => {
+      appendLine(copy.id, `[Outpost] Copying failed: ${err instanceof Error ? err.message : String(err)}`);
+      setServerStatus(copy.id, 'install_failed');
+      publish(consoleTopic(copy.id), { type: 'status', status: 'install_failed' });
+    };
+    try {
+      appendLine(copy.id, `[Outpost] Duplicating “${source.name}”${copyFiles ? ' — copying files…' : ' (settings only)'}`);
+      const from = instanceDir(source.id), to = instanceDir(copy.id);
+      fs.mkdirSync(to, { recursive: true });
+      if (copyFiles) await fs.promises.cp(from, to, { recursive: true, force: true, verbatimSymlinks: true, filter: (src) => path.basename(src) !== 'session.lock' });
+      if (!copyFiles && isMinecraftPlatform(source.platform)) {
+        // Like a fresh create: the port goes in before install, and the EULA the owner already accepted.
+        writeServerProperties(copy.id, source.platform, { 'server-port': String(port) });
+        if (source.platform === 'java') writeEula(copy.id, true);
+      } else if (isMinecraftPlatform(source.platform) && fs.existsSync(path.join(to, 'server.properties'))) {
+        const props = Object.fromEntries(readServerProperties(copy.id, source.platform).map((p) => [p.key, p.value]));
+        const updates: Record<string, string> = { 'server-port': String(port) };
+        if (source.platform === 'java') {
+          if ('query.port' in props) updates['query.port'] = String(port);
+          // RCON settings stay with the original; the copy would fight it for the RCON port.
+          if (props['enable-rcon'] === 'true') {
+            updates['enable-rcon'] = 'false';
+            appendLine(copy.id, '[Outpost] Turned RCON off in the copy — set it up again under Configuration → RCON console');
+          }
+        } else if ('server-portv6' in props) {
+          updates['server-portv6'] = String(nextFreePort(port + 1));
+        }
+        writeServerProperties(copy.id, source.platform, updates);
+        appendLine(copy.id, `[Outpost] Set the copy's port to ${port}`);
+      }
+      if (source.platform === 'steam' || source.platform === 'custom') {
+        appendLine(copy.id, `[Outpost] The copy listens on ${port}. If this game takes its port from launch arguments or config files, update them before starting both at once.`);
+      }
+      if (!copyFiles && source.platform !== 'custom') {
+        appendLine(copy.id, '[Outpost] Installing a fresh copy of the server software');
+        void runServerInstall(getServer(copy.id)!);
+        return;
+      }
+      setServerStatus(copy.id, 'stopped');
+      publish(consoleTopic(copy.id), { type: 'status', status: 'stopped' });
+      appendLine(copy.id, '[Outpost] Duplicate ready.');
+    } catch (err) {
+      fail(err);
+    }
   })
 );
 

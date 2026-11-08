@@ -54,6 +54,29 @@ export function createServerRecord(input: CreateServerInput): ServerRecord {
   return getServer(id)!;
 }
 
+/** Settings a duplicate carries over. Left out on purpose: backup location, restore points, RCON
+ *  (its password and port), auto-update, status page, UPnP rules, suspension — per-instance state
+ *  that would clash or that the copy should set up for itself. Docker isn't duplicated (host ports
+ *  and volumes). The copy starts in 'installing' while its files are copied. */
+const DUPLICATED_COLUMNS = [
+  'platform', 'loader', 'version', 'build', 'jar_file', 'min_memory_mb', 'max_memory_mb', 'extra_java_args', 'extra_args',
+  'steam_app_id', 'steam_preset', 'workshop', 'modpack', 'limits', 'game_settings', 'steam_login', 'steam_extra_flags',
+  'launch_config', 'restart_policy', 'restart_delay_sec', 'restart_max_attempts', 'isolation',
+] as const;
+
+export function duplicateServerRecord(source: ServerRecord, input: { name: string; serverPort: number; createdBy: string | null; keepIsolation: boolean }): ServerRecord {
+  const id = crypto.randomUUID();
+  fs.mkdirSync(backupDir(id), { recursive: true });
+  const cols = DUPLICATED_COLUMNS.join(', ');
+  prep(
+    `INSERT INTO servers (id, name, server_port, created_by, status, ${cols})
+     SELECT ?, ?, ?, ?, 'installing', ${cols} FROM servers WHERE id = ?`
+  ).run(id, input.name, input.serverPort, input.createdBy, source.id);
+  // Turning sandboxing off is an admin decision for one instance; it doesn't carry to someone else's copy.
+  if (!input.keepIsolation) setIsolation(id, 'inherit');
+  return getServer(id)!;
+}
+
 export function getServer(id: string): ServerRecord | undefined {
   return prep('SELECT * FROM servers WHERE id = ?').get(id) as ServerRecord | undefined;
 }
