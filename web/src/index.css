@@ -1265,135 +1265,152 @@ body {
   content-visibility: auto;
   contain-intrinsic-size: auto 20px;
 }
-/* Material 3 Expressive: a quiet shell, generous shapes and clear tonal hierarchy.
-   Scoped to Outpost so user-selected retro themes keep their own visual language. */
 /*
- * Outpost palettes (lib/theme.ts sets <html data-palette>):
- *   dark    "Nightfall" — cool graphite surfaces with a periwinkle accent (the default)
- *   light   "Daylight"  — the same hues on paper-white surfaces
+ * Outpost palettes (lib/theme.ts sets <html data-palette>), in the style of a productivity suite:
+ * neutral grey surfaces, a blue primary, light-blue selection and a white content sheet.
+ *   dark    "Nightfall" — near-black shell, charcoal sheet
+ *   light   "Daylight"  — pale blue-grey shell, white sheet
  *   classic the original forest-green Outpost look
  * Status colors (success/red/yellow) stay separate from the accent on purpose.
+ *
+ * --surface-sheet is the page's content panel (the rounded sheet beside the sidebar).
  */
 :root[data-theme='outpost'] {
   color-scheme: dark;
-  --surface-1000: 7 9 14;
-  --surface-950: 11 13 20;
-  --surface-900: 15 18 27;
-  --surface-850: 21 25 36;
-  --surface-800: 28 33 46;
-  --surface-700: 38 44 60;
-  --surface-600: 55 63 83;
-  --surface-500: 104 112 134;
+  --font-sans: 'Roboto';
+  --surface-sheet: 30 31 32;
+  --surface-1000: 14 14 15;
+  --surface-950: 19 19 20;
+  --surface-900: 30 31 32;
+  --surface-850: 40 42 45;
+  --surface-800: 51 53 55;
+  --surface-700: 60 64 67;
+  --surface-600: 68 71 70;
+  --surface-500: 142 145 143;
 
-  --ink-50: 245 247 253;
-  --ink-100: 229 232 242;
-  --ink-200: 211 215 228;
-  --ink-300: 186 191 208;
-  --ink-400: 150 157 177;
-  --ink-500: 121 128 149;
-  --ink-600: 92 99 118;
+  --ink-50: 242 242 242;
+  --ink-100: 227 227 227;
+  --ink-200: 214 214 214;
+  --ink-300: 196 199 197;
+  --ink-400: 168 171 170;
+  --ink-500: 142 145 143;
+  --ink-600: 111 114 112;
 
-  --accent-400: 165 176 255;
-  --accent-500: 134 147 250;
-  --accent-600: 104 117 232;
-  --accent-on: 20 24 84;
-  --accent-container: 51 59 138;
-  --accent-on-container: 224 227 255;
+  --accent-400: 168 199 250;
+  --accent-500: 124 172 248;
+  --accent-600: 76 141 246;
+  --accent-on: 6 46 111;
+  --accent-container: 8 66 160;
+  --accent-on-container: 211 227 253;
 
-  --secondary-container: 40 46 72;
-  --secondary-on-container: 216 222 248;
+  --secondary-container: 0 74 119;
+  --secondary-on-container: 194 231 255;
 
-  --tertiary-400: 116 221 210;
-  --tertiary-container: 19 71 73;
-  --tertiary-on-container: 172 244 236;
+  --tertiary-400: 109 213 140;
+  --tertiary-container: 15 82 35;
+  --tertiary-on-container: 196 238 208;
 
-  --success-400: 112 224 162;
-  --success-500: 80 198 134;
+  --error-400: 242 184 181;
+  --error-container: 140 29 24;
+  --error-on-container: 249 222 220;
 
-  --inverse: 229 232 242;
-  --inverse-on: 30 33 45;
-  --inverse-muted: 98 104 124;
+  --success-400: 129 201 149;
+  --success-500: 92 184 118;
+  --red-300: 250 210 207;
+  --red-400: 242 139 130;
+  --red-500: 238 103 92;
+  --yellow-400: 253 214 99;
+  --yellow-500: 251 188 4;
+  --sky-400: 138 180 248;
+  --sky-500: 102 157 246;
+
+  --inverse: 227 227 227;
+  --inverse-on: 48 48 48;
+  --inverse-muted: 117 117 117;
 
   --grid-line: rgba(255, 255, 255, 0.035);
 
-  --chart-cpu: rgb(165 176 255);
-  --chart-memory: rgb(116 221 210);
-  --chart-disk: rgb(242 196 104);
-  --chart-net-in: rgb(125 200 255);
-  --chart-net-out: rgb(242 196 104);
-  --chart-disk-read: rgb(214 164 255);
-  --chart-disk-write: rgb(255 154 142);
-  --chart-neutral: rgb(205 196 170);
-  --chart-players: rgb(112 224 162);
+  --chart-cpu: rgb(138 180 248);
+  --chart-memory: rgb(120 217 236);
+  --chart-disk: rgb(253 214 99);
+  --chart-net-in: rgb(168 199 250);
+  --chart-net-out: rgb(252 173 112);
+  --chart-disk-read: rgb(215 174 251);
+  --chart-disk-write: rgb(255 139 203);
+  --chart-neutral: rgb(189 193 198);
+  --chart-players: rgb(129 201 149);
 }
 
 :root[data-theme='outpost'][data-palette='light'] {
   color-scheme: light;
+  --surface-sheet: 255 255 255;
   --surface-1000: 255 255 255;
-  --surface-950: 244 245 250;
-  --surface-900: 237 239 246;
+  --surface-950: 248 250 253;
+  --surface-900: 240 244 249;
   --surface-850: 255 255 255;
-  --surface-800: 241 243 249;
-  --surface-700: 226 229 239;
-  --surface-600: 203 207 222;
-  --surface-500: 128 134 154;
+  --surface-800: 233 238 246;
+  --surface-700: 221 227 234;
+  --surface-600: 196 199 197;
+  --surface-500: 116 119 117;
 
-  --ink-50: 10 12 22;
-  --ink-100: 24 27 40;
-  --ink-200: 40 44 60;
-  --ink-300: 62 67 86;
-  --ink-400: 90 96 116;
-  --ink-500: 112 118 138;
-  --ink-600: 150 156 174;
+  --ink-50: 31 31 31;
+  --ink-100: 31 31 31;
+  --ink-200: 51 51 51;
+  --ink-300: 68 71 70;
+  --ink-400: 87 90 89;
+  --ink-500: 116 119 117;
+  --ink-600: 154 160 166;
 
-  --accent-400: 76 88 214;
-  --accent-500: 96 108 230;
-  --accent-600: 58 68 182;
+  --accent-400: 11 87 208;
+  --accent-500: 26 115 232;
+  --accent-600: 8 66 160;
   --accent-on: 255 255 255;
-  --accent-container: 224 227 255;
-  --accent-on-container: 28 34 120;
+  --accent-container: 211 227 253;
+  --accent-on-container: 4 30 73;
 
-  --secondary-container: 226 230 250;
-  --secondary-on-container: 30 38 92;
+  --secondary-container: 194 231 255;
+  --secondary-on-container: 0 29 53;
 
-  --tertiary-400: 0 120 116;
-  --tertiary-container: 206 242 238;
-  --tertiary-on-container: 0 62 60;
+  --tertiary-400: 20 108 46;
+  --tertiary-container: 196 238 208;
+  --tertiary-on-container: 7 39 17;
 
-  --error-400: 186 26 26;
-  --error-container: 255 225 222;
-  --error-on-container: 120 10 10;
+  --error-400: 179 38 30;
+  --error-container: 249 222 220;
+  --error-on-container: 65 14 11;
 
-  --success-400: 18 132 76;
-  --success-500: 30 156 94;
-  --red-300: 130 18 18;
-  --red-400: 186 26 26;
-  --red-500: 214 54 46;
-  --yellow-400: 140 96 0;
-  --yellow-500: 196 140 0;
-  --sky-400: 0 104 190;
-  --sky-500: 36 132 220;
+  --success-400: 24 128 56;
+  --success-500: 30 142 62;
+  --red-300: 140 20 16;
+  --red-400: 197 34 31;
+  --red-500: 217 48 37;
+  --yellow-400: 176 96 0;
+  --yellow-500: 249 171 0;
+  --sky-400: 25 103 210;
+  --sky-500: 66 133 244;
 
-  --inverse: 30 33 45;
-  --inverse-on: 240 242 250;
-  --inverse-muted: 160 166 186;
+  --inverse: 48 48 48;
+  --inverse-on: 242 242 242;
+  --inverse-muted: 160 160 160;
 
   --grid-line: rgba(0, 0, 0, 0.05);
 
-  --chart-cpu: rgb(76 88 214);
-  --chart-memory: rgb(0 140 132);
-  --chart-disk: rgb(190 128 0);
-  --chart-net-in: rgb(0 112 204);
-  --chart-net-out: rgb(190 128 0);
-  --chart-disk-read: rgb(140 72 210);
-  --chart-disk-write: rgb(210 70 56);
-  --chart-neutral: rgb(130 112 70);
-  --chart-players: rgb(18 132 76);
+  --chart-cpu: rgb(26 115 232);
+  --chart-memory: rgb(18 181 203);
+  --chart-disk: rgb(249 171 0);
+  --chart-net-in: rgb(66 133 244);
+  --chart-net-out: rgb(250 123 23);
+  --chart-disk-read: rgb(161 66 244);
+  --chart-disk-write: rgb(229 37 146);
+  --chart-neutral: rgb(154 160 166);
+  --chart-players: rgb(30 142 62);
 }
 
 /* The original green Outpost: :root's MD3 tokens plus these tweaks. */
 :root[data-theme='outpost'][data-palette='classic'] {
   color-scheme: dark;
+  --font-sans: 'Inter';
+  --surface-sheet: 21 29 28;
   --surface-1000: 10 15 15;
   --surface-950: 15 21 21;
   --surface-900: 21 29 28;
@@ -1437,53 +1454,77 @@ body {
   --chart-players: rgb(143 208 168);
 }
 
-/* Light surfaces need a hairline to separate cards from the page, and softer shadows. */
-[data-theme='outpost'][data-palette='light'] .ui-card {
-  box-shadow: 0 1px 2px rgba(20, 24, 40, 0.06), 0 0 0 1px rgb(var(--surface-700));
-}
-[data-theme='outpost'][data-palette='light'] .ui-sidebar {
-  box-shadow: 1px 0 0 rgb(var(--surface-700));
-}
-[data-theme='outpost'][data-palette='light'] .ui-modal {
-  box-shadow: 0 24px 60px -12px rgba(20, 24, 40, 0.28), 0 0 0 1px rgb(var(--surface-700));
-}
+/* ---------- Outpost shell: top bar, sidebar, and the page on a rounded sheet ---------- */
+[data-theme='outpost'] .ui-topbar,
 [data-theme='outpost'] .ui-sidebar {
   background: rgb(var(--surface-950));
 }
 [data-theme='outpost'] .ui-main {
-  background: rgb(var(--surface-900));
-  border-radius: 0;
-  margin-top: 0;
+  background: rgb(var(--surface-sheet, var(--surface-900)));
 }
-[data-theme='outpost'] .ui-nav-item { height: 48px; margin-bottom: 3px; }
-[data-theme='outpost'] .ui-sidebar nav > p {
-  font-size: 10px;
+@media (min-width: 768px) {
+  [data-theme='outpost'] .ui-sheet {
+    margin: 0 16px 16px 0;
+    border-radius: 16px;
+    overflow: hidden;
+  }
+}
+[data-theme='outpost'] .ui-brand { font-weight: 400; letter-spacing: -0.01em; }
+[data-theme='outpost'] .ui-search-trigger { background: rgb(var(--surface-800)); }
+[data-theme='outpost'] .ui-search-trigger:hover { background: rgb(var(--surface-700)); }
+[data-theme='outpost'] .ui-search-trigger:hover::after { opacity: 0; }
+[data-theme='outpost'] .ui-new-btn { background: rgb(var(--surface-sheet, var(--surface-850))); }
+[data-theme='outpost'][data-palette='light'] .ui-new-btn {
+  box-shadow: 0 1px 2px rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15);
+}
+[data-theme='outpost'][data-palette='light'] .ui-new-btn:hover {
+  box-shadow: 0 1px 3px rgba(60, 64, 67, 0.3), 0 4px 8px 3px rgba(60, 64, 67, 0.15);
+}
+[data-theme='outpost'] .ui-nav-label {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
-  letter-spacing: .12em;
-  padding-top: 24px;
-  padding-bottom: 10px;
+  padding-top: 18px;
 }
-[data-theme='outpost'] .ui-sidebar-panel { background: rgb(var(--surface-850)); border-radius: 24px; }
-[data-theme='outpost'] .ui-card { border-radius: 28px; }
-[data-theme='outpost'] .ui-card-title { font-weight: 600; letter-spacing: -.02em; }
-[data-theme='outpost'] .ui-btn { min-height: 40px; padding-inline: 20px; }
-[data-theme='outpost'] .ui-btn-primary { min-height: 48px; font-weight: 600; border-radius: 18px; }
-[data-theme='outpost'] .ui-input { border-radius: 14px; min-height: 42px; }
+[data-theme='outpost'] .ui-sidebar-panel { background: rgb(var(--surface-850)); border-radius: 16px; }
+
+/* Cards: flat panels separated by a hairline, not by shadow or glow. */
+[data-theme='outpost'] .ui-card {
+  border-radius: 16px;
+  box-shadow: 0 0 0 1px rgb(var(--surface-700));
+}
+[data-theme='outpost'] .ui-card-title { font-weight: 500; letter-spacing: 0; }
+[data-theme='outpost'] .ui-btn { min-height: 36px; padding-inline: 16px; }
+[data-theme='outpost'] .ui-btn-primary:not(:disabled):hover {
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px 1px rgba(0, 0, 0, 0.15);
+}
+[data-theme='outpost'] .ui-input { border-radius: 8px; min-height: 40px; }
+[data-theme='outpost'] .ui-modal { border-radius: 24px; }
+[data-theme='outpost'][data-palette='light'] .ui-modal {
+  box-shadow: 0 4px 8px 3px rgba(60, 64, 67, 0.15), 0 1px 3px rgba(60, 64, 67, 0.3);
+}
 [data-theme='outpost'] .ui-instance-card {
   background: rgb(var(--surface-850));
-  border: 1px solid rgb(var(--surface-600) / .25);
+  border: 1px solid rgb(var(--surface-700));
   min-height: 152px;
 }
-[data-theme='outpost'] .ui-instance-card:hover { border-color: rgb(var(--accent-400) / .45); }
-[data-theme='outpost'] .ui-instance-tools { background: rgb(var(--surface-800) / .55); }
-[data-theme='outpost'] .ui-page-header { padding-bottom: 24px; border-bottom: 1px solid rgb(var(--surface-600) / .35); }
+[data-theme='outpost'] .ui-instance-card:hover {
+  border-color: transparent;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 6px 2px rgba(0, 0, 0, 0.15);
+}
+[data-theme='outpost'] .ui-instance-tools { background: transparent; padding: 0; }
+[data-theme='outpost'] .ui-page-title { letter-spacing: 0; }
+/* Clean shell: no aurora or fireflies behind the panel. */
+[data-theme='outpost'] .wp-glow,
+[data-theme='outpost'] .wp-p { display: none !important; }
+
 :where(button, a, input, select, textarea):focus-visible {
   outline: 2px solid rgb(var(--accent-400));
   outline-offset: 4px;
 }
 @media (max-width: 767px) {
-  [data-theme='outpost'] .ui-main { margin-top: 0; border-radius: 0; }
-  .ui-page-title { font-size: 30px; }
+  .ui-page-title { font-size: 24px; line-height: 32px; }
 }
 
 /* Shared progress indicators (components/ui.tsx ProgressBar, GlobalActivityBar). */
@@ -1492,7 +1533,9 @@ body {
 @media (prefers-reduced-motion: reduce) { .ui-progress-sweep { animation-duration: 3s; } }
 [data-effects='reduced'] .ui-progress-sweep { animation-duration: 3s; }
 
-/* Daylight: the glows are subtle washes and the fireflies are hidden (they read as dust on white). */
-[data-theme='outpost'][data-palette='light'] .wp-glow-1 { opacity: 0.55; }
-[data-theme='outpost'][data-palette='light'] .wp-glow-2 { opacity: 0.45; }
-[data-theme='outpost'][data-palette='light'] .wp-p { display: none; }
+
+/* The sidebar's "New instance" button is a light panel; retro themes recolour sidebar text, so its
+   plus sign follows the panel's text colour there instead of the (sidebar-white) accent. */
+:is([data-theme='xp'], [data-theme='minecraft'], [data-theme='vista'], [data-theme='aero']) .ui-new-icon {
+  color: rgb(var(--ink-100));
+}

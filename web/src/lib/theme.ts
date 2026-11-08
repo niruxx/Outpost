@@ -22,10 +22,10 @@ export const THEMES: ThemeOption[] = [
   {
     id: 'outpost',
     label: 'Outpost',
-    description: 'Nightfall and Daylight — follows your system, or pick a mode.',
-    chrome: '#0b0d14',
-    swatch: ['#0f121b', '#151924', '#a5b0ff', '#e5e8f2'],
-    preview: { sidebar: 'linear-gradient(90deg, #0b0d14 50%, #f4f5fa 50%)', page: 'linear-gradient(90deg, #0f121b 50%, #edeff6 50%)', radius: 8 },
+    description: 'Clean light and dark modes in a familiar workspace layout — follows your system, or pick a mode.',
+    chrome: '#131314',
+    swatch: ['#131314', '#1e1f20', '#a8c7fa', '#e3e3e3'],
+    preview: { sidebar: 'linear-gradient(90deg, #131314 50%, #f8fafd 50%)', page: 'linear-gradient(90deg, #1e1f20 50%, #ffffff 50%)', radius: 12 },
   },
   {
     id: 'classic',
@@ -94,7 +94,7 @@ export function storedTheme(): ThemeId {
   }
 }
 
-/** Outpost's color mode: follow the OS, or force dark (Nightfall) / light (Daylight). */
+/** Outpost's color mode: follow the OS, or force dark or light. */
 export type ColorMode = 'system' | 'dark' | 'light';
 const MODE_KEY = 'outpost_color_mode';
 
@@ -126,7 +126,7 @@ export function applyTheme(id: ThemeId) {
     const mode = storedColorMode();
     const light = mode === 'light' || (mode === 'system' && systemLight());
     root.dataset.palette = light ? 'light' : 'dark';
-    if (light) chrome = '#f4f5fa';
+    if (light) chrome = '#f8fafd';
   } else delete root.dataset.palette;
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', chrome);
   // Follow OS light/dark switches live while in system mode.

@@ -10,6 +10,7 @@ import { useConfirm } from '../../components/ConfirmDialog.js';
 import { Icon } from '../../components/icons.js';
 import { copyToClipboard, useContextMenu, type MenuItems } from '../../components/ContextMenu.js';
 import { useToast } from '../../components/Toast.js';
+import { FileHistoryModal } from '../../components/FileHistory.js';
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -40,8 +41,11 @@ function FileRow({ menu, children, style }: { menu: () => MenuItems; children: R
 }
 
 export function FilesTab() {
-  const { serverId, can } = useServerDetail();
+  const { serverId, can, isAdmin, isOwner } = useServerDetail();
   const canWrite = can('files.write');
+  // File history lives with the instance's activity, which admins and the owner can see.
+  const canSeeHistory = isAdmin || isOwner;
+  const [historyPath, setHistoryPath] = useState<string | null>(null);
   const confirm = useConfirm();
   const [path, setPath] = useState('');
   const [entries, setEntries] = useState<FileEntry[] | null>(null);
@@ -66,6 +70,7 @@ export function FilesTab() {
     !entry.isDirectory && { label: 'Download', icon: 'download', onSelect: () => window.open(fileUrl(entry), '_blank') },
     'separator',
     canWrite && { label: 'Rename…', icon: 'edit', onSelect: () => renameEntry(entry) },
+    canSeeHistory && !entry.isDirectory && { label: 'Change history', icon: 'history', onSelect: () => setHistoryPath(entry.path) },
     'separator',
     { label: 'Copy name', icon: 'copy', onSelect: () => copy(entry.name, 'Name') },
     { label: 'Copy path', icon: 'copy', onSelect: () => copy(`/${entry.path}`, 'Path') },
@@ -206,12 +211,20 @@ export function FilesTab() {
           <span className="min-w-0 truncate font-mono text-sm text-ink-300" title={editingPath}>
             {editingPath}
           </span>
-          {canWrite && (
-            <Button variant="primary" className="ml-auto" onClick={saveFile} disabled={!editorDirty || editorSaving}>
-              {editorSaving ? 'Saving…' : 'Save'}
-            </Button>
-          )}
+          <div className="ml-auto flex shrink-0 items-center gap-2">
+            {canSeeHistory && (
+              <Button variant="ghost" onClick={() => setHistoryPath(editingPath)} title="See who changed this file, when, and what changed">
+                <Icon name="history" className="h-4 w-4" /> History
+              </Button>
+            )}
+            {canWrite && (
+              <Button variant="primary" onClick={saveFile} disabled={!editorDirty || editorSaving}>
+                {editorSaving ? 'Saving…' : 'Save'}
+              </Button>
+            )}
+          </div>
         </div>
+        <FileHistoryModal serverId={serverId} path={historyPath} onClose={() => setHistoryPath(null)} />
         <textarea
           className="console-view flex-1 resize-none rounded-lg border border-surface-700 bg-surface-900 p-4 text-[13px] text-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-600/60"
           value={editorContent}
@@ -324,6 +337,7 @@ export function FilesTab() {
           ))
         )}
       </Card>
+      <FileHistoryModal serverId={serverId} path={historyPath} onClose={() => setHistoryPath(null)} />
     </div>
   );
 }

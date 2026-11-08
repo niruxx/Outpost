@@ -623,7 +623,7 @@ export function InstancesPage() {
 
   return (
     <Layout>
-      <div className="ui-dashboard mx-auto max-w-7xl px-4 py-8 sm:px-8 sm:py-10">
+      <div className="ui-dashboard mx-auto max-w-7xl px-4 py-6 sm:px-8 sm:py-8">
         <PageHeader
           title="Instances"
           subtitle="Games, apps, containers and services on this host — at a glance."
@@ -654,20 +654,20 @@ export function InstancesPage() {
         )}
 
         <section aria-label={t('Host overview')} className="mb-8">
-          <div className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-widest text-ink-400">
+          <div className="mb-3 flex items-center gap-2 text-sm font-medium text-ink-300">
             <Icon name="cpu" className="h-4 w-4" />{t('Host overview')}
           </div>
           <HostOverview />
         </section>
 
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-xl font-semibold tracking-tight text-ink-50">{t('Your instances')}</h2>
+          <h2 className="text-lg font-normal text-ink-50">{t('Your instances')}</h2>
           <span className="text-xs text-ink-400" aria-live="polite">{visible.length} / {servers?.length ?? 0} {t('instances')}</span>
         </div>
         <div className="ui-instance-tools mb-4 flex flex-col gap-3 rounded-3xl bg-surface-850 p-3 sm:flex-row">
           <div className="relative min-w-0 flex-1">
             <Icon name="search" className="pointer-events-none absolute left-4 top-3.5 h-4 w-4 text-ink-400" />
-            <Input type="search" aria-label={t('Search instances')} placeholder={t('Search by name, game or port?')} value={query} onChange={(e) => setQuery(e.target.value)} className="!rounded-full !border-transparent !bg-surface-900 !py-3 !pl-11" />
+            <Input type="search" aria-label={t('Search instances')} placeholder={t('Search by name, game or port…')} value={query} onChange={(e) => setQuery(e.target.value)} className="!rounded-full !border-transparent !bg-surface-900 !py-3 !pl-11" />
           </div>
           <Select aria-label={t('Filter by status')} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="!w-auto !rounded-full !border-transparent !px-4 !py-3">
             <option value="all">{t('All statuses')}</option>

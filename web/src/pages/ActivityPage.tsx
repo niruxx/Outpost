@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Layout, PageHeader } from '../components/Layout.js';
 import { Badge, Button, Card, CardTitle, ErrorText, Input, Spinner } from '../components/ui.js';
@@ -126,13 +126,58 @@ function AllUsers({ users }: { users: ActivityUser[] }) {
   );
 }
 
+/** Every recorded file change across the panel: what changed, in which instance, by whom. */
+function FileChanges() {
+  const { search, setSearch, query } = useSearch();
+  const feed = usePagedFeed<AuditEntry, 'entries'>(`/activity/actions?limit=50&files=1${query ? `&search=${encodeURIComponent(query)}` : ''}`, 'entries');
+  return (
+    <FeedCard title="File changes" footer={<LoadMore nextBefore={feed.nextBefore} loading={feed.loadingMore} onClick={feed.loadMore} />}>
+      <div className="px-5 pb-3">
+        <p className="mb-3 text-sm text-ink-400">
+          {t('Edits, uploads, renames and deletions from the file manager, SFTP and Outpost’s config editors. Open an entry to see the lines that changed.')}
+        </p>
+        <Input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t('Search by file, user or instance…')} aria-label={t('Search file changes')} />
+      </div>
+      <ErrorText>{feed.error}</ErrorText>
+      {feed.items === null ? (
+        <div className="flex justify-center p-8"><Spinner /></div>
+      ) : (
+        <ActionList entries={feed.items} showUser empty={query ? 'Nothing matches this search.' : 'No file changes have been recorded yet.'} />
+      )}
+    </FeedCard>
+  );
+}
+
+function ModeSwitch({ files, onChange }: { files: boolean; onChange: (files: boolean) => void }) {
+  return (
+    <div className="flex rounded-full border border-surface-500 p-0.5" role="tablist" aria-label={t('Activity view')}>
+      {([false, true] as const).map((v) => (
+        <button
+          key={String(v)}
+          role="tab"
+          aria-selected={files === v}
+          onClick={() => onChange(v)}
+          className={`state-layer flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-medium ${files === v ? 'bg-secondary-container text-secondary-on-container' : 'text-ink-300'}`}
+        >
+          <Icon name={v ? 'file' : 'users'} className="h-4 w-4" />
+          {t(v ? 'File changes' : 'People')}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function UserDetail({ user }: { user: ActivityUser }) {
   const now = useNow();
-  const [view, setView] = useState<'actions' | 'pages'>('actions');
+  const [view, setView] = useState<'actions' | 'files' | 'pages'>('actions');
   const { search, setSearch, query } = useSearch();
-  const actions = usePagedFeed<AuditEntry, 'entries'>(view === 'actions' ? `/activity/users/${user.id}/actions?limit=50${query ? `&search=${encodeURIComponent(query)}` : ''}` : null, 'entries');
+  const listsActions = view === 'actions' || view === 'files';
+  const actions = usePagedFeed<AuditEntry, 'entries'>(
+    listsActions ? `/activity/users/${user.id}/actions?limit=50${view === 'files' ? '&files=1' : ''}${query ? `&search=${encodeURIComponent(query)}` : ''}` : null,
+    'entries',
+  );
   const pages = usePagedFeed<PageView, 'views'>(view === 'pages' ? `/activity/users/${user.id}/views?limit=50` : null, 'views');
-  const feed = view === 'actions' ? actions : pages;
+  const feed = listsActions ? actions : pages;
 
   return (
     <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)]">
@@ -182,7 +227,7 @@ function UserDetail({ user }: { user: ActivityUser }) {
       <Card className="overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-3 px-5 pt-5">
           <div className="flex rounded-full border border-surface-500 p-0.5" role="tablist" aria-label={t('Activity')}>
-            {(['actions', 'pages'] as const).map((v) => (
+            {(['actions', 'files', 'pages'] as const).map((v) => (
               <button
                 key={v}
                 role="tab"
@@ -190,7 +235,7 @@ function UserDetail({ user }: { user: ActivityUser }) {
                 onClick={() => setView(v)}
                 className={`state-layer rounded-full px-4 py-1.5 text-sm font-medium ${view === v ? 'bg-secondary-container text-secondary-on-container' : 'text-ink-300'}`}
               >
-                {t(v === 'actions' ? 'Actions & changes' : 'Pages visited')}
+                {t(v === 'actions' ? 'Actions' : v === 'files' ? 'Files changed' : 'Pages visited')}
               </button>
             ))}
           </div>
@@ -198,15 +243,22 @@ function UserDetail({ user }: { user: ActivityUser }) {
             {t('Open in Audit Log')}
           </Link>
         </div>
-        {view === 'actions' && (
+        {listsActions && (
           <div className="px-5 pt-3">
-            <Input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t('Search this user’s actions…')} aria-label={t('Search actions')} />
+            <Input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t(view === 'files' ? 'Search by file name or path…' : 'Search this user’s actions…')} aria-label={t('Search actions')} />
           </div>
         )}
         <div className="mt-3">
           <ErrorText>{feed.error}</ErrorText>
-          {view === 'actions' ? (
-            actions.items === null ? <div className="flex justify-center p-8"><Spinner /></div> : <ActionList entries={actions.items} empty={query ? 'Nothing matches this search.' : 'This user hasn’t done anything yet.'} />
+          {listsActions ? (
+            actions.items === null ? (
+              <div className="flex justify-center p-8"><Spinner /></div>
+            ) : (
+              <ActionList
+                entries={actions.items}
+                empty={query ? 'Nothing matches this search.' : view === 'files' ? 'This user hasn’t changed any files yet.' : 'This user hasn’t done anything yet.'}
+              />
+            )
           ) : pages.items === null ? (
             <div className="flex justify-center p-8"><Spinner /></div>
           ) : (
@@ -240,13 +292,21 @@ export function ActivityPage() {
 
   const sorted = useMemo(() => [...(users ?? [])].sort((a, b) => rank(b) - rank(a)), [users]);
   const selected = sorted.find((u) => u.id === userId) ?? null;
+  const [params] = useSearchParams();
+  const filesView = params.get('view') === 'files' && !userId;
 
   return (
     <Layout>
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-8">
-        <PageHeader title="Activity" subtitle="Who's signed in, what they're looking at, and every action and change they make — live." />
+        <PageHeader
+          title="Activity"
+          subtitle="Who's signed in, what they're looking at, and every action and file change they make — live."
+          action={<ModeSwitch files={filesView} onChange={(files) => navigate(files ? '/activity?view=files' : '/activity')} />}
+        />
         <ErrorText>{error}</ErrorText>
-        {users === null ? (
+        {filesView ? (
+          <FileChanges />
+        ) : users === null ? (
           <div className="flex justify-center p-10"><Spinner /></div>
         ) : (
           <>

@@ -38,7 +38,8 @@ import { saveRcon } from '../services/rconService.js';
 import { resolveModpack, searchModpacks, type ModpackRef } from '../services/moddedService.js';
 import { setModpack } from '../services/serverService.js';
 import { autoUpdateBusy, autoUpdateOf, autoUpdateSupport, forgetAutoUpdate, runAutoUpdate, saveAutoUpdate, SCHEDULES } from '../services/autoUpdateService.js';
-import { writeEula, readServerProperties, writeServerProperties } from '../services/propertiesService.js';
+import { writeEula, readServerProperties, writeServerProperties, propertiesFileFor } from '../services/propertiesService.js';
+import { recordFileChangeSync } from '../services/fileChangeService.js';
 import {
   getRuntimeInfo,
   getLogBuffer,
@@ -1106,7 +1107,8 @@ serversRouter.put(
       'white-list': (v) => /^(true|false)$/.test(v) ? `whitelist ${v === 'true' ? 'on' : 'off'}` : null,
       'player-idle-timeout': (v) => /^\d{1,9}$/.test(v) ? `setidletimeout ${v}` : null,
     };
-    writeServerProperties(server.id, server.platform, updates);
+    const propertiesFile = propertiesFileFor(server.platform);
+    const propertiesChange = recordFileChangeSync(path.join(instanceDir(server.id), propertiesFile), propertiesFile, () => writeServerProperties(server.id, server.platform, updates));
     if (isMinecraftPlatform(server.platform) && updates['server-port'] !== undefined) updateServerRecord(server.id, { serverPort: Number(updates['server-port']) });
     for (const [key, value] of Object.entries(updates)) {
       const command = server.platform === 'java' && !isProxyLoader(server.loader) && isRunning(server.id)
@@ -1116,7 +1118,7 @@ serversRouter.put(
         liveQueued.push(key);
       } else restartRequired.push(key);
     }
-    logAudit(req.auth!.sub, req.auth!.username, 'server.properties.update', server.id);
+    logAudit(req.auth!.sub, req.auth!.username, 'server.properties.update', server.id, Object.keys(updates).join(', ').slice(0, 500), propertiesChange);
     res.json({ properties: readServerProperties(server.id, server.platform), liveQueued, restartRequired });
   })
 );

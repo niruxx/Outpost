@@ -16,11 +16,10 @@ export function SystemLayout({ children }: { children: ReactNode }) {
   const current = TABS.find((tab) => tab.to === pathname.replace(/\/$/, '')) ?? TABS[0];
   return <Layout>
     <div className="mx-auto max-w-6xl space-y-6 p-4 sm:p-8">
-      <motion.header initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} className="ui-page-header flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="mb-1 text-xs font-medium uppercase tracking-widest text-ink-400">{t('System')}</p>
-          <h1 className="ui-page-title text-4xl font-semibold leading-tight tracking-tight text-ink-50">{t(current.label)}</h1>
-          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-ink-400">{t(current.subtitle)}</p>
+      <motion.header initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} className="ui-page-header flex flex-wrap items-end justify-between gap-4">
+        <div className="min-w-0">
+          <h1 className="ui-page-title text-[28px] font-normal leading-9 text-ink-50">{t(current.label)}</h1>
+          <p className="mt-1 max-w-2xl text-sm leading-relaxed text-ink-400">{t(current.subtitle)}</p>
         </div>
         <nav aria-label={t('System sections')} className="inline-flex max-w-full gap-1 rounded-full border border-surface-700 bg-surface-900 p-1">
           {TABS.map(tab => <NavLink key={tab.to} to={tab.to} end className={({ isActive }) => `inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-400 ${isActive ? 'bg-secondary-container text-secondary-on-container' : 'text-ink-400 hover:bg-surface-800 hover:text-ink-100'}`}>

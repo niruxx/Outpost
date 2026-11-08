@@ -55,14 +55,14 @@ export function SectionedLayout({ sections, layoutId }: { sections: Section[]; l
                 type="button"
                 onClick={() => choose(s.id)}
                 aria-current={isActive ? 'page' : undefined}
-                className={`state-layer relative flex shrink-0 items-center gap-3 whitespace-nowrap rounded-full px-4 py-2.5 text-left text-sm font-medium transition-colors lg:rounded-2xl ${
+                className={`state-layer relative flex shrink-0 items-center gap-3 whitespace-nowrap rounded-full px-4 py-2.5 text-left text-sm font-medium transition-colors ${
                   s.danger ? 'lg:mt-3' : ''
                 } ${isActive ? 'text-secondary-on-container' : s.danger ? 'text-red-400' : 'text-ink-300'}`}
               >
                 {isActive && (
                   <motion.span
                     layoutId={`${layoutId}-indicator`}
-                    className="absolute inset-0 rounded-full bg-secondary-container lg:rounded-2xl"
+                    className="absolute inset-0 rounded-full bg-secondary-container"
                     transition={{ type: 'spring', stiffness: 520, damping: 40 }}
                   />
                 )}

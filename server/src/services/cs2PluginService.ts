@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import { fileUndoPath } from './backupStorageService.js';
+import { instanceRelative, recordFileChangeSync } from './fileChangeService.js';
 import path from 'node:path';
 import AdmZip from 'adm-zip';
 import { HttpError } from '../utils/asyncHandler.js';
@@ -650,8 +651,9 @@ export function parseLenientJson(text: string): unknown {
   return JSON.parse(out.replace(/,(\s*[}\]])/g, '$1'));
 }
 
-/** Saves a config, keeping its previous version in the instance's configured backup storage. */
-export function writePluginConfig(server: ServerRecord, folder: string, rel: string, content: string) {
+/** Saves a config, keeping its previous version in the instance's configured backup storage.
+ *  Returns the recorded file change for the activity history. */
+export function writePluginConfig(server: ServerRecord, folder: string, rel: string, content: string): string | undefined {
   const { file, abs } = resolveConfig(server, folder, rel);
   if (Buffer.byteLength(content) > MAX_CONFIG_BYTES) throw new HttpError(400, 'Config files are limited to 512 KB');
   if (file.kind === 'json') {
@@ -664,19 +666,20 @@ export function writePluginConfig(server: ServerRecord, folder: string, rel: str
   const undo = fileUndoPath(server.id, `cs2/${rel}${BACKUP}`);
   fs.mkdirSync(path.dirname(undo), { recursive: true });
   fs.copyFileSync(abs, undo);
-  fs.writeFileSync(abs, content);
+  return recordFileChangeSync(abs, instanceRelative(server.id, abs), () => fs.writeFileSync(abs, content));
 }
 
 /** Puts the version from before the last save back. */
-export function revertPluginConfig(server: ServerRecord, folder: string, rel: string) {
+export function revertPluginConfig(server: ServerRecord, folder: string, rel: string): string | undefined {
   const { abs } = resolveConfig(server, folder, rel);
   const undo = fileUndoPath(server.id, `cs2/${rel}${BACKUP}`);
   const previous = fs.existsSync(undo) ? undo : abs + BACKUP; // older in-place undo copies still work
   if (!fs.existsSync(previous)) throw new HttpError(404, 'No earlier version saved');
   const cur = fs.readFileSync(abs);
   fs.mkdirSync(path.dirname(undo), { recursive: true });
-  fs.copyFileSync(previous, abs);
+  const change = recordFileChangeSync(abs, instanceRelative(server.id, abs), () => fs.copyFileSync(previous, abs));
   fs.writeFileSync(undo, cur);
+  return change;
 }
 
 /** example.foo.json → foo.json (plugins like SharpTimer only read the real name). */

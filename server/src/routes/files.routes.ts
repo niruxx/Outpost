@@ -16,13 +16,26 @@ import {
   writeTextFile,
 } from '../services/fileService.js';
 import { logAudit } from '../services/userService.js';
-import { fileChange, snapshotFile, snapshotBuffer } from '../services/fileChangeService.js';
-import { instanceDir, safeJoinReal } from '../utils/paths.js';
+import { fileChange, renameChange, snapshotFile, snapshotBuffer } from '../services/fileChangeService.js';
+import { instanceDir, isSymlinkAt, safeJoinReal } from '../utils/paths.js';
 import type { Role } from '../types/index.js';
 
 export const filesRouter = Router({ mergeParams: true });
 filesRouter.use(requireAuth, requireServerAccess());
 
+
+/** "/plugins//x.yml" → "plugins/x.yml": the same spelling for every change to one file. */
+const clean = (p: string) => p.replace(/\\/g, '/').split('/').filter((part) => part && part !== '.').join('/');
+
+/** The real path of an instance file for the history, or null if it can't be resolved (the
+ *  file operation itself then reports the error). */
+function instancePath(serverId: string, relative: string): string | null {
+  try {
+    return safeJoinReal(instanceDir(serverId), relative);
+  } catch {
+    return null;
+  }
+}
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 1024 * 1024 * 1024 } });
 
@@ -53,10 +66,11 @@ filesRouter.put(
     if (typeof filePath !== 'string' || typeof content !== 'string') {
       throw new HttpError(400, 'path and content are required');
     }
-    const target = safeJoinReal(instanceDir(req.params.serverId), filePath);
-    const before = snapshotFile(target);
+    const target = instancePath(req.params.serverId, filePath);
+    const before = target ? snapshotFile(target) : null;
     await writeTextFile(req.params.serverId, filePath, content);
-    logAudit(req.auth!.sub, req.auth!.username, 'file.write', req.params.serverId, filePath, fileChange(filePath, before, snapshotBuffer(Buffer.from(content))));
+    const change = before ? fileChange(clean(filePath), before, snapshotBuffer(Buffer.from(content))) : undefined;
+    logAudit(req.auth!.sub, req.auth!.username, 'file.write', req.params.serverId, filePath, change);
     res.json({ ok: true });
   })
 );
@@ -67,7 +81,11 @@ filesRouter.post(
     requirePermission(req, 'files.write');
     const { path: dirPath } = req.body ?? {};
     if (typeof dirPath !== 'string' || !dirPath) throw new HttpError(400, 'path is required');
+    const target = instancePath(req.params.serverId, dirPath);
+    const before = target ? snapshotFile(target) : null;
     await createDirectory(req.params.serverId, dirPath);
+    const change = before && target ? fileChange(clean(dirPath), before, snapshotFile(target)) : undefined;
+    logAudit(req.auth!.sub, req.auth!.username, 'file.mkdir', req.params.serverId, dirPath, change);
     res.status(201).json({ ok: true });
   })
 );
@@ -78,8 +96,10 @@ filesRouter.post(
     requirePermission(req, 'files.write');
     const { from, to } = req.body ?? {};
     if (typeof from !== 'string' || typeof to !== 'string') throw new HttpError(400, 'from and to are required');
+    const source = instancePath(req.params.serverId, from);
+    const directory = !!source && snapshotFile(source).directory;
     await renameEntry(req.params.serverId, from, to);
-    logAudit(req.auth!.sub, req.auth!.username, 'file.rename', req.params.serverId, `${from} -> ${to}`);
+    logAudit(req.auth!.sub, req.auth!.username, 'file.rename', req.params.serverId, `${from} -> ${to}`, renameChange(clean(from), clean(to), directory));
     res.json({ ok: true });
   })
 );
@@ -89,8 +109,12 @@ filesRouter.delete(
   asyncHandler(async (req, res) => {
     requirePermission(req, 'files.write');
     const filePath = typeof req.query.path === 'string' ? req.query.path : '';
+    // What the file held, so the history can show what was lost. Links are removed, not followed.
+    const target = isSymlinkAt(instanceDir(req.params.serverId), filePath) ? null : instancePath(req.params.serverId, filePath);
+    const before = target ? snapshotFile(target) : null;
     await deleteEntry(req.params.serverId, filePath);
-    logAudit(req.auth!.sub, req.auth!.username, 'file.delete', req.params.serverId, filePath);
+    const change = before ? fileChange(clean(filePath), before, { exists: false, text: '' }) : undefined;
+    logAudit(req.auth!.sub, req.auth!.username, 'file.delete', req.params.serverId, filePath, change);
     res.status(204).end();
   })
 );

@@ -43,19 +43,31 @@ activityRouter.get('/users', requireRole('admin'), (_req, res) => {
   res.json({ users: userSummaries() });
 });
 
+/** The stored file change of one activity entry; `serverId` limits it to that instance's entries. */
+function storedChange(id: string, serverId?: string) {
+  const row = prep('SELECT target, file_change FROM audit_log WHERE id = ?').get(id) as { target: string | null; file_change: string | null } | undefined;
+  if (!row?.file_change || (serverId && row.target !== serverId)) throw new HttpError(404, 'No file changes recorded for this activity');
+  try {
+    return JSON.parse(row.file_change) as unknown;
+  } catch {
+    throw new HttpError(500, 'This file change record is unreadable');
+  }
+}
+
+/** Filters shared by every activity feed: action family, free text, file changes only, one file. */
+const feedFilter = (q: Record<string, unknown>) => ({ action: q.action, search: q.search, files: q.files, path: q.path, server: q.server });
+
 activityRouter.get('/actions/:id/changes', requireRole('admin'), (req, res) => {
-  const row = prep('SELECT file_change FROM audit_log WHERE id = ?').get(req.params.id) as { file_change: string | null } | undefined;
-  if (!row?.file_change) throw new HttpError(404, 'No file changes recorded for this activity');
-  res.json(JSON.parse(row.file_change));
+  res.json(storedChange(req.params.id));
 });
 
-/** Everyone's actions, newest first (the "All users" tab). */
+/** Everyone's actions, newest first (the "All users" tab; `?files=1` for the "File changes" tab). */
 activityRouter.get('/actions', requireRole('admin'), (req, res) => {
-  res.json(auditPage({ action: req.query.action, search: req.query.search }, req.query));
+  res.json(auditPage(feedFilter(req.query), req.query));
 });
 
 activityRouter.get('/users/:userId/actions', requireRole('admin'), (req, res) => {
-  res.json(auditPage({ userId: req.params.userId, action: req.query.action, search: req.query.search }, req.query));
+  res.json(auditPage({ ...feedFilter(req.query), userId: req.params.userId }, req.query));
 });
 
 activityRouter.get('/users/:userId/views', requireRole('admin'), (req, res) => {
@@ -73,10 +85,19 @@ serverActivityRouter.get(
     if (!server) throw new HttpError(404, 'Instance not found');
     const admin = req.auth!.role === 'admin';
     if (!admin && server.created_by !== req.auth!.sub) throw new HttpError(403, 'Only admins and the instance owner can see its activity');
-    const result = auditPage({ server: server.id, action: req.query.action, search: req.query.search }, req.query);
+    const result = auditPage({ ...feedFilter(req.query), server: server.id }, req.query);
     // Client addresses are for admins only.
-    const entries = admin ? result.entries : result.entries.map((e) => ({ ...e, hasFileChange: false, ip: null, userAgent: null, agent: null }));
+    const entries = admin ? result.entries : result.entries.map((e) => ({ ...e, ip: null, userAgent: null, agent: null }));
     const viewers = presence({ serverId: server.id }).map((t) => (admin ? t : { ...t, ip: null, agent: null }));
     res.json({ ...result, entries, viewers });
   }),
 );
+
+/** What changed in a file, for one of this instance's entries. Same audience as the feed. */
+serverActivityRouter.get('/changes/:entryId', (req, res) => {
+  // `serverId` comes from the mount path (mergeParams), which the route's types don't know about.
+  const server = getServer((req.params as { serverId?: string }).serverId ?? '');
+  if (!server) throw new HttpError(404, 'Instance not found');
+  if (req.auth!.role !== 'admin' && server.created_by !== req.auth!.sub) throw new HttpError(403, 'Only admins and the instance owner can see its file history');
+  res.json(storedChange(req.params.entryId, server.id));
+});

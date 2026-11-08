@@ -4,6 +4,7 @@ import { removeUserSteamAccounts } from './steamAccountService.js';
 import { prep, db } from '../db/db.js';
 import { hashPassword, verifyPassword } from '../auth/password.js';
 import { requestContext } from '../utils/requestContext.js';
+import { changePath } from './fileChangeService.js';
 import type { PublicUser, Role, User, StoragePermission } from '../types/index.js';
 
 function toPublic(user: User): PublicUser {
@@ -202,8 +203,8 @@ export function logAudit(userId: string | null, username: string | null, action:
   const ctx = requestContext();
   if (ctx) ctx.audited = true;
   prep(
-    'INSERT INTO audit_log (user_id, username, action, target, detail, ip, user_agent, file_change) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-  ).run(userId, username, action, target ?? null, detail?.slice(0, 2000) ?? null, ctx?.ip ?? null, ctx?.userAgent ?? null, fileChange ?? null);
+    'INSERT INTO audit_log (user_id, username, action, target, detail, ip, user_agent, file_change, file_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(userId, username, action, target ?? null, detail?.slice(0, 2000) ?? null, ctx?.ip ?? null, ctx?.userAgent ?? null, fileChange ?? null, changePath(fileChange));
 }
 
 // ---------------------------------------------------------------------------

@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { instanceChangesUrl } from '../../components/FileHistory.js';
 import { useServerDetail } from './ServerContext.js';
 import { api } from '../../api/client.js';
 import { setVisibleInterval } from '../../lib/perf.js';
@@ -18,7 +20,18 @@ export function ActivityTab() {
     return () => clearTimeout(id);
   }, [search]);
 
-  const url = `/servers/${serverId}/activity?limit=50${query ? `&search=${encodeURIComponent(query)}` : ''}`;
+  // "File changes" narrows the feed to edits, uploads, deletes and renames — each with its diff.
+  const [params, setParams] = useSearchParams();
+  const filesOnly = params.get('view') === 'files';
+  const setFilesOnly = (on: boolean) =>
+    setParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (on) next.set('view', 'files');
+      else next.delete('view');
+      return next;
+    }, { replace: true });
+
+  const url = `/servers/${serverId}/activity?limit=50${filesOnly ? '&files=1' : ''}${query ? `&search=${encodeURIComponent(query)}` : ''}`;
   const feed = usePagedFeed<AuditEntry, 'entries'>(url, 'entries');
   // Who has this instance open (the response's `viewers`), polled on its own.
   const viewers = useViewers(`/servers/${serverId}/activity?limit=1`);
@@ -31,15 +44,27 @@ export function ActivityTab() {
       </Card>
       <Card className="overflow-hidden">
         <div className="px-5 pt-5">
-          <CardTitle>Instance activity</CardTitle>
-          <Input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t('Search actions, users, details…')} aria-label={t('Search actions')} />
+          <CardTitle action={<Segmented value={filesOnly} onChange={setFilesOnly} />}>Instance activity</CardTitle>
+          <Input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={t(filesOnly ? 'Search by file name or path…' : 'Search actions, users, details…')}
+            aria-label={t('Search actions')}
+          />
         </div>
         <div className="mt-3">
           <ErrorText>{feed.error}</ErrorText>
           {feed.items === null ? (
             <div className="flex justify-center p-8"><Spinner /></div>
           ) : (
-            <ActionList entries={feed.items} showUser showTarget={false} empty={query ? 'Nothing matches this search.' : 'Nothing has been done to this instance yet.'} />
+            <ActionList
+              entries={feed.items}
+              showUser
+              showTarget={false}
+              changesUrl={instanceChangesUrl(serverId)}
+              empty={query ? 'Nothing matches this search.' : filesOnly ? 'No file changes have been recorded yet.' : 'Nothing has been done to this instance yet.'}
+            />
           )}
         </div>
         {feed.nextBefore && (
@@ -50,6 +75,24 @@ export function ActivityTab() {
           </div>
         )}
       </Card>
+    </div>
+  );
+}
+
+function Segmented({ value, onChange }: { value: boolean; onChange: (filesOnly: boolean) => void }) {
+  return (
+    <div className="flex rounded-full border border-surface-500 p-0.5" role="tablist" aria-label={t('Show')}>
+      {([false, true] as const).map((files) => (
+        <button
+          key={String(files)}
+          role="tab"
+          aria-selected={value === files}
+          onClick={() => onChange(files)}
+          className={`state-layer rounded-full px-3 py-1 text-xs font-medium ${value === files ? 'bg-secondary-container text-secondary-on-container' : 'text-ink-300'}`}
+        >
+          {t(files ? 'File changes' : 'All activity')}
+        </button>
+      ))}
     </div>
   );
 }

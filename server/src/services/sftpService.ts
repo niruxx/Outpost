@@ -11,6 +11,7 @@ import { logger } from '../utils/logger.js';
 import { hashPassword, verifyPassword } from '../auth/password.js';
 import { getSetting, setSetting } from './systemSettingsService.js';
 import { getServerPermissions, getUserByUsername, logAudit } from './userService.js';
+import { fileChange, renameChange, snapshotFile, type FileSnapshot } from './fileChangeService.js';
 import { listServers } from './serverService.js';
 import type { ServerRecord } from '../types/index.js';
 
@@ -160,7 +161,7 @@ function noteFailure(ip: string) {
 // SFTP operations, rooted at the instance folder
 // ---------------------------------------------------------------------------
 
-type Handle = { kind: 'file'; fd: number; rel: string; wrote: boolean } | { kind: 'dir'; abs: string; rel: string; done: boolean };
+type Handle = { kind: 'file'; fd: number; abs: string; rel: string; wrote: boolean; before?: FileSnapshot } | { kind: 'dir'; abs: string; rel: string; done: boolean };
 
 function toAttrs(st: fs.Stats): Attributes {
   return { mode: st.mode, uid: 0, gid: 0, size: st.size, atime: Math.floor(st.atimeMs / 1000), mtime: Math.floor(st.mtimeMs / 1000) };
@@ -197,7 +198,7 @@ function serveSftp(sftp: SFTPWrapper, login: NonNullable<ReturnType<typeof resol
       return null;
     }
   };
-  const audit = (action: string, detail: string) => logAudit(login.userId, login.name, action, login.server.id, `[sftp] ${detail}`);
+  const audit = (action: string, detail: string, change?: string) => logAudit(login.userId, login.name, action, login.server.id, `[sftp] ${detail}`, change);
   const fail = (reqid: number, err: unknown) => {
     const code = (err as NodeJS.ErrnoException)?.code;
     sftp.status(reqid, code === 'ENOENT' ? STATUS.NO_SUCH_FILE : code === 'EACCES' || code === 'EPERM' ? STATUS.PERMISSION_DENIED : STATUS.FAILURE, code ?? undefined);
@@ -260,7 +261,9 @@ function serveSftp(sftp: SFTPWrapper, login: NonNullable<ReturnType<typeof resol
       }
     }
     const mode = utils.sftp.flagsToString(flags) ?? 'r';
-    fs.open(r.abs, mode, 0o644, (e, fd) => (e ? fail(reqid, e) : sftp.handle(reqid, newHandle({ kind: 'file', fd, rel: r.rel, wrote: false }))));
+    // Taken before opening: a truncating open would already have emptied the file.
+    const before = writing ? snapshotFile(r.abs) : undefined;
+    fs.open(r.abs, mode, 0o644, (e, fd) => (e ? fail(reqid, e) : sftp.handle(reqid, newHandle({ kind: 'file', fd, abs: r.abs, rel: r.rel, wrote: false, before }))));
   });
   sftp.on('READ', (reqid, handle, offset, length) => {
     const h = getHandle(handle);
@@ -285,7 +288,7 @@ function serveSftp(sftp: SFTPWrapper, login: NonNullable<ReturnType<typeof resol
     handles.delete(key);
     if (h.kind === 'dir') return sftp.status(reqid, STATUS.OK);
     fs.close(h.fd, (e) => {
-      if (h.wrote) audit('file.write', h.rel);
+      if (h.wrote) audit('file.write', h.rel, h.before ? fileChange(h.rel, h.before, snapshotFile(h.abs)) : undefined);
       e ? fail(reqid, e) : sftp.status(reqid, STATUS.OK);
     });
   });
@@ -293,9 +296,10 @@ function serveSftp(sftp: SFTPWrapper, login: NonNullable<ReturnType<typeof resol
     if (denyWrite(reqid)) return;
     const r = resolve(p);
     if (!r || !r.rel) return sftp.status(reqid, STATUS.PERMISSION_DENIED);
+    const before = snapshotFile(r.abs);
     fn(r).then(
       () => {
-        audit(auditAction, r.rel);
+        audit(auditAction, r.rel, fileChange(r.rel, before, snapshotFile(r.abs)));
         sftp.status(reqid, STATUS.OK);
       },
       (e) => fail(reqid, e)
@@ -309,9 +313,10 @@ function serveSftp(sftp: SFTPWrapper, login: NonNullable<ReturnType<typeof resol
     const a = resolve(from);
     const b = resolve(to);
     if (!a || !b || !a.rel || !b.rel) return sftp.status(reqid, STATUS.PERMISSION_DENIED);
+    const directory = !!snapshotFile(a.abs).directory;
     fs.promises.rename(a.abs, b.abs).then(
       () => {
-        audit('file.rename', `${a.rel} → ${b.rel}`);
+        audit('file.rename', `${a.rel} → ${b.rel}`, renameChange(a.rel, b.rel, directory));
         sftp.status(reqid, STATUS.OK);
       },
       (e) => fail(reqid, e)

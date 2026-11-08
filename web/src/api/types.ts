@@ -725,8 +725,43 @@ export interface Webhook {
   createdAt: string;
 }
 
+export type FileChangeKind = 'created' | 'edited' | 'deleted' | 'renamed';
+
+/** List-row summary of a recorded file change (the diff itself is fetched on demand). */
+export interface FileChangeSummary {
+  path: string;
+  from: string | null;
+  kind: FileChangeKind;
+  added: number | null;
+  removed: number | null;
+  directory: boolean;
+  /** Content wasn't recorded (binary, too large, sensitive…). */
+  hidden: boolean;
+}
+
+/** A stored file change, as `/activity/…/changes` returns it. */
+export interface FileChangeRecord {
+  path: string;
+  kind?: FileChangeKind;
+  from?: string;
+  directory?: boolean;
+  reason?: string;
+  /** 1-based line where the change starts. */
+  line?: number;
+  /** Changed lines; older records stored "\n"-joined text. */
+  before?: string[] | string;
+  after?: string[] | string;
+  contextBefore?: string[];
+  contextAfter?: string[];
+  added?: number;
+  removed?: number;
+  truncated?: boolean;
+  created?: boolean;
+}
+
 export interface AuditEntry {
   hasFileChange?: boolean;
+  file?: FileChangeSummary | null;
   id: number;
   userId: string | null;
   username: string | null;

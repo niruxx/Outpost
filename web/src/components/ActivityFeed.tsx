@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { t } from '../i18n/index.js';
-import type { AuditEntry, PageView, PresenceTab } from '../api/types.js';
+import type { AuditEntry, FileChangeKind, FileChangeRecord, FileChangeSummary, PageView, PresenceTab } from '../api/types.js';
 import { api } from '../api/client.js';
-import { Badge } from './ui.js';
+import { diffLines } from '../lib/diff.js';
+import { Badge, Spinner } from './ui.js';
 import { Icon, type IconName } from './icons.js';
 
 /** Shared pieces of the Activity page and the per-instance Activity tab. */
@@ -27,6 +28,14 @@ const SPECIAL: Record<string, string> = {
   'terminal.open': 'Opened the host console',
   'terminal.close': 'Closed the host console',
   'sftp.login': 'Signed in over SFTP',
+  'file.mkdir': 'Created a folder',
+  'file.write': 'Edited a file',
+  'file.upload': 'Uploaded a file',
+  'file.delete': 'Deleted a file',
+  'file.rename': 'Renamed or moved a file',
+  'server.properties.update': 'Changed server properties',
+  'server.cs2.plugin_config': 'Edited a plugin config',
+  'server.cs2.plugin_config_revert': 'Reverted a plugin config',
 };
 
 const NOUN: Record<string, string> = { server: 'instance', apikey: 'API key', dbhost: 'database host', libvirt: 'VM', cs2: 'CS2', upnp: 'UPnP', rcon: 'RCON', sftp: 'SFTP' };
@@ -113,10 +122,132 @@ export function presenceLabel(online: boolean, active: boolean) {
   return t(!online ? 'Offline' : active ? 'Active now' : 'Panel open in background');
 }
 
-interface FileChange { path: string; reason?: string; created?: boolean; line?: number; before?: string; after?: string }
-function FileChanges({ id }: { id: number }) {
+// ---------------------------------------------------------------------------
+// File change history
+// ---------------------------------------------------------------------------
+
+const KIND_LABEL: Record<FileChangeKind, string> = { created: 'Created', edited: 'Edited', deleted: 'Deleted', renamed: 'Renamed' };
+const KIND_TONE: Record<FileChangeKind, 'green' | 'blue' | 'red' | 'yellow'> = { created: 'green', edited: 'blue', deleted: 'red', renamed: 'yellow' };
+
+/** Where an entry's stored diff is fetched from; the instance feed uses its own, owner-readable route. */
+export type ChangesUrl = (entryId: number) => string;
+const adminChangesUrl: ChangesUrl = (id) => `/activity/actions/${id}/changes`;
+
+/** "+12 −3" line counts. */
+export function ChangeCounts({ added, removed }: { added: number | null | undefined; removed: number | null | undefined }) {
+  if (added == null && removed == null) return null;
+  return (
+    <span className="inline-flex items-center gap-1.5 font-mono text-[11px] tabular-nums">
+      {!!added && <span className="text-success-400">+{added}</span>}
+      {!!removed && <span className="text-red-400">−{removed}</span>}
+      {!added && !removed && <span className="text-ink-500">±0</span>}
+    </span>
+  );
+}
+
+/** Older records stored the region as "\n"-joined text; newer ones as line arrays. */
+function toLines(value: string[] | string | undefined): string[] {
+  if (Array.isArray(value)) return value;
+  return value ? value.split('\n') : [];
+}
+
+interface DiffRow { type: 'same' | 'add' | 'del' | 'gap'; text: string; oldNo?: number; newNo?: number }
+
+/** The stored change as unified-diff rows: context, removed/added lines (paired by LCS), context. */
+function diffRows(c: FileChangeRecord): DiffRow[] {
+  const start = c.line ?? 1;
+  const before = toLines(c.before);
+  const after = toLines(c.after);
+  const ctxBefore = c.contextBefore ?? [];
+  const ctxAfter = c.contextAfter ?? [];
+  const rows: DiffRow[] = [];
+  if (start - ctxBefore.length > 1) rows.push({ type: 'gap', text: `${start - ctxBefore.length - 1} unchanged lines above` });
+  ctxBefore.forEach((text, i) => {
+    const n = start - ctxBefore.length + i;
+    rows.push({ type: 'same', text, oldNo: n, newNo: n });
+  });
+  if (before.length && after.length) {
+    // Within each changed block, removed lines come first, then their replacements.
+    let dels: DiffRow[] = [];
+    let adds: DiffRow[] = [];
+    const flush = () => {
+      rows.push(...dels, ...adds);
+      dels = [];
+      adds = [];
+    };
+    for (const line of diffLines(before.join('\n'), after.join('\n')).lines) {
+      const row: DiffRow = { type: line.type, text: line.text, oldNo: line.oldNo && line.oldNo + start - 1, newNo: line.newNo && line.newNo + start - 1 };
+      if (row.type === 'del') dels.push(row);
+      else if (row.type === 'add') adds.push(row);
+      else {
+        flush();
+        rows.push(row);
+      }
+    }
+    flush();
+  } else {
+    before.forEach((text, i) => rows.push({ type: 'del', text, oldNo: start + i }));
+    after.forEach((text, i) => rows.push({ type: 'add', text, newNo: start + i }));
+  }
+  ctxAfter.forEach((text, i) => rows.push({ type: 'same', text, oldNo: start + before.length + i, newNo: start + after.length + i }));
+  return rows;
+}
+
+const ROW_STYLE: Record<DiffRow['type'], string> = {
+  same: 'text-ink-300',
+  add: 'bg-success-500/10 text-ink-100',
+  del: 'bg-red-500/10 text-ink-100',
+  gap: 'bg-surface-800/60 text-ink-500 italic',
+};
+const MARK: Record<DiffRow['type'], string> = { same: ' ', add: '+', del: '−', gap: '' };
+
+/** A recorded change rendered like a code review diff. */
+export function FileDiff({ change }: { change: FileChangeRecord }) {
+  const kind = change.kind ?? (change.created ? 'created' : 'edited');
+  if (kind === 'renamed') {
+    return (
+      <p className="rounded-xl bg-surface-900 px-3 py-2 text-xs text-ink-300">
+        {t(change.directory ? 'Folder moved from' : 'Moved from')} <span className="break-all font-mono text-ink-100">{change.from}</span> {t('to')}{' '}
+        <span className="break-all font-mono text-ink-100">{change.path}</span>
+      </p>
+    );
+  }
+  if (change.reason) return <p className="rounded-xl bg-surface-900 px-3 py-2 text-xs text-ink-300">{t(change.reason)}</p>;
+  const rows = diffRows(change);
+  return (
+    <div className="space-y-1.5">
+      <div className="ui-diff max-h-96 overflow-auto rounded-xl border border-surface-700 bg-surface-1000/40 font-mono text-[12px] leading-5">
+        <table className="w-full border-collapse">
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={i} className={ROW_STYLE[r.type]}>
+                {r.type === 'gap' ? (
+                  <td colSpan={4} className="px-3 py-0.5 text-[11px]">{t(r.text)}</td>
+                ) : (
+                  <>
+                    <td className="w-10 select-none border-r border-surface-700 px-2 text-right text-ink-500">{r.oldNo ?? ''}</td>
+                    <td className="w-10 select-none border-r border-surface-700 px-2 text-right text-ink-500">{r.newNo ?? ''}</td>
+                    <td className={`w-5 select-none pl-2 ${r.type === 'add' ? 'text-success-400' : r.type === 'del' ? 'text-red-400' : ''}`}>{MARK[r.type]}</td>
+                    <td className="whitespace-pre-wrap break-all pr-3">{r.text || ' '}</td>
+                  </>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-[11px] text-ink-500">
+        {change.truncated ? `${t('Very large change — only the start is shown.')} ` : ''}
+        {t('Lines that look like passwords, tokens or keys are hidden.')}
+      </p>
+    </div>
+  );
+}
+
+/** The file line of an entry: path, what happened and +/- counts, with the diff on demand. */
+function FileChangeBlock({ id, file, changesUrl }: { id: number; file: FileChangeSummary | null | undefined; changesUrl: ChangesUrl }) {
   const [open, setOpen] = useState(false);
-  const [change, setChange] = useState<FileChange | null>(null);
+  const [change, setChange] = useState<FileChangeRecord | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   async function toggle() {
@@ -124,31 +255,78 @@ function FileChanges({ id }: { id: number }) {
     if (open || change || loading) return;
     setLoading(true);
     setError('');
-    try { setChange(await api.get<FileChange>(`/activity/actions/${id}/changes`)); }
-    catch (err) { setError(err instanceof Error ? err.message : 'Unable to load changes'); }
-    finally { setLoading(false); }
+    try {
+      setChange(await api.get<FileChangeRecord>(changesUrl(id)));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('Unable to load changes'));
+    } finally {
+      setLoading(false);
+    }
   }
-  return <div className="mt-2">
-    <button type="button" onClick={toggle} aria-expanded={open} className="text-xs text-accent-400 hover:underline">{t(open ? 'Hide changes' : 'View changes')}</button>
-    {open && <div className="mt-2 space-y-2 text-xs">
-      {loading && <p>{t('Loading?')}</p>}
-      {error && <p role="alert" className="text-red-400">{error}</p>}
-      {change && <>
-        <p className="break-all font-mono">{change.path}{change.created ? ' (new file)' : ''}</p>
-        {change.reason ? <p>{t(change.reason)}</p> : <>
-          <p className="text-ink-400">{t('Changed region starting at line')} {change.line} ? {t('Common secret fields are hidden.')}</p>
-          <div className="grid gap-2 lg:grid-cols-2">
-            <div><p>{t('Before')}</p><pre className="max-h-80 overflow-auto whitespace-pre-wrap break-all rounded bg-red-500/10 p-3">{change.before || t('(empty)')}</pre></div>
-            <div><p>{t('After')}</p><pre className="max-h-80 overflow-auto whitespace-pre-wrap break-all rounded bg-success-400/10 p-3">{change.after || t('(empty)')}</pre></div>
-          </div>
-        </>}
-      </>}
-    </div>}
-  </div>;
+  const kind = file?.kind ?? 'edited';
+  const canExpand = !file?.directory || kind === 'renamed';
+  return (
+    <div className="mt-2">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl bg-surface-900 px-3 py-2">
+        <Icon name={file?.directory ? 'folder' : 'file'} className="h-4 w-4 text-ink-400" />
+        {file && <Badge tone={KIND_TONE[kind]}>{t(KIND_LABEL[kind])}</Badge>}
+        <span className="min-w-0 flex-1 truncate font-mono text-xs text-ink-100" title={file?.path}>
+          {file?.from && kind === 'renamed' ? <><span className="text-ink-400">{file.from}</span> → </> : null}
+          {file?.path ?? t('File change')}
+        </span>
+        {file && !file.hidden && <ChangeCounts added={file.added} removed={file.removed} />}
+        {canExpand && (
+          <button type="button" onClick={toggle} aria-expanded={open} className="state-layer rounded-full px-2.5 py-0.5 text-xs font-medium text-accent-400">
+            {t(open ? 'Hide changes' : 'View changes')}
+          </button>
+        )}
+      </div>
+      {open && (
+        <div className="mt-2">
+          {loading && <p className="flex items-center gap-2 text-xs text-ink-400"><Spinner className="h-3.5 w-3.5" /> {t('Loading…')}</p>}
+          {error && <p role="alert" className="text-xs text-red-400">{error}</p>}
+          {change && <FileDiff change={change} />}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const FILE_SENTENCE: Record<FileChangeKind, [file: string, folder: string]> = {
+  created: ['Created a file', 'Created a folder'],
+  edited: ['Edited a file', 'Edited a file'],
+  deleted: ['Deleted a file', 'Deleted a folder'],
+  renamed: ['Renamed or moved a file', 'Renamed or moved a folder'],
+};
+
+/** File entries say what happened to the file (a first save is "Created", not "Edited"). */
+function describeEntry(e: AuditEntry): string {
+  if (!e.file || e.action.endsWith('.failed') || !e.action.startsWith('file.')) return describeAction(e.action);
+  return t(FILE_SENTENCE[e.file.kind][e.file.directory ? 1 : 0]);
+}
+
+/** The detail line only repeats the path(s) the file chip already shows ("a -> b", "x.yml"). */
+function restatesFile(e: AuditEntry): boolean {
+  if (!e.file || !e.detail) return false;
+  const paths = [e.file.path, e.file.from].filter(Boolean) as string[];
+  const words = e.detail.split(/\s*(?:->|→)\s*/).map((p) => p.replace(/^\/+/, ''));
+  return words.every((w) => paths.includes(w) || paths.some((p) => p.endsWith(w)));
 }
 
 /** Timeline of audit entries. `showUser` adds who did it (for mixed feeds). */
-export function ActionList({ entries, showUser = false, showTarget = true, empty }: { entries: AuditEntry[]; showUser?: boolean; showTarget?: boolean; empty: string }) {
+export function ActionList({
+  entries,
+  showUser = false,
+  showTarget = true,
+  empty,
+  changesUrl = adminChangesUrl,
+}: {
+  entries: AuditEntry[];
+  showUser?: boolean;
+  showTarget?: boolean;
+  empty: string;
+  changesUrl?: ChangesUrl;
+}) {
   const now = useNow();
   if (!entries.length) return <p className="px-4 py-8 text-center text-sm text-ink-500">{t(empty)}</p>;
   return (
@@ -156,12 +334,12 @@ export function ActionList({ entries, showUser = false, showTarget = true, empty
       {entries.map((e) => (
         <li key={e.id} className="flex gap-3 px-4 py-3">
           <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-700 text-ink-300">
-            <Icon name={actionIcon(e.action)} className="h-4 w-4" />
+            <Icon name={e.file ? 'file' : actionIcon(e.action)} className="h-4 w-4" />
           </span>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
               {showUser && <span className="text-sm font-medium text-ink-50">{e.username ?? t('system')}</span>}
-              <span className="text-sm text-ink-100">{describeAction(e.action)}</span>
+              <span className="text-sm text-ink-100">{describeEntry(e)}</span>
               {showTarget && e.target && (
                 <span className="min-w-0 truncate text-sm text-ink-300">
                   {e.targetKind === 'server' ? (
@@ -174,8 +352,8 @@ export function ActionList({ entries, showUser = false, showTarget = true, empty
                 </span>
               )}
             </div>
-            {e.hasFileChange && <FileChanges id={e.id} />}
-            {e.detail && <p className="mt-0.5 break-words text-xs text-ink-400">{e.detail}</p>}
+            {e.detail && !restatesFile(e) && <p className="mt-0.5 break-words text-xs text-ink-400">{e.detail}</p>}
+            {e.hasFileChange && <FileChangeBlock id={e.id} file={e.file} changesUrl={changesUrl} />}
             <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-ink-500">
               <Badge tone={actionTone(e.action)}>{e.action}</Badge>
               <span title={fullTime(e.at)}>{relativeTime(e.at, now)}</span>

@@ -75,12 +75,18 @@ export function auditFilter(q: Record<string, unknown>): { where: string; params
     where.push('a.target = ?');
     params.push(q.server);
   }
+  // File history: only entries that recorded a file change, optionally for one file.
+  if (q.files === true || q.files === '1' || q.files === 'true') where.push('a.file_change IS NOT NULL');
+  if (typeof q.path === 'string' && q.path) {
+    where.push('a.file_path = ?');
+    params.push(q.path.replace(/^\/+/, ''));
+  }
   if (typeof q.search === 'string' && q.search.trim()) {
     const like = `%${esc(q.search.trim())}%`;
     where.push(
-      "(a.detail LIKE ? ESCAPE '\\' OR a.action LIKE ? ESCAPE '\\' OR s.name LIKE ? ESCAPE '\\' OR a.username LIKE ? ESCAPE '\\' OR a.ip LIKE ? ESCAPE '\\' OR a.user_agent LIKE ? ESCAPE '\\')"
+      "(a.detail LIKE ? ESCAPE '\\' OR a.action LIKE ? ESCAPE '\\' OR s.name LIKE ? ESCAPE '\\' OR a.username LIKE ? ESCAPE '\\' OR a.ip LIKE ? ESCAPE '\\' OR a.user_agent LIKE ? ESCAPE '\\' OR a.file_path LIKE ? ESCAPE '\\')"
     );
-    params.push(like, like, like, like, like, like);
+    params.push(like, like, like, like, like, like, like);
   }
   if (typeof q.from === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(q.from)) {
     where.push('a.created_at >= ?');
@@ -108,10 +114,25 @@ export interface AuditRow {
   target_username: string | null;
   webhook_name: string | null;
   has_file_change: number;
+  file_path: string | null;
+  file_from: string | null;
+  file_kind: string | null;
+  file_created: number | null;
+  file_added: number | null;
+  file_removed: number | null;
+  file_directory: number | null;
+  file_hidden: number | null;
 }
 
 export const MAX_PAGE = 200;
-export const AUDIT_SELECT = `SELECT a.id, a.user_id, a.username, a.action, a.target, a.detail, a.created_at, a.ip, a.user_agent, (a.file_change IS NOT NULL) AS has_file_change, s.name AS server_name, u.username AS target_username, w.name AS webhook_name
+// The file summary comes out of the stored JSON in SQL, so list rows never load the diff itself.
+const FILE_JSON = "CASE WHEN json_valid(a.file_change) THEN a.file_change END";
+export const AUDIT_SELECT = `SELECT a.id, a.user_id, a.username, a.action, a.target, a.detail, a.created_at, a.ip, a.user_agent, (a.file_change IS NOT NULL) AS has_file_change,
+    a.file_path, json_extract(${FILE_JSON}, '$.from') AS file_from, json_extract(${FILE_JSON}, '$.kind') AS file_kind,
+    json_extract(${FILE_JSON}, '$.created') AS file_created, json_extract(${FILE_JSON}, '$.added') AS file_added,
+    json_extract(${FILE_JSON}, '$.removed') AS file_removed, json_extract(${FILE_JSON}, '$.directory') AS file_directory,
+    (json_extract(${FILE_JSON}, '$.reason') IS NOT NULL) AS file_hidden,
+    s.name AS server_name, u.username AS target_username, w.name AS webhook_name
   FROM audit_log a
   LEFT JOIN servers s ON s.id = a.target
   LEFT JOIN users u ON u.id = a.target
@@ -128,6 +149,17 @@ export function shapeAudit(r: AuditRow) {
     targetKind: r.server_name ? 'server' : r.target_username ? 'user' : r.webhook_name ? 'webhook' : null,
     detail: r.detail,
     hasFileChange: !!r.has_file_change,
+    file: r.has_file_change
+      ? {
+          path: r.file_path ?? '',
+          from: r.file_from,
+          kind: r.file_kind ?? (r.file_created ? 'created' : 'edited'),
+          added: r.file_added,
+          removed: r.file_removed,
+          directory: !!r.file_directory,
+          hidden: !!r.file_hidden,
+        }
+      : null,
     ip: r.ip,
     userAgent: r.user_agent,
     agent: describeAgent(r.user_agent),

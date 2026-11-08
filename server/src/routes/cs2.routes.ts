@@ -286,8 +286,8 @@ cs2Router.put(
     const server = requireCs2(req.params.serverId);
     const rel = String(req.body?.path ?? '');
     if (typeof req.body?.content !== 'string') throw new HttpError(400, 'content is required');
-    writePluginConfig(server, req.params.folder, rel, req.body.content);
-    logAudit(req.auth!.sub, req.auth!.username, 'server.cs2.plugin_config', server.id, rel);
+    const change = writePluginConfig(server, req.params.folder, rel, req.body.content);
+    logAudit(req.auth!.sub, req.auth!.username, 'server.cs2.plugin_config', server.id, rel, change);
     appendLine(server.id, `[Outpost] ${rel} edited by ${req.auth!.username}${isRunning(server.id) ? ' — restart (or reload the plugin) to apply it' : ''}`, 'system');
     res.json(readPluginConfig(server, req.params.folder, rel));
   }),
@@ -299,8 +299,8 @@ cs2Router.post(
     requirePermission(req, 'plugins');
     const server = requireCs2(req.params.serverId);
     const rel = String(req.body?.path ?? '');
-    revertPluginConfig(server, req.params.folder, rel);
-    logAudit(req.auth!.sub, req.auth!.username, 'server.cs2.plugin_config_revert', server.id, rel);
+    const change = revertPluginConfig(server, req.params.folder, rel);
+    logAudit(req.auth!.sub, req.auth!.username, 'server.cs2.plugin_config_revert', server.id, rel, change);
     res.json(readPluginConfig(server, req.params.folder, rel));
   }),
 );

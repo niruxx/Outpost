@@ -3,7 +3,7 @@ import path from 'node:path';
 import { instanceDir } from '../utils/paths.js';
 import type { Platform } from '../types/index.js';
 
-function propertiesFileFor(platform: Platform): string {
+export function propertiesFileFor(platform: Platform): string {
   return 'server.properties';
 }
 

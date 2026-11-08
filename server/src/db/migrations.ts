@@ -36,9 +36,18 @@ export function runMigrations(db: DatabaseSync): void {
   if (!db.prepare("SELECT 1 FROM pragma_table_info('audit_log') WHERE name = 'file_change'").get()) {
     db.exec('ALTER TABLE audit_log ADD COLUMN file_change TEXT');
   }
+  addFileHistoryColumn(db);
   addRewindColumn(db);
   addRconAndAutoUpdateColumns(db);
   addUserDisabledColumns(db);
+}
+
+/** `file_path` lets the file history ("every change to plugins/x/config.yml") be one indexed lookup. */
+function addFileHistoryColumn(db: DatabaseSync): void {
+  if (db.prepare("SELECT 1 FROM pragma_table_info('audit_log') WHERE name = 'file_path'").get()) return;
+  db.exec('ALTER TABLE audit_log ADD COLUMN file_path TEXT');
+  db.exec("UPDATE audit_log SET file_path = json_extract(file_change, '$.path') WHERE file_change IS NOT NULL AND json_valid(file_change)");
+  db.exec('CREATE INDEX IF NOT EXISTS idx_audit_file_path ON audit_log (target, file_path)');
 }
 
 function addUserDisabledColumns(db: DatabaseSync): void {
