@@ -11,6 +11,7 @@ import { motion } from 'framer-motion';
 import { AuthProvider, useAuth } from './state/AuthContext.js';
 import { ToastProvider } from './components/Toast.js';
 import { ConfirmProvider } from './components/ConfirmDialog.js';
+import { ContextMenuProvider } from './components/ContextMenu.js';
 import { Logo } from './components/Logo.js';
 import { LoginPage } from './pages/LoginPage.js';
 import { SetupPage } from './pages/SetupPage.js';
@@ -23,6 +24,8 @@ import { LibvirtPage } from './pages/LibvirtPage.js';
 import { StoragePage } from './pages/StoragePage.js';
 import { UsersPage } from './pages/UsersPage.js';
 import { AuditPage } from './pages/AuditPage.js';
+import { ActivityPage } from './pages/ActivityPage.js';
+import { ActivityTracker } from './components/ActivityTracker.js';
 import { FirewallPage } from './pages/FirewallPage.js';
 import type { ReactNode } from 'react';
 import { lazy, Suspense } from 'react';
@@ -145,6 +148,7 @@ function AppRoutes() {
           </RequireAuth>
         }
       />
+      <Route path="/activity/:userId?" element={<RequireAuth><RequireAdmin><ActivityPage /></RequireAdmin></RequireAuth>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
@@ -164,10 +168,13 @@ export default function App() {
       <AuthProvider>
         <ToastProvider>
           <ConfirmProvider>
-            <GlobalActivityBar />
-            <AppRoutes />
-            <CommandPalette />
-            <UnsavedChangesGuard />
+            <ContextMenuProvider>
+              <GlobalActivityBar />
+              <ActivityTracker />
+              <AppRoutes />
+              <CommandPalette />
+              <UnsavedChangesGuard />
+            </ContextMenuProvider>
           </ConfirmProvider>
         </ToastProvider>
       </AuthProvider>

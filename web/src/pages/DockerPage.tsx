@@ -15,6 +15,8 @@ import { NewInstanceModal } from '../components/NewInstanceModal.js';
 import { api, ApiError } from '../api/client.js';
 import type { DockerConfig, DockerOverview, InstanceListMetrics, ServerRecord } from '../api/types.js';
 import { useAuth } from '../state/AuthContext.js';
+import { copyToClipboard, useContextMenu } from '../components/ContextMenu.js';
+import { instanceMenu } from '../components/instanceMenu.js';
 
 function EngineCard({ overview, refreshing, onRefresh }: { overview: DockerOverview | null; refreshing: boolean; onRefresh: () => void }) {
   const engine = overview?.engine;
@@ -90,8 +92,24 @@ function DockerRow({ server, metrics }: { server: ServerRecord; metrics: Instanc
     config = null;
   }
   const stats = metrics?.runtime?.stats;
+  const navigate = useNavigate();
+  const toast = useToast();
+  const contextMenu = useContextMenu(() =>
+    instanceMenu({
+      server,
+      navigate,
+      notify: toast,
+      copyExtra: [
+        {
+          label: 'Copy image',
+          icon: 'copy',
+          onSelect: () => copyToClipboard(server.version).then((ok) => (ok ? toast.success('Image copied') : toast.error('Copy failed'))),
+        },
+      ],
+    }),
+  );
   return (
-    <Card hover className="relative p-4">
+    <Card {...contextMenu} hover className="relative p-4">
       <Link to={`/instances/${server.id}`} aria-label={`Open ${server.name}`} className="absolute inset-0 rounded-[inherit]" />
       <div className="flex flex-wrap items-center gap-4">
         <GameTile kind={gameKindOf(server)} className="h-12 w-12" running={server.status === 'running'} />

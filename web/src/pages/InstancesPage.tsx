@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { setVisibleInterval } from '../lib/perf.js';
 import { t } from '../i18n/index.js';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { AnimatePresence, LayoutGroup, motion } from 'framer-motion';
 import { Layout, PageHeader } from '../components/Layout.js';
 import { StatusBadge, SuspendedBadge } from '../components/StatusBadge.js';
@@ -19,6 +19,8 @@ import type { InstanceListMetrics, ServerRecord } from '../api/types.js';
 import { useAuth } from '../state/AuthContext.js';
 import { useConfirm } from '../components/ConfirmDialog.js';
 import { usePinnedInstances } from '../lib/pins.js';
+import { MoreButton, useContextMenu, type MenuItems } from '../components/ContextMenu.js';
+import { instanceMenu } from '../components/instanceMenu.js';
 
 type ViewMode = 'list' | 'grid' | 'box';
 const VIEW_KEY = 'outpost_instances_view';
@@ -129,6 +131,8 @@ interface RowProps {
   selecting: boolean;
   selected: boolean;
   toggleSelect: (id: string) => void;
+  /** Builds this instance's right-click / "⋯" menu. */
+  menu: () => MenuItems;
 }
 
 function PinButton({ server, pinned, togglePin, className = '' }: Pick<RowProps, 'server' | 'pinned' | 'togglePin'> & { className?: string }) {
@@ -148,6 +152,9 @@ function PinButton({ server, pinned, togglePin, className = '' }: Pick<RowProps,
     </button>
   );
 }
+
+/** Hidden until the card is hovered/focused; always shown on touch screens. */
+const HOVER_REVEAL = 'opacity-0 transition-opacity focus-visible:opacity-100 group-hover/card:opacity-100 [@media(hover:none)]:opacity-100';
 
 /** Round check indicator shown on every card while selecting. */
 function SelectMark({ selected }: { selected: boolean }) {
@@ -238,8 +245,9 @@ function Metric({ icon, value, title }: { icon: IconName; value: string; title: 
 function ListRow(props: RowProps) {
   const { server } = props;
   const f = useInstanceFigures(props);
+  const contextMenu = useContextMenu(props.menu);
   return (
-    <div className={`group/card state-layer relative grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-2xl px-3 py-2.5 md:grid-cols-[auto_minmax(0,2fr)_110px_90px_90px_70px_80px_auto] ${selectedRing(props)}`}>
+    <div {...contextMenu} className={`group/card state-layer relative grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-2xl px-3 py-2.5 md:grid-cols-[auto_minmax(0,2fr)_110px_90px_90px_70px_80px_auto] ${selectedRing(props)}`}>
       <StretchedLink {...props} />
       {props.selecting ? <span className="flex h-9 w-9 items-center justify-center"><SelectMark selected={props.selected} /></span> : <GameTile kind={gameKindOf(server)} className="h-9 w-9 !rounded-xl" running={server.status === 'running'} />}
       <div className="min-w-0">
@@ -259,6 +267,7 @@ function ListRow(props: RowProps) {
         </span>
         {!props.selecting && <PinButton {...props} />}
         <Actions {...props} />
+        {!props.selecting && <MoreButton items={props.menu} className={HOVER_REVEAL} />}
       </div>
     </div>
   );
@@ -267,8 +276,9 @@ function ListRow(props: RowProps) {
 function GridCard(props: RowProps) {
   const { server } = props;
   const f = useInstanceFigures(props);
+  const contextMenu = useContextMenu(props.menu);
   return (
-    <Card hover className={`ui-instance-card group/card relative flex h-full flex-col gap-5 p-5 ${selectedRing(props)}`}>
+    <Card {...contextMenu} hover className={`ui-instance-card group/card relative flex h-full flex-col gap-5 p-5 ${selectedRing(props)}`}>
       <StretchedLink {...props} />
         <div className="flex items-center gap-3">
           {props.selecting && <SelectMark selected={props.selected} />}
@@ -283,6 +293,7 @@ function GridCard(props: RowProps) {
           <div className="relative z-10 flex shrink-0 items-center gap-1">
             {!props.selecting && <PinButton {...props} />}
             <Actions {...props} />
+            {!props.selecting && <MoreButton items={props.menu} className={HOVER_REVEAL} />}
           </div>
         </div>
         <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-surface-700 pt-3 text-xs text-ink-300">
@@ -305,8 +316,9 @@ function BoxCard(props: RowProps) {
   const { server } = props;
   const f = useInstanceFigures(props);
   const kind = gameKindOf(server);
+  const contextMenu = useContextMenu(props.menu);
   return (
-    <Card hover className={`group/card relative flex h-full flex-col overflow-hidden ${selectedRing(props)}`}>
+    <Card {...contextMenu} hover className={`group/card relative flex h-full flex-col overflow-hidden ${selectedRing(props)}`}>
       <StretchedLink {...props} />
         <div className="relative flex h-28 items-center justify-center bg-surface-900">
           <GameBanner kind={kind} seed={server.id} fade={false} />
@@ -346,8 +358,9 @@ function BoxCard(props: RowProps) {
               <span className="tabular-nums">{f.uptime ?? ''}</span>
             </div>
           </div>
-          <div className="relative z-10 mt-auto flex justify-end gap-1">
+          <div className="relative z-10 mt-auto flex items-center justify-end gap-1">
             <Actions {...props} />
+            {!props.selecting && <MoreButton items={props.menu} className={HOVER_REVEAL} />}
           </div>
         </div>
     </Card>
@@ -418,6 +431,7 @@ function BulkBar({
 export function InstancesPage() {
   const { user, creation, refreshCreation } = useAuth();
   const toast = useToast();
+  const navigate = useNavigate();
   const [servers, setServers] = useState<ServerRecord[] | null>(null);
   const [unreachable, setUnreachable] = useState(false);
   const [metrics, setMetrics] = useState<Record<string, InstanceListMetrics>>({});
@@ -584,6 +598,29 @@ export function InstancesPage() {
   const selectableVisible = visible.filter((s) => canActOn(s) && !s.suspended);
   const selectedCount = (servers ?? []).filter((s) => selected.has(s.id)).length;
 
+  const menuFor = (server: ServerRecord) => () =>
+    instanceMenu({
+      server,
+      navigate,
+      notify: toast,
+      pinned: isPinned(server.id),
+      togglePin,
+      power: canActOn(server) ? { busy: busyId === server.id || !!bulkBusy, act } : undefined,
+      extra: [
+        canActOn(server) && !server.suspended && {
+          label: selecting && selected.has(server.id) ? 'Deselect' : 'Select',
+          icon: 'checklist',
+          onSelect: () => {
+            if (selecting) toggleSelect(server.id);
+            else {
+              setSelecting(true);
+              setSelected(new Set([server.id]));
+            }
+          },
+        },
+      ],
+    });
+
   return (
     <Layout>
       <div className="ui-dashboard mx-auto max-w-7xl px-4 py-8 sm:px-8 sm:py-10">
@@ -739,6 +776,7 @@ export function InstancesPage() {
                       selecting={selecting && canActOn(server) && !server.suspended}
                       selected={selected.has(server.id)}
                       toggleSelect={toggleSelect}
+                      menu={menuFor(server)}
                     />
                   </motion.div>
                 ))}

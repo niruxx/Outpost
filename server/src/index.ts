@@ -65,6 +65,8 @@ import { proxyRouter } from './routes/proxy.routes.js';
 import { rconRouter } from './routes/rcon.routes.js';
 import { initRewind } from './services/rewindService.js';
 import { requestContextMiddleware } from './utils/requestContext.js';
+import { activityMiddleware, startActivityPruning } from './services/activityService.js';
+import { activityRouter, serverActivityRouter } from './routes/activity.routes.js';
 import { startAuditPruning } from './services/auditService.js';
 import { recoverInterruptedTransfers } from './services/nodeService.js';
 import { authenticate } from './auth/tokens.js';
@@ -96,6 +98,8 @@ app.set('json replacer', (key: string, value: unknown) => {
 });
 // Lets the audit log record each request's address and browser.
 app.use(requestContextMiddleware);
+// Records every state-changing request a signed-in user makes that its route didn't log itself.
+app.use(activityMiddleware);
 
 app.use((req, res, next) => {
   // Minimal request log; skip noisy polling endpoints.
@@ -136,6 +140,7 @@ app.use('/api/servers/:serverId/sftp', instanceSftpRouter);
 app.use('/api/operations', operationsRouter);
 app.use('/api/hooks', hooksRouter);
 app.use('/api/servers/:serverId/automation', automationRouter);
+app.use('/api/servers/:serverId/activity', serverActivityRouter);
 app.use('/api/servers', serversRouter);
 app.use('/api/plugins', pluginRegistryRouter);
 app.use('/api/system', systemRouter);
@@ -152,6 +157,7 @@ app.use('/api/node-link', nodeLinkRouter);
 app.use('/api/notifications', notificationsRouter);
 app.use('/api/events', eventsRouter);
 app.use('/api/audit', auditRouter);
+app.use('/api/activity', activityRouter);
 app.use('/api/firewall', firewallRouter);
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
@@ -245,6 +251,7 @@ async function bootstrap() {
     );
   }
   startAuditPruning();
+  startActivityPruning();
   startBrowserStats(isRunning);
   startMetricsHistory();
   pruneEvents();

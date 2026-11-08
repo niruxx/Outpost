@@ -780,3 +780,44 @@ export interface FirewallInstancePort {
   protocol: 'tcp' | 'udp';
   open: boolean;
 }
+
+/** One open panel tab, as reported by its presence pings. */
+export interface PresenceTab {
+  tabId: string;
+  userId: string;
+  username: string;
+  path: string;
+  /** "Survival · Console" */
+  label: string;
+  serverId: string | null;
+  /** False while the tab is in the background. */
+  visible: boolean;
+  /** When the tab arrived on its current page. */
+  since: string;
+  lastSeen: string;
+  ip: string | null;
+  agent: string | null;
+}
+
+export interface ActivityUser {
+  id: string;
+  username: string;
+  role: string;
+  disabled: boolean;
+  /** Has at least one panel tab open. */
+  online: boolean;
+  /** At least one of those tabs is in the foreground. */
+  active: boolean;
+  tabs: PresenceTab[];
+  lastAction: { action: string; detail: string | null; at: string } | null;
+  actionsToday: number;
+  lastSeen: string | null;
+}
+
+export interface PageView {
+  id: number;
+  path: string;
+  label: string;
+  serverId: string | null;
+  at: string;
+}

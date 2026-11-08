@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { motion } from 'framer-motion';
 import { useServerDetail } from './ServerContext.js';
 import { api, ApiError } from '../../api/client.js';
 import type { LaunchConfig, LaunchInfo } from '../../api/types.js';
@@ -72,14 +71,14 @@ export function LaunchCard() {
         error ? <ErrorText>{error}</ErrorText> : <Spinner />
       ) : (
         <>
-          <motion.div layout className="mb-5 rounded-2xl bg-surface-1000 p-3">
+          <div className="mb-5 rounded-2xl bg-surface-1000 p-3">
             <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-ink-500">Resolved command</p>
             {info.preview ? (
               <code className="block whitespace-pre-wrap break-all font-mono text-xs text-success-400">{info.preview}</code>
             ) : (
               <p className="text-xs text-yellow-400">{info.previewError}</p>
             )}
-          </motion.div>
+          </div>
 
           {!editable && (
             <div className="mb-4">

@@ -8,6 +8,7 @@ import { Badge, Button, Card, CardTitle, ErrorText, Field, Input, Modal, Notice,
 import { Icon } from '../../components/icons.js';
 import { useToast } from '../../components/Toast.js';
 import { useConfirm } from '../../components/ConfirmDialog.js';
+import { copyToClipboard, useContextMenu, type MenuItems } from '../../components/ContextMenu.js';
 import { diffLines, withContext } from '../../lib/diff.js';
 import { formatBytes } from './StatusTab.js';
 
@@ -213,6 +214,15 @@ function SnapshotBrowser({ snapshot, onClose }: { snapshot: BackupInfo; onClose:
 // Page
 // ---------------------------------------------------------------------------
 
+/** One snapshot row; its own component so it can bind a right-click menu. */
+function SnapshotRow({ menu, children }: { menu: () => MenuItems; children: React.ReactNode }) {
+  return (
+    <div {...useContextMenu(menu)} className="flex flex-wrap items-center gap-3 px-4 py-3">
+      {children}
+    </div>
+  );
+}
+
 export function BackupsTab() {
   const { serverId, can, running } = useServerDetail();
   const toast = useToast();
@@ -256,6 +266,38 @@ export function BackupsTab() {
   useEffect(() => {
     load();
   }, [load]);
+
+  const snapshotUrl = (b: BackupInfo) => downloadUrl(`/servers/${serverId}/backups/${encodeURIComponent(b.fileName)}/download`);
+
+  async function copyOffsite(b: BackupInfo) {
+    try {
+      await api.post(`/servers/${serverId}/offsite/copy`, { fileName: b.fileName });
+      offsite.reload();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Copy failed');
+    }
+  }
+
+  const snapshotMenu = (b: BackupInfo) => (): MenuItems => [
+    { heading: new Date(b.createdAt).toLocaleString() },
+    canBrowse && { label: 'Browse files', icon: 'search', onSelect: () => setBrowsing(b) },
+    canBrowse && { label: 'Download', icon: 'download', onSelect: () => window.open(snapshotUrl(b), '_blank') },
+    canRestore && {
+      label: running ? 'Restore all (stop the server first)' : 'Restore all…',
+      icon: 'restart',
+      disabled: running || busyFile === b.fileName,
+      onSelect: () => restoreAll(b),
+    },
+    canCreate && !!offsite.state?.destinations.length && { label: 'Copy to off-site storage', icon: 'upload', onSelect: () => copyOffsite(b) },
+    'separator',
+    {
+      label: 'Copy file name',
+      icon: 'copy',
+      onSelect: () => copyToClipboard(b.fileName).then((ok) => (ok ? toast.success('File name copied') : toast.error('Copy failed'))),
+    },
+    'separator',
+    canCreate && { label: 'Delete snapshot', icon: 'trash', danger: true, disabled: busyFile === b.fileName, onSelect: () => deleteSnapshot(b) },
+  ];
 
   async function createSnapshot() {
     setCreating(true);
@@ -373,7 +415,7 @@ export function BackupsTab() {
             {backups.map((b) => {
               const tag = snapshotLabel(b.fileName);
               return (
-                <div key={b.fileName} className="flex flex-wrap items-center gap-3 px-4 py-3">
+                <SnapshotRow key={b.fileName} menu={snapshotMenu(b)}>
                   <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface-700 text-ink-300">
                     <Icon name="backup" className="h-[18px] w-[18px]" />
                   </span>
@@ -400,7 +442,7 @@ export function BackupsTab() {
                     )}
                     {canBrowse && (
                       <a
-                        href={downloadUrl(`/servers/${serverId}/backups/${encodeURIComponent(b.fileName)}/download`)}
+                        href={snapshotUrl(b)}
                         title="Download snapshot"
                         className="state-layer inline-flex items-center rounded-full px-3 py-2 text-accent-400"
                       >
@@ -411,14 +453,7 @@ export function BackupsTab() {
                       <Button
                         variant="ghost"
                         title="Copy to off-site storage now"
-                        onClick={async () => {
-                          try {
-                            await api.post(`/servers/${serverId}/offsite/copy`, { fileName: b.fileName });
-                            offsite.reload();
-                          } catch (err) {
-                            toast.error(err instanceof ApiError ? err.message : 'Copy failed');
-                          }
-                        }}
+                        onClick={() => copyOffsite(b)}
                       >
                         <Icon name="upload" className="h-4 w-4" />
                       </Button>
@@ -429,7 +464,7 @@ export function BackupsTab() {
                       </Button>
                     )}
                   </div>
-                </div>
+                </SnapshotRow>
               );
             })}
           </div>

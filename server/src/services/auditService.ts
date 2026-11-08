@@ -59,6 +59,10 @@ export function auditFilter(q: Record<string, unknown>): { where: string; params
   const where: string[] = [];
   const params: (string | number)[] = [];
   const esc = (s: string) => s.replace(/[\\%_]/g, '\\$&');
+  if (typeof q.userId === 'string' && q.userId) {
+    where.push('a.user_id = ?');
+    params.push(q.userId);
+  }
   if (typeof q.user === 'string' && q.user) {
     where.push('a.username = ?');
     params.push(q.user);
@@ -87,6 +91,47 @@ export function auditFilter(q: Record<string, unknown>): { where: string; params
     params.push(`${q.to} 23:59:59`);
   }
   return { where: where.length ? `WHERE ${where.join(' AND ')}` : '', params };
+}
+
+// Rows as the audit list, the export and the Activity page return them.
+export interface AuditRow {
+  id: number;
+  user_id: string | null;
+  username: string | null;
+  action: string;
+  target: string | null;
+  detail: string | null;
+  created_at: string;
+  ip: string | null;
+  user_agent: string | null;
+  server_name: string | null;
+  target_username: string | null;
+  webhook_name: string | null;
+}
+
+export const MAX_PAGE = 200;
+export const AUDIT_SELECT = `SELECT a.*, s.name AS server_name, u.username AS target_username, w.name AS webhook_name
+  FROM audit_log a
+  LEFT JOIN servers s ON s.id = a.target
+  LEFT JOIN users u ON u.id = a.target
+  LEFT JOIN webhooks w ON w.id = a.target`;
+
+export function shapeAudit(r: AuditRow) {
+  return {
+    id: r.id,
+    userId: r.user_id,
+    username: r.username,
+    action: r.action,
+    target: r.target,
+    targetLabel: r.server_name ?? r.target_username ?? r.webhook_name ?? null,
+    targetKind: r.server_name ? 'server' : r.target_username ? 'user' : r.webhook_name ? 'webhook' : null,
+    detail: r.detail,
+    ip: r.ip,
+    userAgent: r.user_agent,
+    agent: describeAgent(r.user_agent),
+    // SQLite's datetime('now') is UTC without a zone marker.
+    at: `${r.created_at.replace(' ', 'T')}Z`,
+  };
 }
 
 /** A short "Firefox on Windows"-style label for a user agent. */

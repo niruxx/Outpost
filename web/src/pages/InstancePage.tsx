@@ -25,6 +25,7 @@ import { FilesTab } from './server/FilesTab.js';
 import { BackupsTab } from './server/BackupsTab.js';
 import { UpdateTab } from './server/UpdateTab.js';
 import { UpnpTab } from './server/UpnpTab.js';
+import { ActivityTab } from './server/ActivityTab.js';
 import { TasksTab } from './server/TasksTab.js';
 import { WorkshopTab } from './server/WorkshopTab.js';
 import { WineTab } from './server/WineTab.js';
@@ -49,6 +50,7 @@ function InstanceNav({ server, onNavigate }: { server: ServerRecord; onNavigate:
   // Only label the game group when something lands in it.
   const game = world || proxy || addons || isCs2 || isGmodServer(server) || hasBrowserStats(server);
   const rail = useRail();
+  const { isAdmin, isOwner } = useServerDetail();
   return (
     <LayoutGroup id="instance-nav">
     <nav className="space-y-1">
@@ -99,6 +101,7 @@ function InstanceNav({ server, onNavigate }: { server: ServerRecord; onNavigate:
 
       <NavSectionLabel>Data</NavSectionLabel>
       <NavItem to="backups" icon="backup" label="Backups" onClick={onNavigate} />
+      {(isAdmin || isOwner) && <NavItem to="activity" icon="eye" label="Activity" onClick={onNavigate} />}
       {world && <NavItem to="rewind" icon="refresh" label="World Rewind" onClick={onNavigate} />}
 
       <NavSectionLabel>Settings</NavSectionLabel>
@@ -279,9 +282,11 @@ function InstanceTopBar({ server, compact }: { server: ServerRecord; compact: bo
       >
         <GameBanner kind={kind} seed={server.id} />
       </motion.div>
-      <div className={`relative flex flex-wrap items-end gap-4 px-5 sm:px-6 ${compact ? '-mt-7' : '-mt-10'}`}>
-        <GameTile kind={kind} className={`${compact ? 'h-14 w-14' : 'h-16 w-16'} shadow-card ring-4 ring-surface-850`} running={server.status === 'running'} />
-        <div className="min-w-0 flex-1 pt-8">
+      {/* Only the tile overlaps the banner; the name and lifecycle buttons stay below it however
+          they wrap, so they never sit on top of the art. */}
+      <div className="relative flex flex-wrap items-start gap-x-4 gap-y-3 px-5 pt-3 sm:px-6">
+        <GameTile kind={kind} className={`${compact ? '-mt-10 h-14 w-14' : '-mt-12 h-16 w-16'} shrink-0 shadow-card ring-4 ring-surface-850`} running={server.status === 'running'} />
+        <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="truncate text-2xl font-normal text-ink-50">{server.name}</h1>
             {server.suspended ? <SuspendedBadge /> : <StatusBadge status={server.status} />}
@@ -293,7 +298,7 @@ function InstanceTopBar({ server, compact }: { server: ServerRecord; compact: bo
             {server.platform === 'docker' && <span className="font-mono"> · 🐳 {server.version}</span>}
           </p>
         </div>
-        <div className="pb-1">
+        <div>
           <LifecycleActions />
         </div>
       </div>
@@ -439,6 +444,7 @@ function InstancePageInner() {
             {isGmodServer(server) && <Route path="gmod" element={<GmodTab />} />}
             <Route path="update" element={<UpdateTab />} />
             <Route path="upnp" element={<UpnpTab />} />
+            <Route path="activity" element={<ActivityTab />} />
             {/* Old tab names, so existing bookmarks keep working. */}
             <Route path="settings" element={<Navigate to="../configuration" replace />} />
             <Route path="resources" element={<Navigate to="../status" replace />} />

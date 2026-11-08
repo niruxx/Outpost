@@ -141,6 +141,7 @@ export function CommandPalette() {
       [true, 'Operations', 'node', '/configuration/operations', 'fleet hosts allocations steam'],
       [admin, 'Users', 'users', '/users', 'accounts permissions'],
       [admin || (!!user.firewall && user.firewall !== 'none'), 'Firewall', 'shieldCheck', '/firewall', 'ports rules'],
+      [admin, 'Activity', 'eye', '/activity', 'who online users presence tracking actions'],
       [admin, 'Audit Log', 'checklist', '/audit', 'history events'],
     ];
     for (const [allowed, label, icon, to, keywords] of pages) {

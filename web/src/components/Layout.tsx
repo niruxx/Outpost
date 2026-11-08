@@ -15,6 +15,9 @@ import { StatusDot } from './StatusBadge.js';
 import { Wallpaper } from './Wallpaper.js';
 import { CommandPaletteTrigger, openCommandPalette } from './CommandPalette.js';
 import { usePinnedInstances } from '../lib/pins.js';
+import { useContextMenu } from './ContextMenu.js';
+import { instanceMenu } from './instanceMenu.js';
+import { useToast } from './Toast.js';
 import { NotificationBell } from './NotificationBell.js';
 
 /**
@@ -101,9 +104,13 @@ function useSidebarInstances(): ServerRecord[] | null {
 }
 
 function InstanceNavItem({ server, onClick }: { server: ServerRecord; onClick?: () => void }) {
+  const navigate = useNavigate();
+  const toast = useToast();
+  const { isPinned, toggle } = usePinnedInstances();
+  const contextMenu = useContextMenu(() => instanceMenu({ server, navigate, notify: toast, pinned: isPinned(server.id), togglePin: toggle }));
   if (useRail()) {
     return (
-      <NavLink to={`/instances/${server.id}`} onClick={onClick} className="block" title={server.name} aria-label={server.name}>
+      <NavLink {...contextMenu} to={`/instances/${server.id}`} onClick={onClick} className="block" title={server.name} aria-label={server.name}>
         <span className="ui-nav-item state-layer relative flex h-10 items-center justify-center rounded-full">
           <span className="relative">
             <GameTile kind={gameKindOf(server)} className="h-7 w-7 !rounded-lg" />
@@ -114,7 +121,7 @@ function InstanceNavItem({ server, onClick }: { server: ServerRecord; onClick?: 
     );
   }
   return (
-    <NavLink to={`/instances/${server.id}`} onClick={onClick} className="group block" title={server.name}>
+    <NavLink {...contextMenu} to={`/instances/${server.id}`} onClick={onClick} className="group block" title={server.name}>
       <span className="ui-nav-item state-layer relative flex h-10 items-center gap-3 rounded-full px-4 text-sm text-ink-300">
         <GameTile kind={gameKindOf(server)} className="h-6 w-6 !rounded-lg" />
         <span className="min-w-0 flex-1 truncate transition-transform duration-200 group-hover:translate-x-0.5">{server.name}</span>
@@ -239,6 +246,7 @@ function MainNav({ onNavigate }: { onNavigate?: () => void }) {
       {(user?.role === 'admin' || (user?.firewall && user.firewall !== 'none')) && (
         <NavItem to="/firewall" icon="shieldCheck" label="Firewall" onClick={onNavigate} />
       )}
+      {user?.role === 'admin' && <NavItem to="/activity" icon="eye" label="Activity" onClick={onNavigate} />}
       {user?.role === 'admin' && <NavItem to="/audit" icon="checklist" label="Audit Log" onClick={onNavigate} />}
       {servers && servers.length > 0 && <SidebarInstances servers={servers} onNavigate={onNavigate} />}
     </nav>

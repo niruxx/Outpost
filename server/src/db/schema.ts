@@ -250,6 +250,21 @@ CREATE TABLE IF NOT EXISTS vm_access (
   PRIMARY KEY (user_id, uri, uuid)
 );
 CREATE INDEX IF NOT EXISTS audit_log_created_at ON audit_log (created_at);
+CREATE INDEX IF NOT EXISTS audit_log_user ON audit_log (user_id, id);
+CREATE INDEX IF NOT EXISTS audit_log_target ON audit_log (target, id);
+
+-- Pages each signed-in user opened in the panel, for the Activity page (pruned after 30 days).
+CREATE TABLE IF NOT EXISTS activity_views (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+  username TEXT,
+  path TEXT NOT NULL,
+  label TEXT,
+  server_id TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS activity_views_user ON activity_views (user_id, id);
+CREATE INDEX IF NOT EXISTS activity_views_created_at ON activity_views (created_at);
 
 -- Server-browser (A2S) player counts, sampled once a minute while a Steam instance runs.
 CREATE TABLE IF NOT EXISTS player_samples (

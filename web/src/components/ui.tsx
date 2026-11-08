@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { t, tc } from '../i18n/index.js';
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from 'react';
+import type { ButtonHTMLAttributes, HTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from 'react';
 
 const springy = { type: 'spring' as const, stiffness: 420, damping: 32 };
 
@@ -55,7 +55,8 @@ export function Card({
   className = '',
   hover = false,
   glass = true,
-}: {
+  ...rest
+}: HTMLAttributes<HTMLDivElement> & {
   children?: ReactNode;
   className?: string;
   hover?: boolean;
@@ -63,6 +64,7 @@ export function Card({
 }) {
   return (
     <div
+      {...rest}
       className={`ui-card rounded-3xl ${glass ? 'bg-surface-850' : 'bg-surface-900'} ${
         hover ? 'transition-[background-color,transform,box-shadow] duration-200 ease-out hover:-translate-y-0.5 hover:bg-surface-800 hover:shadow-card' : ''
       } ${className}`}

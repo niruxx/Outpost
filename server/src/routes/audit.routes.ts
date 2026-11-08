@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { asyncHandler, HttpError } from '../utils/asyncHandler.js';
 import { requireAuth, requireRole } from '../auth/middleware.js';
 import { prep } from '../db/db.js';
-import { auditFilter, auditStats, describeAgent, setRetentionDays } from '../services/auditService.js';
+import { AUDIT_SELECT as SELECT, MAX_PAGE, auditFilter, auditStats, shapeAudit as shape, setRetentionDays, type AuditRow } from '../services/auditService.js';
 import { systemLogs } from '../services/systemLogsService.js';
 import { logAudit } from '../services/userService.js';
 
@@ -12,46 +12,6 @@ import { logAudit } from '../services/userService.js';
  */
 export const auditRouter = Router();
 auditRouter.use(requireAuth, requireRole('admin'));
-
-interface AuditRow {
-  id: number;
-  user_id: string | null;
-  username: string | null;
-  action: string;
-  target: string | null;
-  detail: string | null;
-  created_at: string;
-  ip: string | null;
-  user_agent: string | null;
-  server_name: string | null;
-  target_username: string | null;
-  webhook_name: string | null;
-}
-
-const MAX_PAGE = 200;
-const SELECT = `SELECT a.*, s.name AS server_name, u.username AS target_username, w.name AS webhook_name
-  FROM audit_log a
-  LEFT JOIN servers s ON s.id = a.target
-  LEFT JOIN users u ON u.id = a.target
-  LEFT JOIN webhooks w ON w.id = a.target`;
-
-function shape(r: AuditRow) {
-  return {
-    id: r.id,
-    userId: r.user_id,
-    username: r.username,
-    action: r.action,
-    target: r.target,
-    targetLabel: r.server_name ?? r.target_username ?? r.webhook_name ?? null,
-    targetKind: r.server_name ? 'server' : r.target_username ? 'user' : r.webhook_name ? 'webhook' : null,
-    detail: r.detail,
-    ip: r.ip,
-    userAgent: r.user_agent,
-    agent: describeAgent(r.user_agent),
-    // SQLite's datetime('now') is UTC without a zone marker.
-    at: `${r.created_at.replace(' ', 'T')}Z`,
-  };
-}
 
 auditRouter.get(
   '/',

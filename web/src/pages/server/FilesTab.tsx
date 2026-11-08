@@ -8,6 +8,8 @@ import type { FileEntry } from '../../api/types.js';
 import { Button, Card, ErrorText, Input } from '../../components/ui.js';
 import { useConfirm } from '../../components/ConfirmDialog.js';
 import { Icon } from '../../components/icons.js';
+import { copyToClipboard, useContextMenu, type MenuItems } from '../../components/ContextMenu.js';
+import { useToast } from '../../components/Toast.js';
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -23,6 +25,20 @@ function formatSize(bytes: number): string {
 
 const EDITABLE_EXT = /\.(txt|properties|json|yml|yaml|conf|cfg|toml|log|md|sh|bat|xml|mcmeta)$/i;
 
+/** One listing row; its own component so each row can bind its right-click menu. */
+function FileRow({ menu, children, style }: { menu: () => MenuItems; children: React.ReactNode; style: React.CSSProperties }) {
+  const contextMenu = useContextMenu(menu);
+  return (
+    <div
+      {...contextMenu}
+      style={style}
+      className="animate-fade-in-up flex items-center gap-2 px-3 py-2 transition-colors hover:bg-surface-800/50 sm:gap-3 sm:px-4"
+    >
+      {children}
+    </div>
+  );
+}
+
 export function FilesTab() {
   const { serverId, can } = useServerDetail();
   const canWrite = can('files.write');
@@ -36,6 +52,35 @@ export function FilesTab() {
   const [editorSaving, setEditorSaving] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const toast = useToast();
+
+  const fileUrl = (entry: FileEntry) => downloadUrl(`/servers/${serverId}/files/download?path=${encodeURIComponent(entry.path)}`);
+  const copy = (text: string, what: string) =>
+    copyToClipboard(text).then((ok) => (ok ? toast.success(`${what} copied`) : toast.error('Copy failed')));
+
+  const entryMenu = (entry: FileEntry) => (): MenuItems => [
+    { heading: entry.name },
+    entry.isDirectory
+      ? { label: 'Open', icon: 'folder', onSelect: () => setPath(entry.path) }
+      : { label: canWrite && EDITABLE_EXT.test(entry.name) ? 'Edit' : 'Open', icon: 'edit', onSelect: () => openFile(entry) },
+    !entry.isDirectory && { label: 'Download', icon: 'download', onSelect: () => window.open(fileUrl(entry), '_blank') },
+    'separator',
+    canWrite && { label: 'Rename…', icon: 'edit', onSelect: () => renameEntry(entry) },
+    'separator',
+    { label: 'Copy name', icon: 'copy', onSelect: () => copy(entry.name, 'Name') },
+    { label: 'Copy path', icon: 'copy', onSelect: () => copy(`/${entry.path}`, 'Path') },
+    'separator',
+    canWrite && { label: 'Delete', icon: 'trash', danger: true, onSelect: () => deleteEntry(entry) },
+  ];
+
+  const folderMenu = useContextMenu((): MenuItems => [
+    canWrite && { label: 'New folder…', icon: 'folder', onSelect: createFolder },
+    canWrite && { label: 'Upload files…', icon: 'upload', disabled: !!uploadProgress, onSelect: () => fileInputRef.current?.click() },
+    { label: 'Refresh', icon: 'refresh', onSelect: () => load(path) },
+    'separator',
+    !!path && { label: 'Up one level', icon: 'chevronUp', onSelect: () => setPath(path.split('/').slice(0, -1).join('/')) },
+    { label: 'Copy current path', icon: 'copy', onSelect: () => copy(`/${path}`, 'Path') },
+  ]);
 
   const load = useCallback(
     async (target: string) => {
@@ -212,18 +257,14 @@ export function FilesTab() {
       <UploadTracker progress={uploadProgress} />
       <ErrorText>{error}</ErrorText>
 
-      <Card className="divide-y divide-surface-800">
+      <Card {...folderMenu} className="divide-y divide-surface-800">
         {entries === null ? (
           <p className="px-4 py-3 text-sm text-ink-500">Loading…</p>
         ) : entries.length === 0 ? (
           <p className="px-4 py-3 text-sm text-ink-500">This folder is empty.</p>
         ) : (
           entries.map((entry, i) => (
-            <div
-              key={entry.path}
-              style={{ animationDelay: `${Math.min(i, 20) * 18}ms` }}
-              className="animate-fade-in-up flex items-center gap-2 px-3 py-2 transition-colors hover:bg-surface-800/50 sm:gap-3 sm:px-4"
-            >
+            <FileRow key={entry.path} menu={entryMenu(entry)} style={{ animationDelay: `${Math.min(i, 20) * 18}ms` }}>
               <button
                 className="flex min-w-0 flex-1 items-center gap-2 py-1 text-left text-sm"
                 onClick={() => (entry.isDirectory ? setPath(entry.path) : openFile(entry))}
@@ -248,7 +289,7 @@ export function FilesTab() {
                 {!entry.isDirectory && (
                   <a
                     className="flex items-center rounded p-2 text-xs text-ink-400 hover:bg-surface-700 hover:text-ink-200 sm:px-2 sm:py-1"
-                    href={downloadUrl(`/servers/${serverId}/files/download?path=${encodeURIComponent(entry.path)}`)}
+                    href={fileUrl(entry)}
                     title="Download"
                     aria-label={`Download ${entry.name}`}
                   >
@@ -279,7 +320,7 @@ export function FilesTab() {
                   </>
                 )}
               </div>
-            </div>
+            </FileRow>
           ))
         )}
       </Card>

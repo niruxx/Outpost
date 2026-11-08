@@ -8,6 +8,8 @@ import type { NextFunction, Request, Response } from 'express';
 export interface RequestContext {
   ip: string | null;
   userAgent: string | null;
+  /** Set once the request has written an audit entry, so the catch-all activity log skips it. */
+  audited?: boolean;
 }
 
 const storage = new AsyncLocalStorage<RequestContext>();

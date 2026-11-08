@@ -50,7 +50,8 @@ export function AuditPage() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [users, setUsers] = useState<string[]>([]);
   const [servers, setServers] = useState<ServerRecord[]>([]);
-  const [user, setUser] = useState('');
+  // /audit?user=<name> (from the Activity page) opens pre-filtered.
+  const [user, setUser] = useState(() => new URLSearchParams(window.location.search).get('user') ?? '');
   const [family, setFamily] = useState('');
   const [server, setServer] = useState('');
   const [search, setSearch] = useState('');
