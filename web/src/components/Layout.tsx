@@ -19,6 +19,7 @@ import { useContextMenu } from './ContextMenu.js';
 import { instanceMenu } from './instanceMenu.js';
 import { useToast } from './Toast.js';
 import { NotificationBell } from './NotificationBell.js';
+import { AdminModeButton } from './AdminModeButton.js';
 import { saveColorMode, storedColorMode, storedTheme, type ColorMode } from '../lib/theme.js';
 
 /**
@@ -93,6 +94,7 @@ function useDestinations(): Destination[] {
     admin && { to: '/audit', label: 'Audit Log', icon: 'checklist', group: 'manage', tone: 'yellow' },
     firewall && { to: '/firewall', label: 'Firewall', icon: 'shieldCheck', group: 'manage', tone: 'red' },
     storage && { to: '/storage', label: 'Storage', icon: 'storage', group: 'system', tone: 'teal' },
+    admin && { to: '/host-files', label: 'Host Files', icon: 'folder', group: 'system', tone: 'yellow' },
     admin && { to: '/host-console', label: 'Host Console', icon: 'console', group: 'system', tone: 'violet' },
     admin && { to: '/libvirt/configuration', label: 'Libvirt Configuration', icon: 'monitor', group: 'system', tone: 'violet' },
     { to: '/configuration', label: 'Configuration', icon: 'configuration', group: 'system', tone: 'blue' },
@@ -577,6 +579,7 @@ function TopBar({ onMenu, menuLabel, system }: { onMenu: () => void; menuLabel: 
       </Link>
       <SearchField />
       <div className="ml-auto flex items-center gap-0.5">
+        <AdminModeButton />
         <span className="md:hidden">
           <TopBarButton label="Search" onClick={openCommandPalette}>
             <Icon name="search" className="h-5 w-5" />

@@ -112,6 +112,7 @@ function AppRoutes() {
           </RequireAuth>
         }
       />
+      <Route path="/host-files" element={<RequireAuth><RequireAdmin><FileManagerPage host /></RequireAdmin></RequireAuth>} />
       <Route
         path="/files/:serverId?"
         element={

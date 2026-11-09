@@ -3,6 +3,7 @@ import { setVisibleInterval } from '../lib/perf.js';
 import { api, getToken, setToken } from '../api/client.js';
 import { applyAssignedTheme } from '../lib/theme.js';
 import type { EffectiveCreation, PublicUser, Role } from '../api/types.js';
+import { resetAdminMode } from './adminMode.js';
 
 /** What a role can create when the server's creation policy hasn't loaded (yet) — so the
  *  "New instance" button never silently disappears. The server still enforces the real policy. */
@@ -115,6 +116,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(() => {
+    // Like Cockpit, signing out drops administrative access. Best effort: it also idles out server-side.
+    if (getToken()) void api.delete('/host-files/admin').catch(() => {});
+    resetAdminMode();
     setToken(null);
     setUser(null);
   }, []);
