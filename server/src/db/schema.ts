@@ -308,4 +308,12 @@ CREATE TABLE IF NOT EXISTS event_reads (
   user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
   last_read_id INTEGER NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS host_metrics (
+  at INTEGER PRIMARY KEY, cpu REAL, mem_mb REAL, load1 REAL, net_rx REAL, net_tx REAL, disk_read REAL, disk_write REAL
+);
+CREATE TABLE IF NOT EXISTS host_service_metrics (
+  at INTEGER NOT NULL, unit TEXT NOT NULL, cpu REAL, mem_mb REAL, io_read REAL, io_write REAL,
+  PRIMARY KEY (at, unit)
+);
+CREATE INDEX IF NOT EXISTS host_service_metrics_unit ON host_service_metrics(unit, at);
 `;

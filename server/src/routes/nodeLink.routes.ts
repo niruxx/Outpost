@@ -4,6 +4,7 @@ import { Router } from 'express';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { localNodeInfo, receiveTransfer, requireNodeKey } from '../services/nodeService.js';
 import { logAudit } from '../services/userService.js';
+import { hostAdminApi, remoteHostContext } from './hostAdmin.routes.js';
 
 /** Node-to-node API, authenticated by this panel's node key instead of a user session. */
 export const nodeLinkRouter = Router();
@@ -35,3 +36,6 @@ nodeLinkRouter.post(
 
 nodeLinkRouter.get('/inventory', (_req, res) => res.json(localInventory()));
 nodeLinkRouter.post('/provision', asyncHandler(async (req, res) => { nodeProvisionIdentity(req); await provisionOnNode(req, res); }));
+
+// Host administration by a linked panel (only when this host allows it; see hostAdmin.routes).
+nodeLinkRouter.use('/host', remoteHostContext, hostAdminApi);

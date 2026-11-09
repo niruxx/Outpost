@@ -33,6 +33,7 @@ export function Sparkline({
   domain,
   gapMs,
   formatTime,
+  markers,
 }: {
   data: ChartPoint[];
   color: string;
@@ -45,6 +46,8 @@ export function Sparkline({
   gapMs?: number;
   /** Adds the point's time to the hover tooltip. */
   formatTime?: (t: number) => string;
+  /** Times of points to highlight (e.g. anomalies) with a red dot. */
+  markers?: Set<number>;
 }) {
   const width = 100; // viewBox units; scales responsively via SVG width=100%
   const pad = 3;
@@ -116,6 +119,7 @@ export function Sparkline({
         <path d={areaPath} fill={`url(#${gradientId})`} stroke="none" />
         <path d={linePath} fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
         <circle cx={last[0]} cy={last[1]} r="1.8" fill={color} />
+        {markers && points.map((p, i) => (markers.has(data[i].t) ? <circle key={i} cx={p[0]} cy={p[1]} r="1.6" fill="var(--color-red-400, #f87171)" /> : null))}
         {hover && (
           <line x1={hover[0]} x2={hover[0]} y1={pad} y2={height - pad} stroke="currentColor" strokeWidth="1" className="text-surface-600" vectorEffect="non-scaling-stroke" />
         )}

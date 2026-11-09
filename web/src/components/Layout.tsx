@@ -94,6 +94,7 @@ function useDestinations(): Destination[] {
     admin && { to: '/audit', label: 'Audit Log', icon: 'checklist', group: 'manage', tone: 'yellow' },
     firewall && { to: '/firewall', label: 'Firewall', icon: 'shieldCheck', group: 'manage', tone: 'red' },
     storage && { to: '/storage', label: 'Storage', icon: 'storage', group: 'system', tone: 'teal' },
+    admin && { to: '/host', label: 'Host', icon: 'monitor', group: 'system', tone: 'green' },
     admin && { to: '/host-files', label: 'Host Files', icon: 'folder', group: 'system', tone: 'yellow' },
     admin && { to: '/host-console', label: 'Host Console', icon: 'console', group: 'system', tone: 'violet' },
     admin && { to: '/libvirt/configuration', label: 'Libvirt Configuration', icon: 'monitor', group: 'system', tone: 'violet' },

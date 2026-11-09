@@ -133,6 +133,11 @@ export function normalizeNodeUrl(raw: string): string {
   return url.origin;
 }
 
+/** Headers that authenticate this panel to a linked node. */
+export function nodeAuthHeaders(apiKey: string): Record<string, string> {
+  return { [NODE_KEY_HEADER]: apiKey, [LEGACY_NODE_KEY_HEADER]: apiKey };
+}
+
 async function callNode<T>(url: string, apiKey: string, path: string, timeoutMs = 5000): Promise<T> {
   let res: Response;
   try {

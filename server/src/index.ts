@@ -33,6 +33,11 @@ import { dockerRouter } from './routes/docker.routes.js';
 import { libvirtRouter } from './routes/libvirt.routes.js';
 import { terminalRouter } from './routes/terminal.routes.js';
 import { hostFilesRouter } from './routes/hostFiles.routes.js';
+import { hostAdminApi, hostLocalOnly, localHostContext } from './routes/hostAdmin.routes.js';
+import { remoteHostRouter } from './routes/remoteHost.routes.js';
+import { requireAuth as requireAuthForHost, requireRole as requireRoleForHost } from './auth/middleware.js';
+import { httpsRedirect, initTls, stopTls } from './services/tlsService.js';
+import { startHostMetricsHistory } from './services/hostMetricsHistoryService.js';
 import { stopHostFileSessions } from './services/hostFilesService.js';
 import { storageRouter } from './routes/storage.routes.js';
 import { registerHostTerminal, stopHostTerminals } from './services/hostTerminalService.js';
@@ -82,6 +87,7 @@ import './db/db.js'; // ensure the database + schema are initialized before anyt
 const PORT = Number(process.env.PORT ?? 8642);
 
 const app = express();
+app.use(httpsRedirect);
 app.use(express.json({ limit: '5mb' }));
 // Secrets stored on server records never leave the panel, whichever route sends the record.
 app.set('json replacer', (key: string, value: unknown) => {
@@ -154,6 +160,8 @@ app.use('/api/docker', dockerRouter);
 app.use('/api/libvirt', libvirtRouter);
 app.use('/api/terminal', terminalRouter);
 app.use('/api/host-files', hostFilesRouter);
+app.use('/api/host', requireAuthForHost, requireRoleForHost('admin'), localHostContext, hostLocalOnly, hostAdminApi);
+app.use('/api/remote-host', requireAuthForHost, requireRoleForHost('admin'), localHostContext, remoteHostRouter);
 app.use('/api/storage', storageRouter);
 app.use('/api/catalog', catalogRouter);
 app.use('/api/node-link', nodeLinkRouter);
@@ -185,10 +193,16 @@ app.use((err: unknown, _req: express.Request, res: express.Response, _next: expr
 initAutomation();
 const httpServer = http.createServer(app);
 const wss = new WebSocketServer({ noServer: true });
-registerHostTerminal(httpServer);
-registerVmConsole(httpServer);
 
-httpServer.on('upgrade', (req, socket, head) => {
+/** WebSocket endpoints, attached to the HTTP server and (when enabled) the HTTPS server. */
+function attachUpgrades(server: http.Server) {
+  registerHostTerminal(server);
+  registerVmConsole(server);
+  server.on('upgrade', handleConsoleUpgrade);
+}
+attachUpgrades(httpServer);
+
+function handleConsoleUpgrade(req: http.IncomingMessage, socket: import('node:stream').Duplex, head: Buffer) {
   const url = new URL(req.url ?? '', 'http://localhost');
   if (url.pathname === '/ws/host-terminal' || url.pathname === '/ws/vm-console') return; // handled by the host terminal upgrader
   const match = url.pathname.match(/^\/ws\/console\/([^/]+)$/);
@@ -228,7 +242,7 @@ httpServer.on('upgrade', (req, socket, head) => {
       })
     );
   });
-});
+}
 
 async function bootstrap() {
   initScheduler();
@@ -257,6 +271,7 @@ async function bootstrap() {
   startActivityPruning();
   startBrowserStats(isRunning);
   startMetricsHistory();
+  startHostMetricsHistory();
   pruneEvents();
   initRewind();
   recoverInterruptedTransfers();
@@ -271,6 +286,7 @@ async function bootstrap() {
   httpServer.listen(PORT, () => {
     logger.info(`Outpost panel listening on http://localhost:${PORT}`);
   });
+  initTls(app, attachUpgrades);
 }
 
 bootstrap();
@@ -280,6 +296,7 @@ function shutdown(signal: string) {
   stopAllForShutdown();
   stopHostTerminals();
   stopHostFileSessions();
+  stopTls();
   void stopSftp();
   httpServer.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 5000).unref();

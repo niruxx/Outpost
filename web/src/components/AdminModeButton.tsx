@@ -37,7 +37,7 @@ export function AdminModeButton() {
     setError('');
     try {
       await enableAdminMode(password);
-      toast.success('Admin Mode on — host files are managed as root');
+      toast.success('Admin Mode on — host changes run as root');
       close();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not turn on Admin Mode');
@@ -79,8 +79,8 @@ export function AdminModeButton() {
         {admin.alwaysOn ? (
           <div className="space-y-4">
             <Notice tone="warning">
-              Outpost is running as <b>{status.serviceUser}</b>, which already has administrative rights. Host file operations always run with full
-              access, so Admin Mode can't be turned off here.
+              Outpost is running as <b>{status.serviceUser}</b>, which already has administrative rights. Host files, services and software are always
+              managed with full access, so Admin Mode can't be turned off here.
             </Notice>
             <div className="flex justify-end">
               <Button onClick={close}>Close</Button>
@@ -90,7 +90,7 @@ export function AdminModeButton() {
           <div className="space-y-4">
             <p className="text-sm text-ink-300">
               You have administrative access in this browser session
-              {admin.since ? ` since ${new Date(admin.since).toLocaleTimeString([], { timeStyle: 'short' })}` : ''}. Host file operations run as{' '}
+              {admin.since ? ` since ${new Date(admin.since).toLocaleTimeString([], { timeStyle: 'short' })}` : ''}. Host files, services and software changes run as{' '}
               <b>root</b>. It switches back to limited access after {admin.idleMinutes} minutes without use.
             </p>
             <ErrorText>{error}</ErrorText>
@@ -111,7 +111,7 @@ export function AdminModeButton() {
         ) : (
           <form onSubmit={turnOn} className="space-y-4">
             <p className="text-sm text-ink-300">
-              Admin Mode lets the Host File Manager read and change files anywhere on this host as <b>root</b>, through <code>sudo</code> as{' '}
+              Admin Mode lets you change files anywhere on this host, control services and install software as <b>root</b>, through <code>sudo</code> as{' '}
               <b>{status.serviceUser}</b>. Changes can break the operating system — be careful. Every change is recorded in the audit log.
             </p>
             {admin.needsPassword ? (

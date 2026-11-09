@@ -27,6 +27,14 @@ import { AuditPage } from './pages/AuditPage.js';
 import { ActivityPage } from './pages/ActivityPage.js';
 import { ActivityTracker } from './components/ActivityTracker.js';
 import { FirewallPage } from './pages/FirewallPage.js';
+import { ServicesPage } from './pages/ServicesPage.js';
+import { SoftwarePage } from './pages/SoftwarePage.js';
+import { HostOverviewPage } from './pages/HostOverviewPage.js';
+import { HostMetricsPage } from './pages/HostMetricsPage.js';
+import { HostAccountsPage } from './pages/HostAccountsPage.js';
+import { HostNetworkPage } from './pages/HostNetworkPage.js';
+import { HostSecurityPage } from './pages/HostSecurityPage.js';
+import { HostDiagnosticsPage } from './pages/HostDiagnosticsPage.js';
 import type { ReactNode } from 'react';
 import { lazy, Suspense } from 'react';
 
@@ -112,6 +120,16 @@ function AppRoutes() {
           </RequireAuth>
         }
       />
+      <Route path="/host" element={<RequireAuth><RequireAdmin><HostOverviewPage /></RequireAdmin></RequireAuth>} />
+      <Route path="/host/metrics" element={<RequireAuth><RequireAdmin><HostMetricsPage /></RequireAdmin></RequireAuth>} />
+      <Route path="/host/services" element={<RequireAuth><RequireAdmin><ServicesPage /></RequireAdmin></RequireAuth>} />
+      <Route path="/host/software" element={<RequireAuth><RequireAdmin><SoftwarePage /></RequireAdmin></RequireAuth>} />
+      <Route path="/host/accounts" element={<RequireAuth><RequireAdmin><HostAccountsPage /></RequireAdmin></RequireAuth>} />
+      <Route path="/host/network" element={<RequireAuth><RequireAdmin><HostNetworkPage /></RequireAdmin></RequireAuth>} />
+      <Route path="/host/security" element={<RequireAuth><RequireAdmin><HostSecurityPage /></RequireAdmin></RequireAuth>} />
+      <Route path="/host/diagnostics" element={<RequireAuth><RequireAdmin><HostDiagnosticsPage /></RequireAdmin></RequireAuth>} />
+      <Route path="/services" element={<Navigate to="/host/services" replace />} />
+      <Route path="/software" element={<Navigate to="/host/software" replace />} />
       <Route path="/host-files" element={<RequireAuth><RequireAdmin><FileManagerPage host /></RequireAdmin></RequireAuth>} />
       <Route
         path="/files/:serverId?"

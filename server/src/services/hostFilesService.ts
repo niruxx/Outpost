@@ -15,6 +15,7 @@ import readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { HttpError } from '../utils/asyncHandler.js';
 import { HOST_FILE_OPS, HostFileError, type HostFileArgs, type HostFileOp, type HostFileResult } from './hostFileOps.js';
+import { HOST_ADMIN_OPS, type HostAdminArgs, type HostAdminOp, type HostAdminResult } from './hostAdminOps.js';
 
 const IDLE_MS = 15 * 60_000;
 const MAX_AGE_MS = 8 * 60 * 60_000;
@@ -24,10 +25,19 @@ const REQUEST_TIMEOUT_MS = 120_000;
 const FAILURE_WINDOW_MS = 5 * 60_000;
 const MAX_FAILURES = 5;
 
+interface PendingRequest {
+  resolve: (value: unknown) => void;
+  reject: (err: Error) => void;
+  timer: NodeJS.Timeout;
+  onProgress?: (chunk: string) => void;
+}
+
 interface Helper {
   child: ChildProcessWithoutNullStreams;
-  pending: Map<number, { resolve: (value: unknown) => void; reject: (err: Error) => void; timer: NodeJS.Timeout }>;
+  pending: Map<number, PendingRequest>;
   nextId: number;
+  /** Admin Mode ended while work was running: stop once the last request finishes. */
+  retiring?: boolean;
 }
 
 interface AdminSession {
@@ -78,17 +88,22 @@ function adminAvailability() {
 function expire() {
   const now = Date.now();
   for (const [key, session] of sessions) {
+    // Never time out in the middle of privileged work (a package upgrade can take a long time).
+    if (session.helper?.pending.size) continue;
     if (now - session.lastUsedAt > IDLE_MS || now - session.startedAt > MAX_AGE_MS) endSession(key);
   }
 }
 const sweeper = setInterval(expire, 30_000);
 sweeper.unref();
 
-function endSession(key: string) {
+function endSession(key: string, force = false) {
   const session = sessions.get(key);
   if (!session) return;
   sessions.delete(key);
-  stopHelper(session.helper);
+  if (force || !session.helper?.pending.size) stopHelper(session.helper);
+  // A running transaction is left to finish (killing dpkg/rpm halfway can break the system); the
+  // session is gone, so nothing new can be sent, and the helper stops after its last answer.
+  else session.helper.retiring = true;
 }
 
 function stopHelper(helper: Helper | null) {
@@ -155,10 +170,16 @@ function startHelper(password: string): Promise<Helper> {
       }
       const request = typeof message.id === 'number' ? helper.pending.get(message.id) : undefined;
       if (!request) return;
+      if (typeof (message as { progress?: unknown }).progress === 'string') {
+        request.onProgress?.((message as { progress: string }).progress);
+        return;
+      }
       helper.pending.delete(message.id!);
       clearTimeout(request.timer);
+      for (const session of sessions.values()) if (session.helper === helper) session.lastUsedAt = Date.now();
       if (message.ok) request.resolve(message.result);
       else request.reject(new HttpError(message.status ?? 500, message.error ?? 'Operation failed'));
+      if (helper.retiring && helper.pending.size === 0) stopHelper(helper);
     });
     child.on('exit', () => {
       fail(stderr.trim().split('\n').pop() || 'Authentication failed');
@@ -174,14 +195,14 @@ function startHelper(password: string): Promise<Helper> {
   });
 }
 
-function helperRequest(helper: Helper, op: string, args: unknown): Promise<unknown> {
+function helperRequest(helper: Helper, op: string, args: unknown, opts: { timeoutMs?: number; onProgress?: (chunk: string) => void } = {}): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const id = helper.nextId++;
     const timer = setTimeout(() => {
       helper.pending.delete(id);
       reject(new HttpError(504, 'The privileged helper did not answer in time'));
-    }, REQUEST_TIMEOUT_MS);
-    helper.pending.set(id, { resolve, reject, timer });
+    }, opts.timeoutMs ?? REQUEST_TIMEOUT_MS);
+    helper.pending.set(id, { resolve, reject, timer, onProgress: opts.onProgress });
     helper.child.stdin.write(`${JSON.stringify({ id, op, args })}\n`);
   });
 }
@@ -266,6 +287,34 @@ export async function runHostFileOp<K extends HostFileOp>(token: string, op: K, 
   }
 }
 
+/**
+ * Runs a privileged host-administration operation (services, timers, packages). Unlike file
+ * operations there is no limited-access fallback: Admin Mode must be on for this browser session.
+ */
+export async function runHostSystemOp<K extends HostAdminOp>(
+  token: string,
+  op: K,
+  args: HostAdminArgs<K>,
+  opts: { timeoutMs?: number; onProgress?: (chunk: string) => void } = {}
+): Promise<HostAdminResult<K>> {
+  expire();
+  const session = sessions.get(keyOf(token));
+  try {
+    if (session?.helper) {
+      session.lastUsedAt = Date.now();
+      return (await helperRequest(session.helper, op, args, opts)) as HostAdminResult<K>;
+    }
+    if (processIsPrivileged()) {
+      const fn = HOST_ADMIN_OPS[op] as unknown as (a: HostAdminArgs<K>, emit?: (chunk: string) => void) => Promise<HostAdminResult<K>>;
+      return await fn(args, opts.onProgress);
+    }
+  } catch (err) {
+    if (err instanceof HostFileError) throw new HttpError(err.status, err.message);
+    throw err;
+  }
+  throw new HttpError(403, 'Turn on Admin Mode (top bar) to make changes to the host');
+}
+
 export function stopHostFileSessions() {
-  for (const key of [...sessions.keys()]) endSession(key);
+  for (const key of [...sessions.keys()]) endSession(key, true);
 }

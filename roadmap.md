@@ -1,6 +1,6 @@
 # Roadmap
 
-Planned features inspired by AMP and other game panels. These are development goals, not commitments or implemented functionality.
+Planned features inspired by AMP, Cockpit and other panels. These are development goals, not commitments or implemented functionality.
 
 ## Identity and account access
 
@@ -53,6 +53,20 @@ Planned features inspired by AMP and other game panels. These are development go
 - [x] Capability-checked ATA/NVMe block/crypto firmware sanitization, persistent interruption guards and SMART summaries in disk lists.
 - [x] Additional complex-stack shrink recipes, automatic multi-LV shrink/extent compaction, RAID level/layout conversion and shrink, and shared/multiple-namespace NVMe sanitization. See [supported limits](docs/expert-storage.md).
 
+## Cockpit parity
+
+Host-administration gaps compared with Cockpit. Outpost already covers storage, libvirt VMs, Docker/Podman containers, the host terminal, firewall rules, journal/`/var/log` viewing, host files and live metrics.
+
+- [x] Systemd service management: start/stop/restart/reload, enable/disable, mask/unmask, per-unit journal and properties, and creating/editing/deleting timers. See [Services and Software](docs/services-and-software.md).
+- [x] Software updates through apt/dnf/pacman: available updates with security flags, selective or full upgrades, a reboot-required notice and an automatic-updates switch (unattended-upgrades / dnf-automatic). Also an app browser that searches the repositories, groups packages by purpose and installs/removes them after a preview.
+- [x] Host user and group management: create, lock, unlock and delete accounts; groups and administrator (sudo/wheel) membership; passwords, forced changes and expiry; `authorized_keys` editing; and ending login sessions. See [Host administration](docs/host-administration.md).
+- [x] Network configuration through NetworkManager: IPv4/IPv6 addresses, gateways and DNS, MTU, connect/disconnect, and bonds, bridges and VLANs. Every change runs in a NetworkManager checkpoint and rolls back automatically if the browser can't reach the panel afterwards. Team devices aren't offered, because NetworkManager has deprecated them.
+- [x] System settings: hostname, time zone, NTP on/off and servers (chrony or timesyncd), the clock, immediate or scheduled reboot and shutdown with cancel, and `tuned` performance profiles.
+- [x] Historical host metrics: a week of per-minute host CPU, memory, load, network and disk history, plus per-service CPU, memory and disk I/O from systemd cgroups, with anomaly highlighting. Outpost samples these itself instead of using PCP, and network traffic is host-wide only.
+- [x] Security posture: SELinux mode and denials with `audit2why`/`audit2allow` explanations, AppArmor profile modes and denials, the system crypto policy, and the panel's own HTTPS (Let's Encrypt via certbot, upload or self-signed; served on a second port with optional redirect).
+- [x] Diagnostics: `sos` reports with live output, download and delete; kdump status, enable, dump folder, crash-memory reservation (Fedora/RHEL) and a typed-confirmation crash test.
+- [x] Multi-host host administration: a host switcher on the Host pages administers any linked Outpost node that allows it, with Admin Mode for that host and auditing on both panels. Host Files and Host Console remain local-only.
+
 ## Comparison and sources
 
 Reviewed October 28, 2026. This assumes “xmp” refers to CubeCoders AMP. These are gaps found in this repository compared with documented features; they are not a claim that every competing panel includes everything below.
@@ -64,6 +78,7 @@ Reviewed October 28, 2026. This assumes “xmp” refers to CubeCoders AMP. Thes
 | Automation triggered by in-game events | AMP can schedule actions in response to player/application events. Outpost has timed tasks, updates and notifications. | Trigger workflows when players join/leave or particular game events occur. |
 | Unattended bare-host provisioning and auxiliary-port allocation bundles | Pterodactyl manages Wings nodes and their allocations. Outpost now inventories registered hosts and provisions instances with primary-port pools; bare-host installation and auxiliary-port bundles remain open. | Operate a fleet and assign server capacity from one panel. |
 | Hosting-provider billing integration | AMP's Enterprise features include billing integration. Outpost lists WHMCS/Paymenter integration as unfinished. | Automate paid provisioning, quotas, renewals and suspension. |
+| Remaining Cockpit differences | Cockpit edits networks on systemd-networkd hosts through other plugins, offers team devices, uses PCP for metrics, and can open its terminal and file browser on other hosts. Outpost's Host pages cover NetworkManager hosts only, and its Host Files and Host Console are local-only. | Smaller gaps; the Cockpit-parity items above are done. |
 
 Additional repository gaps include email-based password reset, unattended installation of new Outpost hosts, auxiliary-port allocation bundles and tournament/veto orchestration. Core Steam accounts, CurseForge packs, event/webhook rules, fleet placement and CS2 match/demo/player controls are now available; see [operations setup and supported limits](docs/operations.md). These are useful development candidates, not assertions that every other panel implements them.
 
@@ -76,6 +91,7 @@ Sources:
 - [AMP product features](https://cubecoders.com/AMP) — WebAuthn and event-based scheduling.
 - [CubeCoders on OIDC replacing LDAP](https://discourse.cubecoders.com/t/feature-deprecation-notice-ldap-authentication/26349) — OIDC identity-provider support; LDAP should not be treated as a current AMP advantage.
 - [AMP 3 licensing changes](https://discourse.cubecoders.com/t/licencing-changes-in-amp-3/43143) — billing integration and announced licensing changes. Announced AMP 3 tier changes are not assumed to be released capabilities.
+- [Cockpit project](https://cockpit-project.org/) and [Cockpit guide](https://cockpit-project.org/guide/latest/): Services, Software Updates, Accounts, Networking, SELinux, diagnostic reports, kdump and metrics.
 - [Pterodactyl: creating a node](https://docs.pterodactyl.io/v2/guides/configuration/add-node) — node registration and allocations.
 
 Feature availability can vary with edition/version. This comparison focuses on capabilities, not prices or licensing tiers.
