@@ -1,20 +1,18 @@
 #!/usr/bin/env bash
 #
 # Outpost installer for macOS (Apple Silicon and Intel, macOS 12+).
-# Installs prerequisites (Xcode command-line tools, Homebrew, Node.js 22.5+, optionally Java 21
-# and a container engine), builds the app, verifies it, and can run it in the background at login
+# Installs prerequisites (Xcode command-line tools, prebuilt Node.js 22.5+ and Minecraft
+# Java runtimes), builds the app, verifies it, and can run it in the background at login
 # with launchd.
 #
 # Usage: run from inside a cloned Outpost checkout:
 #   ./install-macos.sh            (or: bash install-macos.sh)
 #
-# Non-interactive (accepts every default: Java yes, Docker Desktop yes, launchd agent yes):
+# Non-interactive (accepts every default: Minecraft Java runtimes yes, launchd agent yes):
 #   ./install-macos.sh -y
 #
 # Other options:
-#   ./install-macos.sh --engine=podman   # Podman instead of Docker Desktop
-#   ./install-macos.sh --no-containers   # skip the container engine
-#   ./install-macos.sh --no-java         # skip Java (only needed for Minecraft Java servers)
+#   ./install-macos.sh --no-java         # skip Minecraft Java runtimes
 #   ./install-macos.sh --port=9000       # listen on another port (default 8642)
 #   ./install-macos.sh --remove-agent    # stop and remove the background (launchd) service
 #
@@ -37,25 +35,22 @@ die()   { err "$*"; exit 1; }
 heading() { printf '\n%s%s%s\n' "$BOLD" "$*" "$NC"; }
 
 NONINTERACTIVE=0
-ENGINE=""          # docker | podman | "" (ask; default docker)
-CONTAINERS=1
 JAVA=1
 PORT_ARG=""
 REMOVE_AGENT=0
 for arg in "$@"; do
   case "$arg" in
     -y|--yes) NONINTERACTIVE=1 ;;
-    --engine=docker|--engine=podman) ENGINE="${arg#--engine=}" ;;
-    --no-containers) CONTAINERS=0 ;;
+    --engine=*) die "Container setup on macOS is planned for a later phase. This installer currently targets Minecraft Java." ;;
+    --no-containers) : ;; # Compatibility with earlier installer commands.
     --no-java) JAVA=0 ;;
     --port=*) PORT_ARG="${arg#--port=}" ;;
     --remove-agent) REMOVE_AGENT=1 ;;
     -h|--help)
-      echo "Usage: $0 [-y|--yes] [--engine=docker|podman] [--no-containers] [--no-java] [--port=N] [--remove-agent]"
-      echo "  -y, --yes          Non-interactive: accept every default (Java, Docker Desktop, launchd agent)."
-      echo "  --engine=ENGINE    Container engine: docker (Docker Desktop, default) or podman."
-      echo "  --no-containers    Don't install a container engine."
-      echo "  --no-java          Don't install Java 21 (only Minecraft Java servers need it)."
+      echo "Usage: $0 [-y|--yes] [--no-containers] [--no-java] [--port=N] [--remove-agent]"
+      echo "  -y, --yes          Non-interactive: install Minecraft Java runtimes and accept launchd defaults."
+      echo "  --no-containers    Compatibility option; containers are not installed."
+      echo "  --no-java          Skip Minecraft Java runtime installation."
       echo "  --port=N           Port for the panel (default 8642)."
       echo "  --remove-agent     Stop and remove the background launchd service, then exit."
       echo "  Intel and Apple Silicon are detected automatically; no architecture flag is needed."
@@ -121,8 +116,8 @@ fi
 MACOS_VERSION="$(sw_vers -productVersion)"
 ARCH="$(uname -m)"
 case "$ARCH" in
-  arm64) BREW_DEFAULT_PREFIX="/opt/homebrew" ;;
-  x86_64) BREW_DEFAULT_PREFIX="/usr/local" ;;
+  arm64) LOCAL_TOOLS_PREFIX="/opt/homebrew" ;;
+  x86_64) LOCAL_TOOLS_PREFIX="/usr/local" ;;
   *) die "Unsupported Mac architecture: $ARCH. Expected arm64 (Apple Silicon) or x86_64 (Intel)." ;;
 esac
 ok "macOS $MACOS_VERSION ($ARCH)"
@@ -134,14 +129,8 @@ case "$PROJECT_DIR" in
     ;;
 esac
 
-# Cache the sudo password once up front (Homebrew, Docker Desktop and the Java link all need it).
-info "Some steps need administrator rights. Enter your Mac password if asked."
-sudo -v || die "Couldn't get administrator rights. Your user must be an admin on this Mac."
-# Keep the sudo timestamp fresh until the script exits.
-( while true; do sudo -n true 2>/dev/null; sleep 50; kill -0 "$$" 2>/dev/null || exit; done ) &
-SUDO_KEEPALIVE_PID=$!
 cleanup() {
-  kill "$SUDO_KEEPALIVE_PID" >/dev/null 2>&1 || true
+  [[ -z "${INSTALL_TMP:-}" ]] || rm -rf "$INSTALL_TMP"
   [[ -n "${VERIFY_PID:-}" ]] && kill "$VERIFY_PID" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
@@ -167,49 +156,10 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Step 2 — Homebrew, Node.js, Java, container engine
+# Step 2 - Node.js and Minecraft Java runtimes
 # ---------------------------------------------------------------------------
-heading "Step 2/6 — Homebrew and prerequisites"
+heading "Step 2/6 - Node.js and Minecraft Java runtimes"
 
-find_brew() {
-  # Use this architecture's prefix: /usr/local on Intel, /opt/homebrew on Apple Silicon.
-  if [[ -x "$BREW_DEFAULT_PREFIX/bin/brew" ]]; then echo "$BREW_DEFAULT_PREFIX/bin/brew"
-  elif command -v brew >/dev/null 2>&1; then command -v brew
-  else return 1; fi
-}
-
-if BREW="$(find_brew)"; then
-  ok "Homebrew found ($BREW)"
-else
-  info "Installing Homebrew…"
-  BREW_INSTALL_REF="HEAD"
-  if [[ "$ARCH" == "x86_64" ]]; then
-    # Parent of Homebrew/install e078684, which removed Intel installation support.
-    # Pin only the bootstrap script; brew and its packages still receive updates.
-    BREW_INSTALL_REF="7a133dcc74051ee4efc79467ed215dfedf45aea2"
-    warn "Homebrew's latest installer no longer supports Intel Macs. Using its last Intel-compatible installer."
-    warn "Intel Homebrew is Tier 3: some packages may build from source or be unavailable."
-  fi
-  BREW_INSTALL_URL="https://raw.githubusercontent.com/Homebrew/install/$BREW_INSTALL_REF/install.sh"
-  BREW_INSTALL_SCRIPT="$(curl -fsSL "$BREW_INSTALL_URL")" \
-    || die "Couldn't download the Homebrew installer. Check your connection and re-run this script."
-  [[ -n "$BREW_INSTALL_SCRIPT" ]] || die "The downloaded Homebrew installer is empty. Re-run this script."
-  NONINTERACTIVE=1 /bin/bash -c "$BREW_INSTALL_SCRIPT" \
-    || die "Homebrew installation failed. Check the output above, then re-run this script."
-  BREW="$(find_brew)" || die "Homebrew installation didn't finish. See https://brew.sh and re-run this script."
-  ok "Homebrew installed ($BREW)"
-fi
-eval "$("$BREW" shellenv)"
-BREW_PREFIX="$("$BREW" --prefix)"
-
-# Make brew available in new Terminal windows too.
-ZPROFILE="$HOME/.zprofile"
-if ! grep -qs "brew shellenv" "$ZPROFILE" "$HOME/.zshrc" "$HOME/.bash_profile" 2>/dev/null; then
-  if confirm "Add Homebrew to your shell profile ($ZPROFILE) so 'brew', 'node' and 'npm' work in new Terminal windows?" y; then
-    printf '\neval "$(%s shellenv)"\n' "$BREW" >> "$ZPROFILE"
-    ok "Updated $ZPROFILE"
-  fi
-fi
 
 node_version_ok() {
   command -v node >/dev/null 2>&1 || return 1
@@ -222,19 +172,35 @@ node_version_ok() {
 if node_version_ok; then
   ok "Node.js $(node -v) ($(command -v node))"
 else
-  if command -v node >/dev/null 2>&1; then
-    warn "Node.js $(node -v) at $(command -v node) is too old (need 22.5+). Installing a current one with Homebrew."
-  fi
-  if "$BREW" list --formula node >/dev/null 2>&1; then
-    info "Upgrading Homebrew's Node.js…"
-    "$BREW" upgrade node || true
-  else
-    info "Installing Node.js with Homebrew…"
-    "$BREW" install node
-  fi
-  export PATH="$BREW_PREFIX/bin:$PATH"
+  info "Installing official prebuilt Node.js 22 (no Homebrew compiler builds)..."
+  case "$ARCH" in
+    x86_64) NODE_ARCH="x64" ;;
+    arm64) NODE_ARCH="arm64" ;;
+  esac
+  INSTALL_TMP="$(mktemp -d)"
+  curl -fSL --retry 3 "https://nodejs.org/dist/latest-v22.x/SHASUMS256.txt" -o "$INSTALL_TMP/SHASUMS256.txt"
+  NODE_ARCHIVE="$(awk -v arch="$NODE_ARCH" '$2 ~ ("^node-v22[.][0-9]+[.][0-9]+-darwin-" arch "[.]tar[.]gz$") { print $2; exit }' "$INSTALL_TMP/SHASUMS256.txt")"
+  [[ -n "$NODE_ARCHIVE" ]] || die "No official Node.js 22 download was found for $ARCH."
+  # Use the versioned URL so a release during installation cannot change the archive.
+  NODE_VERSION="${NODE_ARCHIVE#node-}"
+  NODE_VERSION="${NODE_VERSION%-darwin-*}"
+  curl -fSL --retry 3 "https://nodejs.org/dist/$NODE_VERSION/$NODE_ARCHIVE" -o "$INSTALL_TMP/$NODE_ARCHIVE"
+  awk -v file="$NODE_ARCHIVE" '$2 == file' "$INSTALL_TMP/SHASUMS256.txt" > "$INSTALL_TMP/node.sha256"
+  (cd "$INSTALL_TMP" && shasum -a 256 -c node.sha256) || die "Node.js checksum verification failed."
+  NODE_INSTALL_ROOT="$HOME/.local/share/outpost/node"
+  mkdir -p "$NODE_INSTALL_ROOT"
+  tar -xzf "$INSTALL_TMP/$NODE_ARCHIVE" -C "$NODE_INSTALL_ROOT"
+  NODE_RUNTIME="$NODE_INSTALL_ROOT/${NODE_ARCHIVE%.tar.gz}"
+  export PATH="$NODE_RUNTIME/bin:$PATH"
   hash -r
-  node_version_ok || die "Node.js 22.5+ still isn't first on your PATH ($(command -v node || echo 'not found')). Remove the older Node.js (nvm/installer) or put $BREW_PREFIX/bin first, then re-run."
+  node_version_ok || die "The downloaded Node.js runtime couldn't run on this Mac."
+  rm -rf "$INSTALL_TMP"
+  INSTALL_TMP=""
+  if ! grep -Fqs "$NODE_RUNTIME/bin" "$HOME/.zprofile" 2>/dev/null; then
+    if confirm "Add Node.js to ~/.zprofile for new Terminal windows?" y; then
+      printf '\nexport PATH=%q/bin:"$PATH"\n' "$NODE_RUNTIME" >> "$HOME/.zprofile"
+    fi
+  fi
   ok "Node.js $(node -v) ($(command -v node))"
 fi
 NODE_BIN="$(command -v node)"
@@ -245,28 +211,15 @@ case "$NODE_BIN" in
     ;;
 esac
 
-# Java: Outpost discovers JDKs in /Library/Java/JavaVirtualMachines, so link Homebrew's JDK there.
+# Download the Java versions Minecraft/modpack servers use into Outpost's runtime directory.
 JAVA_HOME_DIR=""
 if [[ "$JAVA" == "1" ]]; then
-  if JAVA_HOME_DIR="$(/usr/libexec/java_home -v 21+ 2>/dev/null)"; then
-    ok "Java 21+ found ($JAVA_HOME_DIR)"
-  elif confirm "Install Java 21 (needed for Minecraft Java servers: Vanilla, Paper, Purpur, Spigot)?" y; then
-    info "Installing OpenJDK 21 with Homebrew…"
-    "$BREW" install openjdk@21
-    JDK_SRC="$BREW_PREFIX/opt/openjdk@21/libexec/openjdk.jdk"
-    [[ -d "$JDK_SRC" ]] || die "Homebrew's JDK wasn't found at $JDK_SRC."
-    info "Linking it into /Library/Java/JavaVirtualMachines so macOS and Outpost can find it…"
-    sudo mkdir -p /Library/Java/JavaVirtualMachines
-    sudo ln -sfn "$JDK_SRC" /Library/Java/JavaVirtualMachines/openjdk-21.jdk
-    JAVA_HOME_DIR="$(/usr/libexec/java_home -v 21+ 2>/dev/null)" || die "Java 21 was installed but macOS can't find it."
-    ok "Java 21 ready ($JAVA_HOME_DIR)"
-  else
-    info "Skipping Java. Minecraft Java servers won't start until you install Java 21+."
-  fi
+  info "Installing Minecraft Java runtimes (prebuilt Temurin; no Homebrew)..."
+  JAVA_HOME_DIR="$("$NODE_BIN" "$PROJECT_DIR/scripts/install-macos-java.mjs" "${DATA_DIR:-$PROJECT_DIR/server/data}/runtimes" "$ARCH")" \
+    || die "Minecraft Java runtime setup failed. See the output above and re-run to resume."
+  export JAVA_HOME="$JAVA_HOME_DIR"
 fi
-
-# Container engine (Docker / Portainer / app-catalog instances)
-PORTAINER_IMAGE="docker.io/portainer/portainer-ce:lts"
+info "macOS setup currently targets Minecraft Java. Containers, SteamCMD and Wine are planned for later."
 
 wait_for() {  # wait_for <seconds> <command...>
   local limit="$1"; shift
@@ -276,73 +229,6 @@ wait_for() {  # wait_for <seconds> <command...>
     (( i >= limit )) && return 1
   done
 }
-
-install_docker() {
-  if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
-    ok "A Docker engine is already running ($(docker context show 2>/dev/null || echo default))"
-    return 0
-  fi
-  if [[ ! -d "/Applications/Docker.app" ]] && ! command -v docker >/dev/null 2>&1; then
-    info "Installing Docker Desktop with Homebrew…"
-    "$BREW" install --cask docker-desktop || "$BREW" install --cask docker || return 1
-  fi
-  if [[ -d "/Applications/Docker.app" ]]; then
-    info "Starting Docker Desktop. Accept its license and finish its setup window if one appears."
-    open -a Docker || true
-    info "Waiting for the Docker engine (up to 3 minutes)…"
-    if wait_for 180 docker info; then
-      ok "Docker is running"
-      return 0
-    fi
-    warn "Docker Desktop isn't ready yet. Finish its first-run setup; Outpost picks it up once it's running."
-    return 1
-  fi
-  warn "A docker command exists but no engine is running. Start Docker Desktop, OrbStack or Colima."
-  return 1
-}
-
-install_podman() {
-  if ! command -v podman >/dev/null 2>&1; then
-    info "Installing Podman with Homebrew…"
-    "$BREW" install podman || return 1
-  fi
-  if ! podman machine inspect >/dev/null 2>&1; then
-    info "Creating the Podman virtual machine…"
-    podman machine init || return 1
-  fi
-  if ! podman info >/dev/null 2>&1; then
-    info "Starting the Podman virtual machine…"
-    podman machine start || return 1
-  fi
-  ok "Podman is running"
-  warn "On macOS, Podman runs in a VM. One-click Portainer may not see the engine; Docker Desktop is the smoother option."
-}
-
-if [[ "$CONTAINERS" == "1" ]] && confirm "Set up a container engine for Docker, Portainer and app-catalog instances?" y; then
-  if [[ -z "$ENGINE" ]]; then
-    if command -v podman >/dev/null 2>&1 && ! command -v docker >/dev/null 2>&1; then
-      ENGINE=podman
-    elif [[ "$NONINTERACTIVE" == "1" || ! -t 0 ]]; then
-      ENGINE=docker
-    else
-      read -r -p "Which engine: docker (Docker Desktop) or podman? [docker] " ENGINE || ENGINE=""
-      ENGINE="${ENGINE:-docker}"
-    fi
-  fi
-  case "$ENGINE" in
-    docker) install_docker || warn "Docker setup didn't finish; see above." ;;
-    podman) install_podman || warn "Podman setup didn't finish; see above." ;;
-    *) warn "Unknown engine '$ENGINE'; skipping container setup."; ENGINE="" ;;
-  esac
-  if [[ -n "$ENGINE" ]] && "$ENGINE" info >/dev/null 2>&1 \
-     && confirm "Pre-download the Portainer image so one-click Portainer instances start immediately?" y; then
-    "$ENGINE" pull "$PORTAINER_IMAGE" && ok "Portainer image ready" \
-      || warn "Couldn't pull $PORTAINER_IMAGE; it'll be pulled when you create a Portainer instance."
-  fi
-else
-  ENGINE=""
-  info "Skipping container support. Re-run with --engine=docker or --engine=podman to add it later."
-fi
 
 # ---------------------------------------------------------------------------
 # Step 3 — Install dependencies and build
@@ -428,7 +314,7 @@ xml_escape() { printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>
 
 if [[ "$RUN_MODE" == "agent" ]]; then
   mkdir -p "$HOME/Library/LaunchAgents" "$LOG_DIR"
-  AGENT_PATH="$BREW_PREFIX/bin:$BREW_PREFIX/sbin:$(dirname "$NODE_BIN"):/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+  AGENT_PATH="$(dirname "$NODE_BIN"):$LOCAL_TOOLS_PREFIX/bin:$LOCAL_TOOLS_PREFIX/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
   [[ -d /Applications/Docker.app/Contents/Resources/bin ]] && AGENT_PATH="$AGENT_PATH:/Applications/Docker.app/Contents/Resources/bin"
 
   PROGRAM_ARGS=""
@@ -514,9 +400,7 @@ if [[ "$RUN_MODE" == "agent" ]]; then
   echo "  Remove:    $PROJECT_DIR/install-macos.sh --remove-agent"
   echo
   echo "To update later: git pull, then re-run ./install-macos.sh (it rebuilds and restarts the service)."
-  if [[ "$ENGINE" == "docker" ]]; then
-    echo "Tip: enable Docker Desktop → Settings → General → \"Start Docker Desktop when you sign in\"."
-  fi
+
   open "http://localhost:$PORT" >/dev/null 2>&1 || true
 elif [[ "$RUN_MODE" == "foreground" ]]; then
   echo "Starting Outpost now. Press Ctrl+C to stop it. Later, start it again with:"
@@ -525,7 +409,7 @@ elif [[ "$RUN_MODE" == "foreground" ]]; then
   ( sleep 4; open "http://localhost:$PORT" >/dev/null 2>&1 ) &
   cd "$PROJECT_DIR/server"
   trap - EXIT
-  kill "$SUDO_KEEPALIVE_PID" >/dev/null 2>&1 || true
+  [[ -z "${INSTALL_TMP:-}" ]] || rm -rf "$INSTALL_TMP"
   exec env PORT="$PORT" "$NODE_BIN" dist/index.js
 else
   echo "Start Outpost whenever you want it running:"

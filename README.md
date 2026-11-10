@@ -93,9 +93,9 @@ The dashboard adapts to smaller screens with stacked cards and a navigation draw
 > With **Docker** it installs `docker.io` / `moby-engine` / `docker`, enables `docker.service` + `docker.socket` and adds you to the `docker` group (root-equivalent — log out and back in afterwards). With **Podman** it installs `podman`, enables your user's `podman.socket` (what Portainer talks to) and turns on lingering so it runs without a login. Either way it can pre-download the Portainer image.
 
 > [!TIP]
-> On **macOS (Intel and Apple Silicon)**, `./install-macos.sh` installs the Xcode command-line tools, Homebrew, Node.js, Java 21 and Docker Desktop (or `--engine=podman`), builds and verifies the panel, and can run it in the background at login with launchd. It selects Homebrew from `/usr/local` on Intel or `/opt/homebrew` on Apple Silicon. Run `./install-macos.sh --help` for options.
+> On **macOS (Intel and Apple Silicon)**, `./install-macos.sh` currently targets **Minecraft Java servers**. It installs prebuilt Node.js and checksum-verified Temurin JDKs 8, 11, 17, 21 and 25, plus legacy Java 16 where available, builds and verifies the panel, and can run it at login with launchd. JDKs live in `server/data/runtimes` (or `$DATA_DIR/runtimes`) and are selected per instance by Outpost. Existing managed runtimes are reused. No Homebrew, container engine, SteamCMD or Wine is installed.
 
-> Intel Macs are detected automatically; no `--intel` option is needed. For a new Intel Homebrew installation, Outpost uses the [official installer revision before Intel support was removed](https://github.com/Homebrew/install/commit/7a133dcc74051ee4efc79467ed215dfedf45aea2). This pins only the installer, not Homebrew or package updates. Intel Homebrew is [Tier 3](https://docs.brew.sh/Support-Tiers), so individual prerequisites may need to build from source or may be unavailable.
+> Intel Macs are detected automatically; no `--intel` option is needed. Run `./install-macos.sh -y` for unattended setup, or `--no-java` to skip runtime downloads. Legacy Java 16 may be unavailable on some architectures; the installer reports this explicitly. Containers, SteamCMD/Wine games, Bedrock and broader macOS host features are planned for later phases; their existing UI entries do not imply macOS compatibility.
 
 ```bash
 git clone <this-repo-url> Outpost && cd Outpost

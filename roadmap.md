@@ -2,6 +2,19 @@
 
 Planned features inspired by AMP, Cockpit and other panels. These are development goals, not commitments or implemented functionality.
 
+## macOS: Minecraft Java first
+
+The current macOS installer focuses on Minecraft Java on Intel and Apple Silicon. It installs prebuilt Node.js and verified Temurin JDKs 8, 11, 17, 21 and 25; legacy Java 16 is attempted where available. Managed runtimes are reused and selected per instance. No Homebrew, container engine, SteamCMD or Wine is installed by this setup. This is an installation scope, not a claim that every Minecraft/modpack version has been tested on both architectures.
+
+- [ ] Validate Minecraft Java creation, downloads, start/stop, console, saves, backups and updates on Intel and Apple Silicon.
+- [ ] Validate Fabric, Forge, NeoForge and server modpacks individually, including native-library requirements.
+- [ ] Add platform-aware feature availability so deferred macOS features are clearly marked in the UI.
+- [ ] Add and validate macOS container-engine support, networking and Portainer.
+- [ ] Add and validate macOS SteamCMD downloads and per-game executable/platform selection.
+- [ ] Add and validate native Wine runtimes and Windows-server compatibility per game.
+- [ ] Evaluate Linux VM/linked-host workflows for unsupported game servers.
+- [ ] Validate Bedrock and broader host-administration features separately before advertising macOS support.
+
 ## Identity and account access
 
 - [ ] OIDC single sign-on with providers such as Authentik or Keycloak.
