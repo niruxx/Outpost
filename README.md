@@ -93,9 +93,24 @@ The dashboard adapts to smaller screens with stacked cards and a navigation draw
 > With **Docker** it installs `docker.io` / `moby-engine` / `docker`, enables `docker.service` + `docker.socket` and adds you to the `docker` group (root-equivalent — log out and back in afterwards). With **Podman** it installs `podman`, enables your user's `podman.socket` (what Portainer talks to) and turns on lingering so it runs without a login. Either way it can pre-download the Portainer image.
 
 > [!TIP]
-> On **macOS (Intel and Apple Silicon)**, `./install-macos.sh` currently targets **Minecraft Java servers**. It installs prebuilt Node.js and checksum-verified Temurin JDKs 8, 11, 17, 21 and 25, plus legacy Java 16 where available, builds and verifies the panel, and can run it at login with launchd. JDKs live in `server/data/runtimes` (or `$DATA_DIR/runtimes`) and are selected per instance by Outpost. Existing managed runtimes are reused. No Homebrew, container engine, SteamCMD or Wine is installed.
+Install, update and uninstall entry points live in platform-specific directories:
 
-> Intel Macs are detected automatically; no `--intel` option is needed. Run `./install-macos.sh -y` for unattended setup, or `--no-java` to skip runtime downloads. Legacy Java 16 may be unavailable on some architectures; the installer reports this explicitly. Containers, SteamCMD/Wine games, Bedrock and broader macOS host features are planned for later phases; their existing UI entries do not imply macOS compatibility.
+```text
+dist/
+  linux/    install.sh   update.sh   uninstall.sh
+  macos/    install.sh   update.sh   uninstall.sh
+  windows/  install.ps1  update.ps1  uninstall.ps1
+```
+
+Use `./install.sh`, `./update.sh` or `./uninstall.sh` on Linux/macOS (or Git Bash on Windows). These detect the OS and forward arguments to its script. In Windows PowerShell use `.\install.ps1`, `.\update.ps1` or `.\uninstall.ps1`; Command Prompt has matching `.cmd` launchers. The old `install-macos.sh` command remains a compatibility wrapper. Run any entry point with `--help` for that platform's options.
+
+Windows setup requires Windows PowerShell, WinGet for missing Node.js/Java packages, and Git for updates. It installs Node.js LTS and Java 21/25, builds the panel, and offers a per-user login task. Additional Java versions can be installed through Outpost's runtime manager. It does not configure a container engine. Optional native modules may require Windows build tools; see [Host Console dependencies](docs/host-console.md).
+
+macOS/Windows updates back up data before pulling with `--ff-only` and rebuilding; commit or stash local edits first. Stop any separately launched foreground process before updating or uninstalling. Their uninstallers retain data and shared dependencies by default; `--purge` requires typing `delete`, and external data paths are retained for manual cleanup. Linux retains its existing richer distro, systemd, backup and package-removal workflows. Platform options differ; check `--help` before reusing flags between operating systems.
+
+> On **macOS (Intel and Apple Silicon)**, `./install.sh` currently targets **Minecraft Java servers**. It installs prebuilt Node.js and checksum-verified Temurin JDKs 8, 11, 17, 21 and 25, plus legacy Java 16 where available, builds and verifies the panel, and can run it at login with launchd. JDKs live in `server/data/runtimes` (or `$DATA_DIR/runtimes`) and are selected per instance by Outpost. Existing managed runtimes are reused. No Homebrew, container engine, SteamCMD or Wine is installed.
+
+> Intel Macs are detected automatically; no `--intel` option is needed. Run `./install.sh -y` for unattended setup, or `--no-java` to skip runtime downloads. Legacy Java 16 may be unavailable on some architectures; the installer reports this explicitly. Containers, SteamCMD/Wine games, Bedrock and broader macOS host features are planned for later phases; their existing UI entries do not imply macOS compatibility.
 
 ```bash
 git clone <this-repo-url> Outpost && cd Outpost
@@ -696,7 +711,7 @@ Open ports: the panel's `8642` only needs to reach admins (consider HTTPS via a 
 
 **🪟 Windows service** — with [NSSM](https://nssm.cc/download): `nssm install Outpost` → Path `C:\Program Files\nodejs\node.exe`, Startup directory = the Outpost folder, Arguments `server\dist\index.js` → `nssm start Outpost`.
 
-**🍎 launchd** — easiest: run `./install-macos.sh` and answer yes to the background service. To write it by hand, `~/Library/LaunchAgents/com.outpost.panel.plist` (use `/opt/homebrew/bin/npm` on Apple Silicon, and add `EnvironmentVariables` → `PATH` containing that folder, because launchd doesn't load your shell profile):
+**🍎 launchd** — easiest: run `./install.sh` and answer yes to the background service. To write it by hand, `~/Library/LaunchAgents/com.outpost.panel.plist` (use `/opt/homebrew/bin/npm` on Apple Silicon, and add `EnvironmentVariables` → `PATH` containing that folder, because launchd doesn't load your shell profile):
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>

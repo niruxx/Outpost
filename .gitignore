@@ -1,5 +1,10 @@
 node_modules/
-dist/
+**/dist/
+!/dist/
+/dist/*
+!/dist/linux/
+!/dist/macos/
+!/dist/windows/
 build/
 *.log
 .env
@@ -17,3 +22,6 @@ data/
 .DS_Store
 Thumbs.db
 *.tsbuildinfo
+
+# Machine-specific Windows login launcher.
+/state/windows-launch.ps1

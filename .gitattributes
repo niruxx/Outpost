@@ -4,3 +4,7 @@
 # Shell scripts must always have LF line endings — a CRLF shebang line breaks on Linux
 # ("bad interpreter") regardless of what OS someone last committed from.
 *.sh text eol=lf
+
+# Native Windows command wrappers require CRLF.
+*.cmd text eol=crlf
+*.ps1 text eol=lf
