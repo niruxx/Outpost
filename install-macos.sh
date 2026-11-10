@@ -119,6 +119,11 @@ fi
 
 MACOS_VERSION="$(sw_vers -productVersion)"
 ARCH="$(uname -m)"
+case "$ARCH" in
+  arm64) BREW_DEFAULT_PREFIX="/opt/homebrew" ;;
+  x86_64) BREW_DEFAULT_PREFIX="/usr/local" ;;
+  *) die "Unsupported Mac architecture: $ARCH. Expected arm64 (Apple Silicon) or x86_64 (Intel)." ;;
+esac
 ok "macOS $MACOS_VERSION ($ARCH)"
 ok "Project directory: $PROJECT_DIR"
 case "$PROJECT_DIR" in
@@ -166,8 +171,8 @@ fi
 heading "Step 2/6 — Homebrew and prerequisites"
 
 find_brew() {
-  if [[ -x /opt/homebrew/bin/brew ]]; then echo /opt/homebrew/bin/brew
-  elif [[ -x /usr/local/bin/brew ]]; then echo /usr/local/bin/brew
+  # Use this architecture's prefix: /usr/local on Intel, /opt/homebrew on Apple Silicon.
+  if [[ -x "$BREW_DEFAULT_PREFIX/bin/brew" ]]; then echo "$BREW_DEFAULT_PREFIX/bin/brew"
   elif command -v brew >/dev/null 2>&1; then command -v brew
   else return 1; fi
 }

@@ -93,7 +93,7 @@ The dashboard adapts to smaller screens with stacked cards and a navigation draw
 > With **Docker** it installs `docker.io` / `moby-engine` / `docker`, enables `docker.service` + `docker.socket` and adds you to the `docker` group (root-equivalent — log out and back in afterwards). With **Podman** it installs `podman`, enables your user's `podman.socket` (what Portainer talks to) and turns on lingering so it runs without a login. Either way it can pre-download the Portainer image.
 
 > [!TIP]
-> On **macOS**, `./install-macos.sh` installs the Xcode command-line tools, Homebrew, Node.js, Java 21 and Docker Desktop (or `--engine=podman`), builds and verifies the panel, and can run it in the background at login with launchd. Run `./install-macos.sh --help` for options.
+> On **macOS (Intel and Apple Silicon)**, `./install-macos.sh` installs the Xcode command-line tools, Homebrew, Node.js, Java 21 and Docker Desktop (or `--engine=podman`), builds and verifies the panel, and can run it in the background at login with launchd. It selects Homebrew from `/usr/local` on Intel or `/opt/homebrew` on Apple Silicon. Run `./install-macos.sh --help` for options.
 
 ```bash
 git clone <this-repo-url> Outpost && cd Outpost
