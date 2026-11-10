@@ -95,6 +95,8 @@ The dashboard adapts to smaller screens with stacked cards and a navigation draw
 > [!TIP]
 > On **macOS (Intel and Apple Silicon)**, `./install-macos.sh` installs the Xcode command-line tools, Homebrew, Node.js, Java 21 and Docker Desktop (or `--engine=podman`), builds and verifies the panel, and can run it in the background at login with launchd. It selects Homebrew from `/usr/local` on Intel or `/opt/homebrew` on Apple Silicon. Run `./install-macos.sh --help` for options.
 
+> Intel Macs are detected automatically; no `--intel` option is needed. For a new Intel Homebrew installation, Outpost uses the [official installer revision before Intel support was removed](https://github.com/Homebrew/install/commit/7a133dcc74051ee4efc79467ed215dfedf45aea2). This pins only the installer, not Homebrew or package updates. Intel Homebrew is [Tier 3](https://docs.brew.sh/Support-Tiers), so individual prerequisites may need to build from source or may be unavailable.
+
 ```bash
 git clone <this-repo-url> Outpost && cd Outpost
 npm run setup        # 📦 install dependencies

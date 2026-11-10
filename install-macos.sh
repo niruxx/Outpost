@@ -58,6 +58,7 @@ for arg in "$@"; do
       echo "  --no-java          Don't install Java 21 (only Minecraft Java servers need it)."
       echo "  --port=N           Port for the panel (default 8642)."
       echo "  --remove-agent     Stop and remove the background launchd service, then exit."
+      echo "  Intel and Apple Silicon are detected automatically; no architecture flag is needed."
       exit 0
       ;;
     *) die "Unknown option: $arg (see --help)" ;;
@@ -181,7 +182,20 @@ if BREW="$(find_brew)"; then
   ok "Homebrew found ($BREW)"
 else
   info "Installing Homebrew…"
-  NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+  BREW_INSTALL_REF="HEAD"
+  if [[ "$ARCH" == "x86_64" ]]; then
+    # Parent of Homebrew/install e078684, which removed Intel installation support.
+    # Pin only the bootstrap script; brew and its packages still receive updates.
+    BREW_INSTALL_REF="7a133dcc74051ee4efc79467ed215dfedf45aea2"
+    warn "Homebrew's latest installer no longer supports Intel Macs. Using its last Intel-compatible installer."
+    warn "Intel Homebrew is Tier 3: some packages may build from source or be unavailable."
+  fi
+  BREW_INSTALL_URL="https://raw.githubusercontent.com/Homebrew/install/$BREW_INSTALL_REF/install.sh"
+  BREW_INSTALL_SCRIPT="$(curl -fsSL "$BREW_INSTALL_URL")" \
+    || die "Couldn't download the Homebrew installer. Check your connection and re-run this script."
+  [[ -n "$BREW_INSTALL_SCRIPT" ]] || die "The downloaded Homebrew installer is empty. Re-run this script."
+  NONINTERACTIVE=1 /bin/bash -c "$BREW_INSTALL_SCRIPT" \
+    || die "Homebrew installation failed. Check the output above, then re-run this script."
   BREW="$(find_brew)" || die "Homebrew installation didn't finish. See https://brew.sh and re-run this script."
   ok "Homebrew installed ($BREW)"
 fi
