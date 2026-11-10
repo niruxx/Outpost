@@ -92,7 +92,28 @@ The dashboard adapts to smaller screens with stacked cards and a navigation draw
 >
 > With **Docker** it installs `docker.io` / `moby-engine` / `docker`, enables `docker.service` + `docker.socket` and adds you to the `docker` group (root-equivalent — log out and back in afterwards). With **Podman** it installs `podman`, enables your user's `podman.socket` (what Portainer talks to) and turns on lingering so it runs without a login. Either way it can pre-download the Portainer image.
 
-> [!TIP]
+### File structure, per-OS server management and Node.js
+
+Run `./install.sh --guide` (Linux/macOS/Git Bash) or `.\install.ps1 --guide` / `install.cmd --guide` (Windows) to print the [file structure and server management guide](docs/server-management.md) without installing anything. It covers launchd/systemd/Task Scheduler, panel versus game-instance controls, data/backup locations, macOS Node.js commands and troubleshooting. The root update/uninstall launchers also accept `--guide`.
+
+#### macOS temperature sensors
+
+CPU/GPU temperature readings now support the optional [smctemp helper](https://github.com/narugit/smctemp) on Intel and Apple Silicon. Follow the [setup instructions](docs/server-management.md#macos-temperature-sensors) to build it with Xcode tools into `~/.local/bin`, without Homebrew. Readings appear under **Host overview / Temperatures**. Outpost reports unavailable readings explicitly and never uses sudo or changes fan settings. RAM/drive temperatures are not provided by this macOS backend.
+
+#### Node.js on macOS
+
+Node.js runs the panel; Java runs Minecraft. The installer uses a compatible existing Node or an official prebuilt runtime under `~/.local/share/outpost/node/`. Open a new Terminal after accepting the `~/.zprofile` change, then check:
+
+```bash
+node --version
+npm --version
+node -p 'process.platform + " " + process.arch'
+```
+
+From the checkout, use `npm run setup`, `npm run build`, and `npm start` for a foreground panel, or `npm run dev` for development. Stop the login agent before starting another panel. See the [Node.js guide](docs/server-management.md#nodejs-commands-on-macos) if `node` is not on PATH.
+
+The macOS installer now checks readiness directly on `127.0.0.1` without a proxy and correctly treats a successful retry as success. If a previous installer printed a failure while the log said the panel was listening, confirm current health with `curl --noproxy '*' -fsS http://127.0.0.1:8642/api/health` (substitute your configured port). Node 22's experimental SQLite warning is informational.
+
 Install, update and uninstall entry points live in platform-specific directories:
 
 ```text
@@ -108,6 +129,7 @@ Windows setup requires Windows PowerShell, WinGet for missing Node.js/Java packa
 
 macOS/Windows updates back up data before pulling with `--ff-only` and rebuilding; commit or stash local edits first. Stop any separately launched foreground process before updating or uninstalling. Their uninstallers retain data and shared dependencies by default; `--purge` requires typing `delete`, and external data paths are retained for manual cleanup. Linux retains its existing richer distro, systemd, backup and package-removal workflows. Platform options differ; check `--help` before reusing flags between operating systems.
 
+> [!TIP]
 > On **macOS (Intel and Apple Silicon)**, `./install.sh` currently targets **Minecraft Java servers**. It installs prebuilt Node.js and checksum-verified Temurin JDKs 8, 11, 17, 21 and 25, plus legacy Java 16 where available, builds and verifies the panel, and can run it at login with launchd. JDKs live in `server/data/runtimes` (or `$DATA_DIR/runtimes`) and are selected per instance by Outpost. Existing managed runtimes are reused. No Homebrew, container engine, SteamCMD or Wine is installed.
 
 > Intel Macs are detected automatically; no `--intel` option is needed. Run `./install.sh -y` for unattended setup, or `--no-java` to skip runtime downloads. Legacy Java 16 may be unavailable on some architectures; the installer reports this explicitly. Containers, SteamCMD/Wine games, Bedrock and broader macOS host features are planned for later phases; their existing UI entries do not imply macOS compatibility.

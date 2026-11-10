@@ -565,6 +565,8 @@ export interface HostTemperatures {
   supported: boolean;
   sampledAt: string;
   sensors: TemperatureSensor[];
+  platform?: 'linux' | 'macos';
+  hint?: string;
 }
 
 export interface SystemMetrics {

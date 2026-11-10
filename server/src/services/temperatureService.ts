@@ -1,10 +1,11 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { readMacTemperatures } from './macTemperatureService.js';
 
 /**
  * Host temperature sensors, read from Linux sysfs (`/sys/class/hwmon`, with `/sys/class/thermal`
- * zones as a fallback for sensors that have no hwmon twin). Other platforms report
- * `supported: false`.
+ * zones as a fallback for sensors that have no hwmon twin), or through optional smctemp
+ * CPU/GPU readings on macOS. Other platforms report `supported: false`.
  *
  * SATA/SAS drive temperatures (kernel `drivetemp`) are only re-read after the disk has done block
  * I/O since the previous reading, so dashboard polling never keeps an idle disk from spinning down.
@@ -30,6 +31,8 @@ export interface HostTemperatures {
   supported: boolean;
   sampledAt: string;
   sensors: TemperatureSensor[];
+  platform?: 'linux' | 'macos';
+  hint?: string;
 }
 
 /** Overridable for tests against a fake sysfs tree. */
@@ -224,11 +227,12 @@ let inflight: Promise<HostTemperatures> | null = null;
 
 async function sample(): Promise<HostTemperatures> {
   const sampledAt = new Date().toISOString();
+  if (process.platform === 'darwin' && !process.env.OUTPOST_SYSFS_ROOT) return readMacTemperatures();
   if (process.platform !== 'linux' && !process.env.OUTPOST_SYSFS_ROOT) return { supported: false, sampledAt, sensors: [] };
   const hw = await readHwmon();
   const zones = await readThermalZones(hw?.chips ?? new Set());
   const sensors = [...(hw?.sensors ?? []), ...zones];
-  return { supported: hw !== null || zones.length > 0, sampledAt, sensors };
+  return { supported: hw !== null || zones.length > 0, sampledAt, sensors, platform: 'linux' };
 }
 
 export async function getTemperatures(): Promise<HostTemperatures> {

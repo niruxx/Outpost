@@ -3,6 +3,10 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ACTION="$1"; shift
 case "$ACTION" in install|update|uninstall) ;; *) echo "Unknown action: $ACTION" >&2; exit 1 ;; esac
+for arg in "$@"; do
+  if [[ "$arg" == --guide ]]; then cat "$ROOT/docs/server-management.md"; exit 0; fi
+  if [[ "$arg" == --help || "$arg" == -h ]]; then echo 'Root option: --guide prints the file structure and per-OS server management guide.'; fi
+done
 case "$(uname -s)" in
   Linux) PLATFORM=linux ;;
   Darwin) PLATFORM=macos ;;

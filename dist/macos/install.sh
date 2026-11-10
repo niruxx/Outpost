@@ -226,14 +226,7 @@ if [[ "$JAVA" == "1" ]]; then
 fi
 info "macOS setup currently targets Minecraft Java. Containers, SteamCMD and Wine are planned for later."
 
-wait_for() {  # wait_for <seconds> <command...>
-  local limit="$1"; shift
-  local i=0
-  until "$@" >/dev/null 2>&1; do
-    sleep 3; i=$((i + 3))
-    (( i >= limit )) && return 1
-  done
-}
+. "$PROJECT_DIR/scripts/macos-service.sh"
 
 # ---------------------------------------------------------------------------
 # Step 3 — Install dependencies and build
@@ -281,7 +274,7 @@ VERIFY_PID=$!
 
 healthy=0
 for _ in $(seq 1 30); do
-  if curl -fsS "http://localhost:$PORT/api/health" >/dev/null 2>&1; then healthy=1; break; fi
+  if panel_healthy >/dev/null 2>&1; then healthy=1; break; fi
   kill -0 "$VERIFY_PID" 2>/dev/null || break
   sleep 1
 done
@@ -319,7 +312,7 @@ xml_escape() { printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>
 
 if [[ "$RUN_MODE" == "agent" ]]; then
   mkdir -p "$HOME/Library/LaunchAgents" "$LOG_DIR"
-  AGENT_PATH="$(dirname "$NODE_BIN"):$LOCAL_TOOLS_PREFIX/bin:$LOCAL_TOOLS_PREFIX/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+  AGENT_PATH="$(dirname "$NODE_BIN"):$HOME/.local/bin:$LOCAL_TOOLS_PREFIX/bin:$LOCAL_TOOLS_PREFIX/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
   [[ -d /Applications/Docker.app/Contents/Resources/bin ]] && AGENT_PATH="$AGENT_PATH:/Applications/Docker.app/Contents/Resources/bin"
 
   PROGRAM_ARGS=""
@@ -371,12 +364,16 @@ EOF
   launchctl enable "$AGENT_TARGET" >/dev/null 2>&1 || true
 
   info "Waiting for Outpost to come up…"
-  if wait_for 45 curl -fsS "http://localhost:$PORT/api/health"; then
+  if wait_for 45 panel_healthy; then
     ok "Outpost is running in the background"
   else
     err "The background service didn't answer on port $PORT. Last log lines:"
     tail -n 30 "$LOG_DIR/outpost.log" 2>/dev/null || true
-    warn "If the log mentions 'Operation not permitted', move the Outpost folder out of Desktop/Documents/Downloads and re-run."
+    if grep -q 'Operation not permitted' "$LOG_DIR/outpost.log" 2>/dev/null; then
+      warn "macOS blocked file access. Move the checkout out of Desktop/Documents/Downloads and re-run."
+    fi
+    warn "Inspect the login agent: launchctl print $AGENT_TARGET"
+    die "The agent was installed but readiness could not be confirmed. Test: curl --noproxy '*' http://127.0.0.1:$PORT/api/health"
   fi
 fi
 
@@ -387,7 +384,7 @@ heading "Step 6/6 — Done"
 
 LAN_IP="$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || true)"
 echo "Outpost is installed at: $PROJECT_DIR"
-echo "Panel data lives in:     $PROJECT_DIR/server/data"
+echo "Panel data lives in:     $DATA_DIR"
 echo "Open on this Mac:        http://localhost:$PORT"
 [[ -n "$LAN_IP" ]] && echo "From other devices:      http://$LAN_IP:$PORT"
 echo
@@ -403,9 +400,9 @@ if [[ "$RUN_MODE" == "agent" ]]; then
   echo "  Start:     launchctl bootstrap gui/\$(id -u) $AGENT_PLIST"
   echo "  Restart:   launchctl kickstart -k $AGENT_TARGET"
   echo "  Logs:      tail -f $LOG_DIR/outpost.log"
-  echo "  Remove:    $PROJECT_DIR/install-macos.sh --remove-agent"
+  echo "  Remove:    $PROJECT_DIR/install.sh --remove-agent"
   echo
-  echo "To update later: git pull, then re-run ./install-macos.sh (it rebuilds and restarts the service)."
+  echo "To update later: run ./update.sh (backs up data, pulls changes, rebuilds and restarts)."
 
   open "http://localhost:$PORT" >/dev/null 2>&1 || true
 elif [[ "$RUN_MODE" == "foreground" ]]; then

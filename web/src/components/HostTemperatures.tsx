@@ -305,15 +305,19 @@ export function HostTemperatures({ data }: { data: HostTemps | undefined }) {
         )}
       </div>
 
+      {data.hint && sensors.length > 0 && <p className="text-xs text-ink-400">{data.hint}</p>}
       {!data.supported ? (
-        <Card className="p-4 text-xs text-ink-400">{t('Temperature sensors are read from Linux hwmon/thermal sysfs and are not available on this platform.')}</Card>
+        <Card className="p-4 text-xs text-ink-400">{t('Temperature sensors support Linux hwmon/thermal sysfs and macOS with the optional smctemp helper. No supported sensor provider is available on this platform.')}</Card>
       ) : sensors.length === 0 ? (
         <Card className="p-4 text-xs text-ink-400">
-          {t('This host exposes no temperature sensors. Virtual machines and containers usually have none; on bare metal, install lm-sensors and run sensors-detect, and load the drivetemp module for SATA drive temperatures.')}
+          {data.hint ?? t('This host exposes no temperature sensors. Virtual machines and containers usually have none; on bare metal, install lm-sensors and run sensors-detect, and load the drivetemp module for SATA drive temperatures.')}
         </Card>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <CpuCard sensors={cpu} multiSocket={multiSocket} />
+          {data.platform === 'macos' ? (
+            <CategoryCard icon="grid" title="GPU temperatures" sensors={by('gpu')} empty="No GPU temperature reading available on this Mac." nameOf={(s) => s.device} />
+          ) : <>
           <CategoryCard icon="memory" title="RAM temperatures" sensors={ram} empty="No DIMM sensors detected (needs jc42 or spd5118 support)." nameOf={(s) => s.device} />
           <CategoryCard icon="grid" title="Chipset temperatures" sensors={chipset} empty="No chipset sensors detected." nameOf={(s) => (s.label === s.chip || s.label === 'Temperature' ? s.device : `${s.device} · ${s.label}`)} />
           <CategoryCard
@@ -323,6 +327,7 @@ export function HostTemperatures({ data }: { data: HostTemps | undefined }) {
             empty="No drive sensors detected (NVMe reports natively; SATA needs the drivetemp module)."
             nameOf={driveName}
           />
+          </>}
         </div>
       )}
 

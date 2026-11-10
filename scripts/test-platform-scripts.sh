@@ -17,6 +17,8 @@ for platform in Linux Darwin; do
   done
 done
 unset -f uname
+guide="$(bash "$ROOT/install.sh" --guide)"
+[[ "$guide" == *'File structure and server management'* && "$guide" == *'Node.js commands on macOS'* ]]
 # Intercept the final executable to check dispatch without launching an installer.
 cat > "$TEMP/bash" <<'EOF'
 #!/bin/sh
