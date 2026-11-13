@@ -10,6 +10,8 @@ import { workshopStateOf } from './workshopState.js';
 import type { LogFn } from '../utils/download.js';
 import type { ServerRecord } from '../types/index.js';
 import { gmodLaunchArgs } from './gmodService.js';
+import { gameControlsLaunch } from './gameControlsLaunch.js';
+import { prepareGameControls } from './gameControlsService.js';
 
 export type StopStrategy =
   | { kind: 'stdin'; commands: string[]; delayMs: number }
@@ -742,6 +744,13 @@ export const STEAM_GAME_PRESETS: SteamGamePreset[] = [
       'account that owns Black Ops III — add them from the Workshop tab.',
   },
 ];
+
+// Extend each preset without replacing installation, Workshop, RCON or native preparation behavior.
+for (const preset of STEAM_GAME_PRESETS) {
+  const build = preset.buildLaunchArgs, prepare = preset.prepareInstance;
+  preset.buildLaunchArgs = (server) => gameControlsLaunch(server, preset.id, build(server));
+  preset.prepareInstance = (server) => [prepare?.(server), prepareGameControls(server, preset.id)].filter(Boolean).join(' · ') || null;
+}
 
 // RCON for games that take it on the command line. Source engine games use the game port over TCP.
 const SRCDS_GAMES = new Set(['cs2', 'csgo', 'css', 'tf2', 'gmod', 'l4d2', 'hl2dm', 'dods']);

@@ -37,6 +37,7 @@ The current macOS installer focuses on Minecraft Java on Intel and Apple Silicon
 - [x] Encrypted per-user Steam accounts, isolated SteamCMD sessions and one-use Steam Guard codes.
 - [x] Pinned CurseForge modpack installation with author server-pack support and manifest fallback.
 - [x] CS2 match plans/live controls, managed map rotation, SourceTV demos and native kick/ban administration.
+- [x] Game-specific settings and applicable map/world controls for the remaining built-in Steam presets, with native configuration editors, uploads, protected removal and Satisfactory API save management. See [game settings and compatibility](docs/game-settings.md).
 
 ## Virtual machines
 

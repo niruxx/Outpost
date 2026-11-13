@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Cs2Tab } from './server/Cs2Tab.js';
 import { Tf2Tab } from './server/Tf2Tab.js';
 import { GamerulesTab } from './server/GamerulesTab.js';
+import { GameSettingsTab } from './server/GameSettingsTab.js';
 import { setVisibleInterval } from '../lib/perf.js';
 import { Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import { motion, LayoutGroup } from 'framer-motion';
@@ -98,6 +99,7 @@ function InstanceNav({ server, onNavigate }: { server: ServerRecord; onNavigate:
       {server.platform === 'steam' && <NavItem to="workshop" icon="box" label="Workshop" onClick={onNavigate} />}
       {proxy && <NavItem to="network" icon="node" label="Network" onClick={onNavigate} />}
       {isCs2 && <NavItem to="cs2" icon="bolt" label="CS2" onClick={onNavigate} />}
+      {server.platform === 'steam' && !['cs2', 'tf2', 'gmod'].includes(server.steam_preset ?? '') && !( !server.steam_preset && ['730', '232250', '4020'].includes(server.steam_app_id ?? '')) && <NavItem to="game-settings" icon="configuration" label="Game settings" onClick={onNavigate} />}
       {server.platform === 'steam' && (server.steam_preset === 'tf2' || (!server.steam_preset && server.steam_app_id === '232250')) && <NavItem to="tf2" icon="bolt" label="TF2" onClick={onNavigate} />}
       {world && <NavItem to="gamerules" icon="configuration" label="Gamerules" onClick={onNavigate} />}
       {isGmodServer(server) && <NavItem to="gmod" icon="bolt" label="Garry's Mod" onClick={onNavigate} />}
@@ -435,6 +437,7 @@ function InstancePageInner() {
             <Route path="workshop" element={<WorkshopTab />} />
             <Route path="cs2" element={<Cs2Tab />} />
             <Route path="tf2" element={<Tf2Tab />} />
+            <Route path="game-settings" element={<GameSettingsTab />} />
             {world && <Route path="gamerules" element={<GamerulesTab />} />}
             <Route path="wine" element={<WineTab />} />
             <Route path="configuration" element={<SettingsTab />} />
