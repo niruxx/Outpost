@@ -1,11 +1,20 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { HostLayout, formatBytes } from '../components/HostLayout.js';
-import { Badge, Card, CardTitle, Notice, Select, Spinner } from '../components/ui.js';
+import { Badge, Card, CardTitle, Modal, Notice, Select, Spinner } from '../components/ui.js';
 import { CHART, Sparkline, type ChartPoint } from '../components/charts.js';
 import { api, ApiError } from '../api/client.js';
 import { hostApi } from '../state/hostTarget.js';
 
 type Point = Record<string, number | null> & { at: number };
+interface AnomalyDetail {
+  at: number;
+  field: string;
+  value: number;
+  mean: number;
+  threshold: number;
+  standardDeviations: number;
+  samples: number;
+}
 
 interface History {
   range: string;
@@ -13,6 +22,7 @@ interface History {
   to: number;
   host: Point[];
   anomalies: Record<string, number[]>;
+  anomalyDetails?: AnomalyDetail[];
   services: Array<{
     unit: string;
     avgCpu: number | null;
@@ -22,6 +32,7 @@ interface History {
     avgIo: number | null;
     points: Point[];
     anomalies: number[];
+    anomalyDetails?: AnomalyDetail[];
   }>;
   perServiceAvailable: boolean;
   totalMemoryMb: number;
@@ -43,6 +54,7 @@ export function HostMetricsPage() {
   const [data, setData] = useState<History | null>(null);
   const [error, setError] = useState('');
   const [sort, setSort] = useState<'cpu' | 'mem' | 'io' | 'anomalies'>('cpu');
+  const [report, setReport] = useState<{ title: string; details: AnomalyDetail[]; from: number; to: number } | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -109,7 +121,11 @@ export function HostMetricsPage() {
                   <Sparkline data={pts} color={c.color} formatValue={c.fmt} emptyLabel="Not enough data yet" domain={[data.from, data.to]} gapMs={3 * 60_000} formatTime={fmtT} markers={new Set(anomalies)} />
                   <div className="mt-1 flex items-center justify-between text-xs text-ink-500">
                     <span>peak {pts.length ? c.fmt(peak) : '—'}</span>
-                    {anomalies.length > 0 && <Badge tone="red">{anomalies.length} unusual</Badge>}
+                    {anomalies.length > 0 && (
+                      <button type="button" className="rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-400" aria-label={`View why ${c.label} is unusual`} onClick={() => setReport({ title: c.label, details: (data.anomalyDetails ?? []).filter((d) => d.field === c.field), from: data.from, to: data.to })}>
+                        <Badge tone="red">{anomalies.length} unusual · View report</Badge>
+                      </button>
+                    )}
                   </div>
                 </Card>
               );
@@ -138,9 +154,13 @@ export function HostMetricsPage() {
                 {services.map((s) => (
                   <div key={s.unit} className="grid grid-cols-1 items-center gap-3 px-4 py-3 md:grid-cols-[minmax(0,1.2fr)_1fr_1fr]">
                     <div className="min-w-0">
-                      <p className="flex items-center gap-2 truncate font-mono text-sm text-ink-100">
+                      <p className="flex flex-wrap items-center gap-2 break-all font-mono text-sm text-ink-100">
                         {s.unit}
-                        {s.anomalies.length > 0 && <Badge tone="red">{s.anomalies.length} unusual</Badge>}
+                        {s.anomalies.length > 0 && (
+                          <button type="button" className="shrink-0 rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-400" aria-label={`View why ${s.unit} is unusual`} onClick={() => setReport({ title: s.unit, details: s.anomalyDetails ?? [], from: data.from, to: data.to })}>
+                            <Badge tone="red">{s.anomalies.length} unusual · View report</Badge>
+                          </button>
+                        )}
                       </p>
                       <p className="text-xs text-ink-500">
                         CPU avg {s.avgCpu ?? '—'}% · peak {s.maxCpu !== null ? `${s.maxCpu.toFixed(1)}%` : '—'} · memory avg {s.avgMemMb !== null ? formatBytes(s.avgMemMb * 1048576) : '—'}
@@ -166,6 +186,41 @@ export function HostMetricsPage() {
           </Card>
         </>
       )}
+      <Modal open={report !== null} onClose={() => setReport(null)} title={`Unusual activity: ${report?.title ?? ''}`} size="xl">
+        {report && (
+          <div className="space-y-4 text-sm text-ink-300">
+            <p>{fmtT(report.from)} – {fmtT(report.to)}</p>
+            <Notice tone="info">These are unusually high readings compared with this range, not confirmed faults. A reading is flagged when it exceeds the average plus three standard deviations and the metric’s minimum threshold. At least 30 valid samples are required.</Notice>
+            <p>Longer ranges use averaged chart buckets, so each entry may cover several minutes. Service reports check CPU and memory; both can be flagged at the same time.</p>
+            {report.details.length === 0 ? (
+              <Notice tone="warning">Detailed readings are unavailable from this host. Update Outpost on the selected host and reload metrics to view its report.</Notice>
+            ) : (
+              <>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs tabular-nums">
+                    <thead className="text-ink-400"><tr>{['Time', 'Metric', 'Observed', 'Range average', 'Flag threshold', 'Above average'].map((label) => <th key={label} scope="col" className="whitespace-nowrap px-2 py-2">{label}</th>)}</tr></thead>
+                    <tbody className="divide-y divide-surface-700">
+                      {report.details.map((d) => {
+                        const chart = charts.find((c) => c.field === d.field);
+                        const fmt = chart?.fmt ?? ((v: number) => v.toFixed(2));
+                        return <tr key={`${d.at}-${d.field}`}>
+                          <td className="whitespace-nowrap px-2 py-3">{fmtT(d.at)}</td>
+                          <td className="whitespace-nowrap px-2 py-3">{chart?.label ?? d.field}</td>
+                          <td className="whitespace-nowrap px-2 py-3 text-red-400">{fmt(d.value)}</td>
+                          <td className="whitespace-nowrap px-2 py-3">{fmt(d.mean)}</td>
+                          <td className="whitespace-nowrap px-2 py-3">{fmt(d.threshold)}</td>
+                          <td className="px-2 py-3">{d.standardDeviations.toFixed(1)} standard deviations ({d.samples} samples)</td>
+                        </tr>;
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <p>Suggested checks: {report.details.some((d) => d.field === 'cpu' || d.field === 'load1') && 'Compare the busiest services and check for scheduled jobs or increased workload. '}{report.details.some((d) => d.field === 'mem_mb') && 'Check whether memory stays elevated and review the service logs for growing memory use. '}{report.details.some((d) => d.field.startsWith('net_')) && 'Compare traffic with expected transfers, backups, or client activity. '}{report.details.some((d) => d.field.startsWith('disk_')) && 'Check for backups, updates, or heavy file activity. '}Review logs around the listed times to identify the cause.</p>
+              </>
+            )}
+          </div>
+        )}
+      </Modal>
     </HostLayout>
   );
 }

@@ -193,13 +193,20 @@ export function downsample<T extends { at: number }>(rows: T[], from: number, sp
 
 /** Timestamps whose value is more than three standard deviations above the mean (min. 30 points). */
 export function anomalies(points: Array<Record<string, number | null>>, field: string, floor = 0): number[] {
-  const values = points.map((p) => p[field]).filter((v): v is number => v !== null);
+  return anomalyDetails(points, field, floor).map((p) => p.at);
+}
+
+/** Keep the explanation and chart markers based on exactly the same detection rule. */
+export function anomalyDetails(points: Array<Record<string, number | null>>, field: string, floor = 0) {
+  const values = points.map((p) => p[field]).filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
   if (values.length < 30) return [];
   const mean = values.reduce((a, b) => a + b, 0) / values.length;
   const sd = Math.sqrt(values.reduce((a, b) => a + (b - mean) ** 2, 0) / values.length);
   if (sd === 0) return [];
   const limit = Math.max(mean + 3 * sd, floor);
-  return points.filter((p) => p[field] !== null && (p[field] as number) > limit).map((p) => p.at as number);
+  return points.filter((p) => typeof p[field] === 'number' && (p[field] as number) > limit).map((p) => ({
+    at: p.at as number, field, value: p[field] as number, mean, threshold: limit, standardDeviations: ((p[field] as number) - mean) / sd, samples: values.length,
+  }));
 }
 
 export function metricsHistory(range: string) {
@@ -228,6 +235,7 @@ export function metricsHistory(range: string) {
       maxMemMb: avg.mem_max,
       avgIo: avg.io,
       points,
+      anomalyDetails: [...anomalyDetails(points, 'cpu', 5), ...anomalyDetails(points, 'mem_mb')].sort((a, b) => b.at - a.at),
       anomalies: [...new Set([...anomalies(points, 'cpu', 5), ...anomalies(points, 'mem_mb')])].sort((a, b) => a - b),
     };
   });
@@ -236,6 +244,12 @@ export function metricsHistory(range: string) {
     from,
     to,
     host,
+    anomalyDetails: [
+      ...anomalyDetails(host, 'cpu', 20),
+      ...anomalyDetails(host, 'mem_mb'),
+      ...anomalyDetails(host, 'load1', os.cpus().length),
+      ...['net_rx', 'net_tx', 'disk_read', 'disk_write'].flatMap((field) => anomalyDetails(host, field, 1024 * 1024)),
+    ].sort((a, b) => b.at - a.at),
     anomalies: {
       cpu: anomalies(host, 'cpu', 20),
       mem_mb: anomalies(host, 'mem_mb'),

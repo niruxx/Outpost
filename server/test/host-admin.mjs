@@ -185,6 +185,14 @@ try {
   const ds = metrics.downsample(rows, 0, 120 * 60_000, ['cpu']);
   assert.equal(ds.length, 120);
   assert.deepEqual(metrics.anomalies(ds, 'cpu', 20), [100 * 60_000]);
+  const [detail] = metrics.anomalyDetails(ds, 'cpu', 20);
+  assert.equal(detail.at, 100 * 60_000);
+  assert.equal(detail.value, 95);
+  assert.equal(detail.samples, 120);
+  assert.ok(detail.value > detail.threshold && detail.standardDeviations > 3);
+  assert.ok(Math.abs(detail.threshold - (detail.mean + 3 * (detail.value - detail.mean) / detail.standardDeviations)) < 1e-8);
+  assert.deepEqual(metrics.anomalyDetails(ds, 'cpu', 100), [], 'minimum threshold suppresses small spikes');
+  assert.deepEqual(metrics.anomalyDetails(Array.from({ length: 30 }, (_, at) => ({ at, cpu: 5 })), 'cpu'), [], 'constant values are not unusual');
   assert.deepEqual(metrics.anomalies(ds.slice(0, 20), 'cpu'), [], 'too few points to judge');
   assert.ok(metrics.downsample(Array.from({ length: 2000 }, (_, i) => ({ at: i * 60_000, cpu: 1 })), 0, 2000 * 60_000, ['cpu']).length <= 360);
   const history = metrics.metricsHistory('1h');
