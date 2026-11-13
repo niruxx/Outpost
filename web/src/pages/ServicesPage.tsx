@@ -164,6 +164,7 @@ export function ServicesPage() {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<(typeof FILTERS)[number]['id']>('all');
   const [selected, setSelected] = useState<string | null>(null);
+  const [busyUnit, setBusyUnit] = useState<string | null>(null);
   const [editing, setEditing] = useState<TimerDefinition | 'new' | null>(null);
 
   const load = useCallback(async () => {
@@ -306,11 +307,11 @@ export function ServicesPage() {
             ) : (
               <div className="divide-y divide-surface-700 overflow-hidden rounded-2xl bg-surface-900">
                 {units.map((u) => (
+                  <div key={u.unit} className="flex items-center gap-2 pr-4">
                   <button
-                    key={u.unit}
                     type="button"
                     onClick={() => setSelected(u.unit)}
-                    className="state-layer flex w-full flex-wrap items-center gap-3 px-4 py-3 text-left"
+                    className="state-layer flex min-w-0 flex-1 flex-wrap items-center gap-3 px-4 py-3 text-left"
                   >
                     <div className="min-w-0 flex-1">
                       <p className="flex items-center gap-2 truncate font-mono text-sm text-ink-100">
@@ -331,6 +332,15 @@ export function ServicesPage() {
                       {u.active === 'active' ? u.sub : u.active}
                     </Badge>
                   </button>
+                  {u.fileState?.startsWith('enabled') && (
+                    <Button variant="outlined" disabled={!adminMode || busyUnit !== null} title={adminMode ? 'Disable automatic startup without stopping the running unit' : 'Turn on Admin Mode first'} onClick={async () => {
+                      setBusyUnit(u.unit);
+                      try { await runAction(u.unit, 'disable'); } finally { setBusyUnit(null); }
+                    }}>
+                      {busyUnit === u.unit ? <Spinner /> : null} Disable
+                    </Button>
+                  )}
+                  </div>
                 ))}
               </div>
             )}
@@ -489,6 +499,7 @@ function UnitModal({
                   ? [action('restart'), p.CanReload === 'yes' ? action('reload') : null, p.CanStop !== 'no' ? action('stop', 'danger') : null]
                   : p.CanStart !== 'no' && action('start', 'primary')}
                 {canEnable && (fileState.startsWith('enabled') ? action('disable', 'outlined') : action('enable-now', 'outlined'))}
+                {canEnable && fileState.startsWith('enabled') && p.CanStop !== 'no' && action('disable-now', 'outlined')}
                 {canEnable && !fileState.startsWith('enabled') && action('enable', 'ghost')}
                 {active === 'failed' && action('reset-failed', 'ghost')}
                 {!details.managedTimer && action('mask', 'ghost')}
@@ -505,6 +516,8 @@ function UnitModal({
               </>
             )}
           </div>
+
+          {canEnable && <p className="text-xs text-ink-400">Disable removes automatic startup and leaves a running unit running. Disable &amp; stop also stops it now. Other units or manual actions can still start a disabled unit; Mask blocks activation until you unmask it.</p>}
 
           <dl className="grid grid-cols-1 gap-x-6 gap-y-2 rounded-2xl bg-surface-900 p-4 text-sm sm:grid-cols-2">
             {facts

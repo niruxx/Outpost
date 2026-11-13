@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { api, ApiError, downloadUrl } from '../api/client.js';
+import { api, ApiError, downloadUrl, type UploadProgress } from '../api/client.js';
+import { UploadTracker } from './UploadTracker.js';
 import { Badge, Button, Card, CardTitle } from './ui.js';
 import { useToast } from './Toast.js';
 import { useConfirm } from './ConfirmDialog.js';
@@ -11,6 +12,8 @@ export function TemplatesCard({ isAdmin }: { isAdmin: boolean }) {
   const confirm = useConfirm();
   const [list, setList] = useState<TemplateSummary[] | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [importing, setImporting] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
 
   useEffect(() => {
     api.get<{ templates: TemplateSummary[] }>('/templates').then((r) => setList(r.templates)).catch(() => setList([]));
@@ -18,13 +21,18 @@ export function TemplatesCard({ isAdmin }: { isAdmin: boolean }) {
   if (!list) return null;
 
   async function importFile(file: File) {
+    if (importing) return;
+    setImporting(true);
     try {
       const json = JSON.parse(await file.text());
-      const r = await api.post<{ templates: TemplateSummary[] }>('/templates', json);
+      const r = await api.uploadJson<{ templates: TemplateSummary[] }>('/templates', json, setUploadProgress);
       setList(r.templates);
       toast.success(`Imported “${json.name ?? file.name}”`);
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : err instanceof SyntaxError ? 'That file isn’t valid JSON' : 'Import failed');
+    } finally {
+      setImporting(false);
+      setUploadProgress(null);
     }
   }
   async function remove(x: TemplateSummary) {
@@ -43,13 +51,14 @@ export function TemplatesCard({ isAdmin }: { isAdmin: boolean }) {
           isAdmin && (
             <>
               <input ref={fileRef} type="file" accept=".json,application/json" className="hidden" onChange={(e) => e.target.files?.[0] && importFile(e.target.files[0]).finally(() => (e.target.value = ''))} />
-              <Button onClick={() => fileRef.current?.click()}>Import</Button>
+              <Button disabled={importing} onClick={() => fileRef.current?.click()}>{importing ? 'Importing…' : 'Import'}</Button>
             </>
           )
         }
       >
         Server templates
       </CardTitle>
+      <UploadTracker progress={uploadProgress} />
       <p className="mb-3 text-sm text-ink-400">
         Ready-made setups to create instances from (New instance → From a template). Save any instance as a template from its Configuration page, or import a template file someone shared.
       </p>

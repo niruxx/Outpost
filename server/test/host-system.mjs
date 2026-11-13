@@ -34,6 +34,8 @@ try {
   assert.equal(ops.validUnitName('dev-disk-by\\x2duuid-1.swap'), true);
   for (const bad of ['nginx', '-x.service', '../etc.service', 'a b.service', 'x.service;rm', '']) assert.equal(ops.validUnitName(bad), false, bad);
   assert.deepEqual(ops.unitActionArgs('nginx.service', 'enable-now'), ['enable', '--now', '--', 'nginx.service']);
+  assert.deepEqual(ops.unitActionArgs('nginx.service', 'disable'), ['disable', '--', 'nginx.service']);
+  assert.deepEqual(ops.unitActionArgs('nginx.service', 'disable-now'), ['disable', '--now', '--', 'nginx.service']);
   assert.deepEqual(ops.unitActionArgs('nginx.service', 'restart'), ['restart', '--', 'nginx.service']);
   assert.throws(() => ops.unitActionArgs('nginx.service', 'kill'), { status: 400 });
 

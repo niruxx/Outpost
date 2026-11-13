@@ -23,6 +23,7 @@ import { findPresetFor, type StopStrategy } from './steamGames.js';
 import { notify } from './notificationService.js';
 import { ensurePrefix, findWine, findXvfbRun, INSTALL_HINT, prefixNeedsWork, usesWine, wineBusy, wineEnv, wineSettingsOf, withWineJob } from './wineService.js';
 import { isProxyLoader, type ServerRecord } from '../types/index.js';
+import { gameruleCommands, gamerulesOf, supportsGamerules } from './gameruleService.js';
 import {
   ensureExecutable,
   expandVariables,
@@ -149,6 +150,15 @@ function markRunning(serverId: string) {
   setServerStatus(serverId, 'running');
   publish(consoleTopic(serverId), { type: 'status', status: 'running' });
   notify('server.started', { id: server.id, name: server.name }, 'The instance is up and running.');
+  if (supportsGamerules(server) && gamerulesOf(server).autoApply) {
+    try {
+      const commands = gameruleCommands(server);
+      for (const command of commands) sendCommand(serverId, command);
+      appendLog(serverId, `[Outpost] Sent ${commands.length} saved gamerules after startup. Check the console responses for any unsupported rules.`, 'system');
+    } catch (err) {
+      appendLog(serverId, `[Outpost] Could not apply gamerules: ${err instanceof Error ? err.message : String(err)}`, 'system');
+    }
+  }
 }
 
 function appendLog(serverId: string, line: string, stream: 'stdout' | 'stderr' | 'system') {

@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import { cs2LaunchArgs, ensureWorkshopLibrary, writeCs2Configs } from './cs2Service.js';
+import { tf2LaunchArgs, prepareTf2 } from './tf2Service.js';
 import { cs2PluginEnv, ensurePluginLoader } from './cs2PluginService.js';
 import path from 'node:path';
 import { instanceDir, STEAMCMD_DIR } from '../utils/paths.js';
@@ -333,15 +334,8 @@ export const STEAM_GAME_PRESETS: SteamGamePreset[] = [
     defaultPort: 27015,
     portProtocol: 'udp',
     executable: { win32: 'srcds.exe', linux: 'srcds_run' },
-    buildLaunchArgs: (server) => [
-      '-game', 'tf',
-      '-console',
-      '-norestart',
-      '-port', String(server.server_port),
-      '+maxplayers', '24',
-      '+map', 'ctf_2fort',
-      ...extraArgs(server),
-    ],
+    buildLaunchArgs: (server) => [...tf2LaunchArgs(server), ...extraArgs(server)],
+    prepareInstance: prepareTf2,
     readyRegex: /Connection to Steam servers successful|VAC secure mode is activated/i,
     stopStrategy: { kind: 'stdin', commands: ['quit'], delayMs: 0 },
     needsExecuteBit: true,

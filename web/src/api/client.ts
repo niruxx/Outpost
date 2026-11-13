@@ -89,32 +89,39 @@ export interface UploadProgress {
   loaded: number; total: number | null; percent: number | null; elapsedSeconds: number;
   remainingSeconds: number | null; bytesPerSecond: number; processing: boolean;
 }
-function upload<T>(path: string, formData: FormData, onProgress?: (progress: UploadProgress) => void): Promise<T> {
+function upload<T>(path: string, body: FormData | Blob, onProgress?: (progress: UploadProgress) => void): Promise<T> {
   return trackActivity(new Promise<T>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     const started = performance.now();
     xhr.open('POST', `/api${path}`);
+    if (body instanceof Blob && body.type) xhr.setRequestHeader('Content-Type', body.type);
     const token = getToken();
     if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
     const report = (loaded: number, total: number | null, processing = false) => {
       const elapsedSeconds = (performance.now() - started) / 1000;
       const bytesPerSecond = loaded / Math.max(elapsedSeconds, 0.001);
-      onProgress?.({ loaded, total, percent: total ? Math.min(100, loaded / total * 100) : null, elapsedSeconds,
+      onProgress?.({ loaded, total, percent: processing ? 100 : total ? Math.min(99, loaded / total * 100) : loaded === 0 ? 0 : null, elapsedSeconds,
         remainingSeconds: total && bytesPerSecond > 0 ? Math.max(0, (total - loaded) / bytesPerSecond) : null, bytesPerSecond, processing });
     };
     xhr.upload.onprogress = e => report(e.loaded, e.lengthComputable ? e.total : null);
     xhr.upload.onload = e => report(e.loaded, e.lengthComputable ? e.total : null, true);
     xhr.onerror = () => reject(new ApiError(0, 'Upload failed: network connection lost'));
     xhr.onabort = () => reject(new ApiError(0, 'Upload cancelled'));
+    xhr.ontimeout = () => reject(new ApiError(0, 'Upload timed out'));
     xhr.onload = () => {
       if (xhr.status === 401) { setToken(null); window.location.href = '/login'; }
       let body;
       try { body = xhr.responseText ? JSON.parse(xhr.responseText) : undefined; } catch { body = xhr.responseText; }
+      if (xhr.status === 403 && token && body?.disabled) {
+        setToken(null);
+        sessionStorage.setItem('outpost.disabledMessage', body.error);
+        window.location.href = '/login';
+      }
       if (xhr.status < 200 || xhr.status >= 300) return reject(new ApiError(xhr.status, body?.error ?? xhr.statusText ?? 'Upload failed'));
       resolve(body as T);
     };
-    report(0, null);
-    xhr.send(formData);
+    report(0, body instanceof Blob ? body.size : null);
+    xhr.send(body);
   }), true);
 }
 
@@ -128,6 +135,8 @@ export const api = {
     request<T>(path, { method: 'PATCH', body: body !== undefined ? JSON.stringify(body) : undefined }),
   delete: <T>(path: string, body?: unknown) => request<T>(path, { method: 'DELETE', body: body !== undefined ? JSON.stringify(body) : undefined }),
   upload,
+  uploadJson: <T>(path: string, body: unknown, onProgress: (progress: UploadProgress) => void) =>
+    upload<T>(path, new Blob([JSON.stringify(body)], { type: 'application/json' }), onProgress),
 };
 
 export function wsUrl(path: string): string {

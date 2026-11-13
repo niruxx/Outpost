@@ -61,6 +61,7 @@ import { instanceOffsiteRouter, offsiteRouter } from './routes/offsite.routes.js
 import { limitsRouter } from './routes/limits.routes.js';
 import { keysRouter } from './routes/keys.routes.js';
 import { cs2Router } from './routes/cs2.routes.js';
+import { gameCustomizationRouter } from './routes/gameCustomization.routes.js';
 import { dbHostsRouter, serverDatabasesRouter } from './routes/databases.routes.js';
 import { startSftp, stopSftp } from './services/sftpService.js';
 import { consoleLogsRouter, consoleLogSettingsRouter } from './routes/consoleLogs.routes.js';
@@ -142,6 +143,7 @@ app.use('/api/servers/:serverId/offsite', instanceOffsiteRouter);
 app.use('/api/servers/:serverId/limits', limitsRouter);
 app.use('/api/keys', keysRouter);
 app.use('/api/servers/:serverId/cs2', cs2Router);
+app.use('/api/servers/:serverId', gameCustomizationRouter);
 app.use('/api/database-hosts', dbHostsRouter);
 app.use('/api/servers/:serverId/databases', serverDatabasesRouter);
 app.use('/api/servers/:serverId/sftp', instanceSftpRouter);

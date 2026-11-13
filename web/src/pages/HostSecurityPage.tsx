@@ -4,7 +4,8 @@ import { AdminNotice, HostLayout, fmtTime } from '../components/HostLayout.js';
 import { Badge, Button, Card, CardTitle, ErrorText, Field, Input, Modal, Notice, Select, Spinner } from '../components/ui.js';
 import { useToast } from '../components/Toast.js';
 import { useConfirm } from '../components/ConfirmDialog.js';
-import { api, ApiError } from '../api/client.js';
+import { api, ApiError, type UploadProgress } from '../api/client.js';
+import { UploadTracker } from '../components/UploadTracker.js';
 import { hostApi, useHostAdmin, useHostTarget } from '../state/hostTarget.js';
 
 interface CertInfo {
@@ -352,9 +353,10 @@ function TlsCard({ tls, adminMode, linux, onChanged }: { tls: Tls; adminMode: bo
     return () => window.clearInterval(t);
   }, [job?.state, onChanged, toast]);
 
-  async function post(path: string, body: unknown, done: string) {
+  async function post(path: string, body: unknown, done: string, onProgress?: (progress: UploadProgress) => void) {
     try {
-      await api.post(hostApi(path), body);
+      if (onProgress) await api.uploadJson(hostApi(path), body, onProgress);
+      else await api.post(hostApi(path), body);
       toast.success(done);
       await onChanged();
       return true;
@@ -424,7 +426,7 @@ function TlsCard({ tls, adminMode, linux, onChanged }: { tls: Tls; adminMode: bo
         <pre className="mt-4 max-h-60 overflow-auto whitespace-pre-wrap rounded-2xl bg-surface-1000 p-3 font-mono text-xs text-ink-300">{job.output || job.label}</pre>
       )}
 
-      {upload && <UploadCertModal onClose={() => setUpload(false)} onSave={async (cert, key) => (await post('/security/tls/custom', { cert, key }, 'Certificate saved')) && setUpload(false)} />}
+      {upload && <UploadCertModal onClose={() => setUpload(false)} onSave={async (cert, key, onProgress) => (await post('/security/tls/custom', { cert, key }, 'Certificate saved', onProgress)) && setUpload(false)} />}
       {acme && (
         <AcmeModal
           onClose={() => setAcme(false)}
@@ -443,12 +445,21 @@ function TlsCard({ tls, adminMode, linux, onChanged }: { tls: Tls; adminMode: bo
   );
 }
 
-function UploadCertModal({ onClose, onSave }: { onClose: () => void; onSave: (cert: string, key: string) => Promise<unknown> }) {
+function UploadCertModal({ onClose, onSave }: { onClose: () => void; onSave: (cert: string, key: string, onProgress: (progress: UploadProgress) => void) => Promise<unknown> }) {
   const [cert, setCert] = useState('');
   const [key, setKey] = useState('');
+  const [progress, setProgress] = useState<UploadProgress | null>(null);
+  const [busy, setBusy] = useState(false);
+  const close = () => { if (!busy) onClose(); };
+  async function save() {
+    if (busy) return;
+    setBusy(true);
+    try { await onSave(cert, key, setProgress); }
+    finally { setBusy(false); setProgress(null); }
+  }
   const area = 'ui-input h-36 w-full rounded-lg border border-surface-500 bg-transparent px-3 py-2 font-mono text-xs text-ink-100';
   return (
-    <Modal open onClose={onClose} title="Upload certificate" size="lg">
+    <Modal open onClose={close} title="Upload certificate" size="lg">
       <div className="space-y-4">
         <Field label="Certificate chain (PEM, server certificate first)">
           <textarea className={area} value={cert} onChange={(e) => setCert(e.target.value)} placeholder="-----BEGIN CERTIFICATE-----" spellCheck={false} />
@@ -456,12 +467,13 @@ function UploadCertModal({ onClose, onSave }: { onClose: () => void; onSave: (ce
         <Field label="Private key (PEM, unencrypted)">
           <textarea className={area} value={key} onChange={(e) => setKey(e.target.value)} placeholder="-----BEGIN PRIVATE KEY-----" spellCheck={false} />
         </Field>
+        <UploadTracker progress={progress} />
         <div className="flex justify-end gap-2">
-          <Button variant="ghost" onClick={onClose}>
+          <Button variant="ghost" disabled={busy} onClick={close}>
             Cancel
           </Button>
-          <Button variant="primary" disabled={!cert || !key} onClick={() => void onSave(cert, key)}>
-            Save
+          <Button variant="primary" disabled={busy || !cert || !key} onClick={() => void save()}>
+            {busy ? 'Uploading…' : 'Save'}
           </Button>
         </div>
       </div>
