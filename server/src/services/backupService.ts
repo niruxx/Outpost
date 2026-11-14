@@ -6,6 +6,8 @@ import { instanceDir, safeJoinReal } from '../utils/paths.js';
 import { isRunning } from './processManager.js';
 import { HttpError } from '../utils/asyncHandler.js';
 import { logger } from '../utils/logger.js';
+import { scanIngestedPath } from './antivirusService.js';
+import { beginJob, progressJob, finishJob } from './jobService.js';
 
 export interface BackupInfo {
   fileName: string;
@@ -20,6 +22,7 @@ function timestampSlug(): string {
 /** Zips the entire instance directory into the server's backup folder. Skips old backup archives. */
 export async function createBackup(serverId: string, label?: string): Promise<BackupInfo> {
   const release = acquireBackupStorage(serverId);
+  const job = beginJob('backup', serverId);
   try {
     const srcDir = instanceDir(serverId);
     if (!fs.existsSync(srcDir)) throw new HttpError(404, 'Server directory not found');
@@ -31,15 +34,17 @@ export async function createBackup(serverId: string, label?: string): Promise<Ba
     const destPath = path.join(destDir, fileName);
 
     const zip = new AdmZip();
+    progressJob(job, 'Archiving instance files', null);
     zip.addLocalFolder(srcDir, '', (entryPath) => !entryPath.startsWith('..' + path.sep + 'backups'));
     await zip.writeZipPromise(destPath);
 
     const stat = fs.statSync(destPath);
+    finishJob(job);
     logger.info(`Created backup for server ${serverId}: ${fileName} (${stat.size} bytes)`);
     // Copy it off-site (in the background) when destinations are set up.
     void import('./offsiteService.js').then((o) => o.enqueueCopy(serverId, fileName)).catch(() => {});
     return { fileName, sizeBytes: stat.size, createdAt: new Date().toISOString() };
-  } finally { release(); }
+  } catch (err) { finishJob(job, err); throw err; } finally { release(); }
 }
 
 export function listBackups(serverId: string): BackupInfo[] {
@@ -77,6 +82,7 @@ export async function restoreBackup(serverId: string, fileName: string): Promise
       throw new HttpError(409, 'Stop the server before restoring a backup');
     }
     const filePath = resolveBackupPath(serverId, fileName);
+    await scanIngestedPath(filePath);
     const dir = instanceDir(serverId);
     fs.rmSync(dir, { recursive: true, force: true });
     fs.mkdirSync(dir, { recursive: true });

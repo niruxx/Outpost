@@ -1,0 +1,319 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Outpost extension SDK v1",
+  "type": "object",
+  "required": [
+    "format",
+    "sdkVersion",
+    "id",
+    "name",
+    "version",
+    "author",
+    "description",
+    "minPanelVersion",
+    "pages",
+    "actions",
+    "gameAdapters"
+  ],
+  "properties": {
+    "format": {
+      "const": "outpost-extension"
+    },
+    "sdkVersion": {
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{2,59}$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "author": {
+      "type": "string",
+      "maxLength": 200
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 2000
+    },
+    "minPanelVersion": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "maxPanelVersion": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "backend": {
+      "type": "object",
+      "required": [
+        "url"
+      ],
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri"
+        }
+      },
+      "additionalProperties": false
+    },
+    "pages": {
+      "type": "array",
+      "maxItems": 16,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "html",
+          "permissions"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_-]{1,60}$"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "html": {
+            "type": "string",
+            "maxLength": 262144
+          },
+          "permissions": {
+            "$ref": "#/$defs/permissions"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "actions": {
+      "type": "array",
+      "maxItems": 32,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "kind",
+          "permissions"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_-]{1,60}$"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "kind": {
+            "enum": [
+              "instance.summary",
+              "files.read",
+              "console.command",
+              "backend.request"
+            ]
+          },
+          "permissions": {
+            "$ref": "#/$defs/permissions"
+          },
+          "backendPath": {
+            "type": "string",
+            "pattern": "^/[a-zA-Z0-9_/-]{1,120}$"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "gameAdapters": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "$ref": "#/$defs/gameAdapter"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "permissions": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "power",
+          "console",
+          "files.read",
+          "files.write",
+          "backups.create",
+          "backups.restore",
+          "plugins",
+          "players",
+          "settings",
+          "update",
+          "launch",
+          "network"
+        ]
+      }
+    },
+    "gameField": {
+      "type": "object",
+      "required": [
+        "key",
+        "label",
+        "type",
+        "default"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_.-]{1,80}$"
+        },
+        "label": {
+          "type": "string",
+          "maxLength": 159
+        },
+        "type": {
+          "enum": [
+            "text",
+            "number",
+            "boolean",
+            "select",
+            "password"
+          ]
+        },
+        "default": {
+          "type": "string",
+          "maxLength": 999,
+          "pattern": "^[^\\u0000\\r\\n]*$"
+        },
+        "min": {
+          "type": "number"
+        },
+        "max": {
+          "type": "number"
+        },
+        "options": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "type": "string",
+            "maxLength": 199
+          }
+        },
+        "launch": {
+          "type": "boolean"
+        },
+        "help": {
+          "type": "string",
+          "maxLength": 1000
+        }
+      }
+    },
+    "gameAdapter": {
+      "type": "object",
+      "required": [
+        "id",
+        "appId",
+        "label",
+        "format",
+        "file",
+        "fields",
+        "notes",
+        "executable",
+        "launchArgs",
+        "hosts"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^x-[a-z0-9_-]+$",
+          "maxLength": 90
+        },
+        "appId": {
+          "type": "string",
+          "pattern": "^[0-9]{1,12}$"
+        },
+        "label": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "format": {
+          "enum": [
+            "source",
+            "quake",
+            "kv",
+            "ini",
+            "xml",
+            "commands",
+            "arma"
+          ]
+        },
+        "file": {
+          "type": "string",
+          "maxLength": 299
+        },
+        "fields": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/gameField"
+          }
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 1000
+          }
+        },
+        "executable": {
+          "type": "object",
+          "required": [
+            "linux",
+            "win32"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "linux": {
+              "type": "string",
+              "maxLength": 299
+            },
+            "win32": {
+              "type": "string",
+              "maxLength": 299
+            }
+          }
+        },
+        "launchArgs": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "type": "string",
+            "maxLength": 999
+          }
+        },
+        "hosts": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "enum": [
+              "linux",
+              "win32"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

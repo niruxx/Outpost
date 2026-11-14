@@ -1,4 +1,6 @@
 import { AnimatePresence, motion } from 'framer-motion';
+import { useId, useRef } from 'react';
+import { useDialogFocus } from '../lib/dialogFocus.js';
 import { t, tc } from '../i18n/index.js';
 import type { ButtonHTMLAttributes, HTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from 'react';
 
@@ -155,6 +157,8 @@ export function Modal({
   children: ReactNode;
   size?: 'md' | 'lg' | 'xl';
 }) {
+  const ref = useRef<HTMLDivElement>(null), titleId = useId();
+  useDialogFocus(open, ref, onClose);
   return (
     <AnimatePresence>
       {open && (
@@ -167,6 +171,7 @@ export function Modal({
           onClick={onClose}
         >
           <motion.div
+            ref={ref} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}
             className={`ui-modal flex max-h-[85vh] w-full ${MODAL_SIZE[size]} flex-col rounded-4xl bg-surface-800 shadow-card`}
             initial={{ opacity: 0, scale: 0.95, y: 12 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -175,7 +180,7 @@ export function Modal({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="ui-modal-header flex shrink-0 items-center justify-between px-6 pb-2 pt-6">
-              <h3 className="ui-modal-title text-xl font-normal text-ink-50">{t(title)}</h3>
+              <h3 id={titleId} className="ui-modal-title text-xl font-normal text-ink-50">{t(title)}</h3>
               <button onClick={onClose} aria-label="Close" className="ui-modal-close state-layer rounded-full p-2 text-ink-300">
                 <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                   <path d="M18 6L6 18M6 6l12 12" />

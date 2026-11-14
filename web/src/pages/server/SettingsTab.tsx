@@ -1,4 +1,6 @@
 import { SteamAccountSelect } from '../../components/SteamAccountSelect.js';
+import { AntivirusPanel } from '../../components/AntivirusPanel.js';
+import { useChangeReview } from '../../components/ChangeReview.js';
 import { BannerArtworkCard } from './BannerArtworkCard.js';
 import { useEffect, useState } from 'react';
 import { DatabasesCard } from './DatabasesCard.js';
@@ -22,6 +24,7 @@ import { useToast } from '../../components/Toast.js';
 import { t } from '../../i18n/index.js';
 
 export function SettingsTab() {
+  const review = useChangeReview();
   const { server, can, canConfig, refresh, isAdmin, isOwner } = useServerDetail();
   const canWrite = can('settings') || canConfig('property', 'server-ip') || ['name', 'minMemoryMb', 'maxMemoryMb', 'serverPort', 'extraJavaArgs', 'extraArgs', 'autoStart', 'steamLogin', 'steamExtraFlags', 'restartPolicy', 'restartDelaySec', 'restartMaxAttempts'].some((key) => canConfig('setting', key));
   const [name, setName] = useState('');
@@ -104,6 +107,9 @@ export function SettingsTab() {
     setSaveError('');
     const snapshot = { ...current };
     try {
+      if (!Number.isInteger(serverPort) || serverPort < 1 || serverPort > 65535) throw new Error('Port must be between 1 and 65535');
+      if (minMemoryMb > maxMemoryMb || minMemoryMb < 128) throw new Error('Check minimum and maximum memory');
+      if (!await review(baseline, snapshot, 'Memory, port and launch changes apply on the next start. Names and restart policy update immediately.')) return;
       await api.patch(`/servers/${server!.id}`, Object.fromEntries(Object.entries({
         name,
         minMemoryMb,
@@ -124,7 +130,7 @@ export function SettingsTab() {
       setBaseline(snapshot);
       toast.success(t('Settings saved'));
     } catch (err) {
-      setSaveError(err instanceof ApiError ? err.message : 'Failed to save');
+      setSaveError(err instanceof Error ? err.message : 'Failed to save');
     } finally {
       setSaving(false);
     }
@@ -286,6 +292,7 @@ export function SettingsTab() {
       description: 'The game’s own configuration.',
       content: gameConfig,
     },
+    { id: 'antivirus', label: 'Malware protection', icon: 'shieldCheck', description: 'Protected uploads, instance scan reports and security holds.', content: <AntivirusPanel serverId={server.id} /> },
     {
       id: 'runtime',
       label: server.platform === 'docker' ? 'Container & limits' : 'Launch & limits',
@@ -364,6 +371,7 @@ interface GeneralForm {
 }
 
 function PropertiesEditor({ serverId, canWrite }: { serverId: string; canWrite: boolean }) {
+  const review = useChangeReview();
   const { canConfig } = useServerDetail();
   const [properties, setProperties] = useState<PropertyEntry[] | null>(null);
   const [edited, setEdited] = useState<Record<string, string>>({});
@@ -396,6 +404,8 @@ function PropertiesEditor({ serverId, canWrite }: { serverId: string; canWrite: 
     setError('');
     setSaved(false);
     try {
+      const before = Object.fromEntries((properties ?? []).filter(p => p.key in edited).map(p => [p.key, p.value]));
+      if (!await review(before, edited, 'Supported live settings are sent immediately; other properties apply on the next start.')) return;
       const res = await api.put<{ properties: PropertyEntry[]; liveQueued: string[]; restartRequired: string[] }>(`/servers/${serverId}/properties`, { updates: edited });
       setProperties(res.properties);
       setEdited({});
@@ -468,7 +478,7 @@ function PropertiesEditor({ serverId, canWrite }: { serverId: string; canWrite: 
 
       {(canWrite || Object.keys(edited).length > 0) && (
         <div className="mt-4 flex items-center gap-3">
-          <Button variant="primary" onClick={save} disabled={saving || Object.keys(edited).length === 0}>
+          <Button data-save-shortcut variant="primary" onClick={save} disabled={saving || Object.keys(edited).length === 0}>
             {saving ? 'Saving…' : `Save ${Object.keys(edited).length || ''} change(s)`}
           </Button>
           {saved && <span className="text-sm text-success-500">Saved</span>}

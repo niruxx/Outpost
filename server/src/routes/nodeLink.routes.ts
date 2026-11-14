@@ -1,4 +1,7 @@
+import { capacityNodeRouter,recoveryNodeRouter } from './fleetAdvanced.routes.js';
 import { localInventory } from '../services/fleetService.js';
+import { configPreview, performUiAction } from '../services/uiWorkspaceService.js';
+import { HttpError } from '../utils/asyncHandler.js';
 import { provisionOnNode, nodeProvisionIdentity } from './operations.routes.js';
 import { Router } from 'express';
 import { asyncHandler } from '../utils/asyncHandler.js';
@@ -34,7 +37,19 @@ nodeLinkRouter.post(
   })
 );
 
+nodeLinkRouter.use('/capacity',capacityNodeRouter);
+nodeLinkRouter.use('/recovery',recoveryNodeRouter);
+
 nodeLinkRouter.get('/inventory', (_req, res) => res.json(localInventory()));
+nodeLinkRouter.post('/workspace/preview', asyncHandler(async (req, res) => {
+  if (typeof req.body?.serverId !== 'string' || !/^[\w-]{1,100}$/.test(req.body.serverId)) throw new HttpError(400, 'Invalid instance');
+  res.json(configPreview(req.body.serverId, req.body.patch));
+}));
+nodeLinkRouter.post('/workspace/action', asyncHandler(async (req, res) => {
+  if (typeof req.body?.serverId !== 'string' || !/^[\w-]{1,100}$/.test(req.body.serverId)) throw new HttpError(400, 'Invalid instance');
+  await performUiAction(req.body.serverId, req.body.action, req.body.patch, req.body.revision);
+  logAudit(null, 'node-link', `fleet.bulk.${req.body.action}`, req.body.serverId); res.json({ ok: true });
+}));
 nodeLinkRouter.post('/provision', asyncHandler(async (req, res) => { nodeProvisionIdentity(req); await provisionOnNode(req, res); }));
 
 // Host administration by a linked panel (only when this host allows it; see hostAdmin.routes).

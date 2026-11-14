@@ -11,6 +11,10 @@ import { getUserServerAccess } from './userService.js';
 export type EventSeverity = 'error' | 'warning' | 'notice' | 'info';
 
 const SEVERITY: Record<string, EventSeverity> = {
+  'health.alert': 'warning',
+  'security.upload.blocked': 'error',
+  'security.scan.detected': 'error',
+  'security.scan.failed': 'warning',
   'server.crashed': 'error',
   'server.restart_gave_up': 'error',
   'update.failed': 'error',
@@ -25,6 +29,10 @@ const SEVERITY: Record<string, EventSeverity> = {
 
 /** Shown to people as the headline; webhooks use their own titles. */
 const TITLE: Record<string, string> = {
+  'health.alert': 'Instance health alert',
+  'security.upload.blocked': 'Upload blocked by antivirus',
+  'security.scan.detected': 'Antivirus findings require review',
+  'security.scan.failed': 'Antivirus scan incomplete',
   'server.started': 'Instance started',
   'server.stopped': 'Instance stopped',
   'server.crashed': 'Instance crashed',

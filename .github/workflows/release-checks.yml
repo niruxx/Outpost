@@ -1,0 +1,52 @@
+name: Release checks
+
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-checks-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  resilience:
+    name: Browser resilience (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    env:
+      OUTPOST_RELEASE_UPLOAD_MIB: '64'
+      OUTPOST_TEST_BROWSER_NO_SANDBOX: ${{ matrix.os == 'ubuntu-24.04' && '1' || '0' }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Build and run required release checks
+        run: npm run test:release
+      - name: Check fleet integrations and extension boundaries
+        env:
+          OUTPOST_TEST_BROWSER_UI: '1'
+        run: node server/test/fleet-extensibility.mjs
+      - name: Preserve reports and screenshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-checks-${{ matrix.os }}
+          path: |
+            artifacts/release-checks/
+            artifacts/fleet-integrations/
+          retention-days: 14
+          if-no-files-found: warn

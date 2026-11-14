@@ -1,6 +1,9 @@
+import { GameWorkflowsTab } from './server/GameWorkflowsTab.js';
+import { ReliabilityTab } from './server/ReliabilityTab.js';
 import { useEffect, useState } from 'react';
 import { Cs2Tab } from './server/Cs2Tab.js';
 import { Tf2Tab } from './server/Tf2Tab.js';
+import { WorldHealthTab } from './server/WorldHealthTab.js';
 import { GamerulesTab } from './server/GamerulesTab.js';
 import { GameSettingsTab } from './server/GameSettingsTab.js';
 import { setVisibleInterval } from '../lib/perf.js';
@@ -104,9 +107,12 @@ function InstanceNav({ server, onNavigate }: { server: ServerRecord; onNavigate:
       {world && <NavItem to="gamerules" icon="configuration" label="Gamerules" onClick={onNavigate} />}
       {isGmodServer(server) && <NavItem to="gmod" icon="bolt" label="Garry's Mod" onClick={onNavigate} />}
       {world && <NavItem to="maps" icon="map" label="Map" onClick={onNavigate} />}
+      {((server.platform === 'java' && !proxy) || (server.platform === 'steam' && (server.steam_preset === 'terraria' || server.steam_app_id === '105600'))) && <NavItem to="world-health" icon="shieldCheck" label="World Health" onClick={onNavigate} />}
 
-      <NavSectionLabel>Data</NavSectionLabel>
-      <NavItem to="backups" icon="backup" label="Backups" onClick={onNavigate} />
+      <NavItem to="game-workflows" icon="bolt" label="Game workflows" onClick={onNavigate} />
+        <NavSectionLabel>Data</NavSectionLabel>
+      <NavItem to="reliability" icon="shieldCheck" label="Reliability" onClick={onNavigate} />
+        <NavItem to="backups" icon="backup" label="Backups" onClick={onNavigate} />
       {(isAdmin || isOwner) && <NavItem to="activity" icon="eye" label="Activity" onClick={onNavigate} />}
       {world && <NavItem to="rewind" icon="refresh" label="World Rewind" onClick={onNavigate} />}
 
@@ -434,7 +440,9 @@ function InstancePageInner() {
             <Route index element={<Navigate to="status" replace />} />
             <Route path="status" element={<StatusTab />} />
             <Route path="console" element={<ConsoleTab />} />
-            <Route path="backups" element={<BackupsTab />} />
+            <Route path="game-workflows" element={<GameWorkflowsTab />} />
+              <Route path="reliability" element={<ReliabilityTab />} />
+              <Route path="backups" element={<BackupsTab />} />
             <Route path="tasks" element={<TasksTab />} />
             <Route path="workshop" element={<WorkshopTab />} />
             <Route path="cs2" element={<Cs2Tab />} />
@@ -450,6 +458,7 @@ function InstancePageInner() {
             {world && <Route path="operator" element={<OperatorTab />} />}
             {world && <Route path="whitelist" element={<WhitelistTab />} />}
             {world && <Route path="maps" element={<MapsTab />} />}
+            <Route path="world-health" element={<WorldHealthTab />} />
             {world && <Route path="rewind" element={<RewindTab />} />}
             {proxy && <Route path="network" element={<ProxyTab />} />}
             {isGmodServer(server) && <Route path="gmod" element={<GmodTab />} />}

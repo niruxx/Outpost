@@ -86,6 +86,9 @@ function useDestinations(): Destination[] {
   const firewall = admin || (!!user?.firewall && user.firewall !== 'none');
   const list: (Destination | false)[] = [
     { to: '/', end: true, label: 'Instances', icon: 'instances', group: 'workspace', tone: 'blue' },
+    { to: '/dashboard', label: 'Dashboard', icon: 'grid', group: 'workspace', tone: 'teal' },
+    { to: '/extensions', label: 'Extensions', icon: 'plugin', group: 'workspace', tone: 'green' },
+    { to: '/jobs', label: 'Job center', icon: 'clock', group: 'workspace', tone: 'yellow' },
     { to: '/files', label: 'File Management', icon: 'folder', group: 'workspace', tone: 'yellow' },
     { to: '/docker', label: 'Docker', icon: 'container', group: 'workspace', tone: 'teal' },
     vms && { to: '/libvirt', end: true, label: 'Virtual Machines', icon: 'monitor', group: 'workspace', tone: 'violet' },
@@ -740,7 +743,8 @@ export function Layout({
 
         <div className="ui-sheet relative flex min-w-0 flex-1 flex-col">
           <PanelUpdateBanner />
-          <main className="ui-main min-h-0 flex-1 overflow-y-auto">
+          <a href="#main-content" className="ui-skip-link">Skip to main content</a>
+          <main id="main-content" tabIndex={-1} className="ui-main min-h-0 flex-1 overflow-y-auto">
             <div
               key={pageKey}
               className={fill ? 'h-full' : 'min-h-full'}

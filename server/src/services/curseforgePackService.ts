@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { scanUploadBuffers } from './antivirusService.js';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import AdmZip from 'adm-zip';
@@ -56,11 +57,14 @@ export async function resolveCurseForgePack(projectId: string, fileId: string) {
 export async function installCurseForgePack(ref: ModpackRef, dir: string, progress: Progress, log?: LogFn) {
   const { file } = await curseforge.packFile(Number(ref.projectId), Number(ref.versionId));
   const bytes = await cfDownload(file.downloadUrl!, 256 * 1024 * 1024, file.hashes);
+  await scanUploadBuffers([{ name: 'curseforge-pack.zip', buffer: bytes }]);
   const { manifest, loader, mc, loaderVersion } = inspectCurseForgePack(bytes);
   let zip = new AdmZip(bytes), prefix = `${manifest.overrides ?? 'overrides'}/`;
   if (file.serverPackFileId) {
     const { file: serverFile } = await curseforge.packFile(Number(ref.projectId), file.serverPackFileId);
-    zip = new AdmZip(await cfDownload(serverFile.downloadUrl!, 512 * 1024 * 1024, serverFile.hashes)); validateArchive(zip); prefix = '';
+    const serverBytes = await cfDownload(serverFile.downloadUrl!, 512 * 1024 * 1024, serverFile.hashes);
+    await scanUploadBuffers([{ name: 'curseforge-server-pack.zip', buffer: serverBytes }]);
+    zip = new AdmZip(serverBytes); validateArchive(zip); prefix = '';
     const names = zip.getEntries().filter(e => !e.isDirectory).map(e => e.entryName);
     const roots = new Set(names.map(n => n.split('/')[0]));
     if (roots.size === 1 && names.every(n => n.includes('/'))) prefix = `${names[0].split('/')[0]}/`;
@@ -72,6 +76,7 @@ export async function installCurseForgePack(ref: ModpackRef, dir: string, progre
       const resolved = await curseforge.resolveFile(fileRef.projectID, mc, undefined, fileRef.fileID);
       if (path.basename(resolved.fileName) !== resolved.fileName || !resolved.fileName.endsWith('.jar')) throw new HttpError(400, 'Manifest mod must be a plain JAR filename');
       const buffer = await cfDownload(resolved.downloadUrl);
+      await scanUploadBuffers([{ name: resolved.fileName, buffer }]);
       const target = safeJoinReal(dir, `mods/${resolved.fileName}`);
       fs.mkdirSync(path.dirname(target), { recursive: true }); fs.writeFileSync(target, buffer);
       progress(5 + Math.round(++completed / Math.max(1, manifest.files.length) * 70), `Installing CurseForge mods (${completed})`);

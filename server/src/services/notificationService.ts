@@ -11,6 +11,7 @@ import { recordEvent } from './eventLogService.js';
  */
 
 export const NOTIFY_EVENTS = [
+  'health.alert',
   'server.started',
   'server.stopped',
   'server.crashed',
@@ -25,6 +26,7 @@ export const NOTIFY_EVENTS = [
 export type NotifyEvent = (typeof NOTIFY_EVENTS)[number];
 
 const EVENT_STYLE: Record<NotifyEvent, { title: string; color: number }> = {
+  'health.alert': { title: 'Instance health alert', color: 0xfaa61a },
   'server.started': { title: 'Instance started', color: 0x3ba55d },
   'server.stopped': { title: 'Instance stopped', color: 0x95a5a6 },
   'server.crashed': { title: 'Instance crashed', color: 0xed4245 },

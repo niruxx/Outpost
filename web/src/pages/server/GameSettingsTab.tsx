@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useChangeReview } from '../../components/ChangeReview.js';
 import { Link } from 'react-router-dom';
 import { api, ApiError, type UploadProgress } from '../../api/client.js';
 import { Badge, Button, Card, CardTitle, ErrorText, Field, Input, Modal, Notice, Select, Spinner } from '../../components/ui.js';
@@ -21,6 +22,7 @@ interface View {
 }
 const area = 'ui-input min-h-32 w-full rounded-xl border border-surface-600 bg-surface-950 p-3 font-mono text-xs text-ink-200';
 export function GameSettingsTab() {
+  const review = useChangeReview();
   const { serverId, server, can, refresh } = useServerDetail();
   const toast = useToast(), confirm = useConfirm();
   const [view, setView] = useState<View | null>(null);
@@ -89,6 +91,7 @@ export function GameSettingsTab() {
         </fieldset>
         <div className="mt-5 flex flex-wrap gap-2">
           <Button variant="primary" disabled={disabled} onClick={() => void run('save', async () => {
+            if (!await review(null, null, '', { serverId, kind: 'game-controls', input: { revision: view.revision, values, port, clearSecrets, ...(map?.rotation ? { rotation: rotation.split(/\r?\n/).map(v => v.trim()).filter(Boolean) } : {}) } })) return;
             if (map && values[map.key] !== view.settings.values[map.key] && !await confirm({ title: 'Change map or world', message: 'The next start will use the selected map/world. A different world or save name may create a fresh save. Existing saves are kept; make a backup before switching.', confirmLabel: 'Save selection' })) return;
             apply(await api.put<View>(base, { revision: view.revision, values, port, clearSecrets, ...(map?.rotation ? { rotation: rotation.split(/\r?\n/).map((v) => v.trim()).filter(Boolean) } : {}) }));
             await refresh(); toast.success('Game settings saved — apply on next start');

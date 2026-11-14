@@ -240,7 +240,7 @@ export function workshopId(input: unknown): string | null {
   return m[1];
 }
 
-export function saveCs2Settings(server: ServerRecord, input: Record<string, unknown>): Cs2Settings {
+export function saveCs2Settings(server: ServerRecord, input: Record<string, unknown>, dryRun = false): Cs2Settings {
   const cur = cs2SettingsOf(server);
   const next: Cs2Settings = { ...cur, bots: { ...cur.bots }, cvars: { ...cur.cvars } };
   if (input.mode !== undefined) {
@@ -294,12 +294,12 @@ export function saveCs2Settings(server: ServerRecord, input: Record<string, unkn
     if (bad) throw new HttpError(400, `${bad} isn’t a SteamID64 (17 digits starting 7656119…) — find yours at steamid.io`);
     next.admins = ids.slice(0, 50);
   }
-  prep('UPDATE servers SET game_settings = ? WHERE id = ?').run(JSON.stringify(next), server.id);
+  if (!dryRun) prep('UPDATE servers SET game_settings = ? WHERE id = ?').run(JSON.stringify(next), server.id);
   return next;
 }
 
 /** A preset sets the mode, slots, bots and its cvars. The previous preset's untouched values are replaced; values you set yourself are kept. */
-export function applyPreset(server: ServerRecord, presetId: string): { settings: Cs2Settings; preset: Cs2Preset } {
+export function applyPreset(server: ServerRecord, presetId: string, dryRun = false): { settings: Cs2Settings; preset: Cs2Preset } {
   const preset = PRESETS.find((p) => p.id === presetId);
   if (!preset) throw new HttpError(404, 'Unknown preset');
   const cur = cs2SettingsOf(server);
@@ -312,7 +312,7 @@ export function applyPreset(server: ServerRecord, presetId: string): { settings:
     // Values you changed yourself win over the new preset's.
     cvars: { ...preset.cvars, ...own },
     preset: preset.id,
-  });
+  }, dryRun);
   return { settings, preset };
 }
 

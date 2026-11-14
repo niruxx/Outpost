@@ -1,3 +1,4 @@
+import { scanIncomingUploads } from './antivirus.routes.js';
 import { Router } from 'express';
 import multer from 'multer';
 import { asyncHandler, HttpError } from '../utils/asyncHandler.js';
@@ -19,7 +20,7 @@ bannerRouter.get('/', asyncHandler(async (req, res) => {
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_BANNER_BYTES, files: 1, fields: 0 } });
 bannerRouter.post('/', (req, _res, next) => {
   try { requirePermission(req, 'settings'); assertDiskRoom(req.params.serverId, 'write'); next(); } catch (err) { next(err); }
-}, upload.single('file'), asyncHandler(async (req, res) => {
+}, upload.single('file'), scanIncomingUploads, asyncHandler(async (req, res) => {
   if (!req.file) throw new HttpError(400, 'Choose a banner image');
   assertDiskRoom(req.params.serverId, 'write');
   const banner = saveBannerArtwork(req.params.serverId, req.file.buffer);

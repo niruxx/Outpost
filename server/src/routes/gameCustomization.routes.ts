@@ -1,3 +1,4 @@
+import { scanIncomingUploads } from './antivirus.routes.js';
 import { Router } from 'express';
 import multer from 'multer';
 import { requireAuth, requirePermission, requireServerAccess } from '../auth/middleware.js';
@@ -80,7 +81,7 @@ for (const kind of ['map', 'mod'] as const) {
       if (frameworkJobs.get(s.id)?.state === 'running') throw new HttpError(409, 'Wait for framework installation to finish');
       next();
     } catch (err) { next(err); }
-  }, upload.single('file'), asyncHandler(async (req, res) => {
+  }, upload.single('file'), scanIncomingUploads, asyncHandler(async (req, res) => {
     const s = serverOf(req.params.serverId, 'tf2');
     if (kind === 'mod' && isRunning(s.id)) throw new HttpError(409, 'Stop TF2 before installing mods or plugins');
     if (frameworkJobs.get(s.id)?.state === 'running') throw new HttpError(409, 'Wait for framework installation to finish');

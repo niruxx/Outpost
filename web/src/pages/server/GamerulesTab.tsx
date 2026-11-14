@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useChangeReview } from '../../components/ChangeReview.js';
 import { api, ApiError } from '../../api/client.js';
 import { Badge, Button, Card, CardTitle, ErrorText, Field, Notice, Select, Spinner } from '../../components/ui.js';
 import { useToast } from '../../components/Toast.js';
@@ -21,6 +22,7 @@ interface View {
   running: boolean;
 }
 export function GamerulesTab() {
+  const review = useChangeReview();
   const { serverId, server, can } = useServerDetail();
   const toast = useToast();
   const [view, setView] = useState<View | null>(null);
@@ -41,6 +43,7 @@ export function GamerulesTab() {
     if (!draft) return;
     setBusy(true); setError('');
     try {
+      if (!await review(null, null, '', { serverId, kind: 'gamerules', input: draft })) return;
       apply(await api.put<View>(base, draft));
       if (now) {
         const result = await api.post<View & { sent: number }>(`${base}/apply`);
@@ -89,7 +92,7 @@ export function GamerulesTab() {
         </fieldset>
         <ErrorText>{error}</ErrorText>
         <div className="mt-5 flex flex-wrap gap-2">
-          <Button variant="primary" disabled={!can('settings') || busy} onClick={() => void save(false)}>{busy ? 'Working…' : 'Save gamerules'}</Button>
+          <Button data-save-shortcut variant="primary" disabled={!can('settings') || busy} onClick={() => void save(false)}>{busy ? 'Working…' : 'Save gamerules'}</Button>
           <Button disabled={!can('settings') || !can('console') || busy || server?.status !== 'running' || !Object.keys(draft.rules).length} onClick={() => void save(true)}>Save &amp; apply now</Button>
           {dirty && <Button variant="ghost" disabled={busy} onClick={() => setDraft(view.settings)}>Discard changes</Button>}
         </div>

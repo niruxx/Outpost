@@ -69,6 +69,7 @@ export async function searchPlugins(query: string, limit = 24, catalog: AddonCat
 }
 
 export interface ResolvedPluginVersion {
+  incompatible?: { projectId: string | null; versionId: string | null }[];
   projectId?: string;
   dependencies?: { projectId: string | null; versionId: string | null; required: boolean }[];
   versionNumber: string;
@@ -107,7 +108,7 @@ export async function resolvePluginVersion(
     if (project.id !== v.project_id) throw new Error('Selected version does not belong to this mod project');
     const file = pickFile(v);
     if (!file) throw new Error(`No downloadable file for ${slug}`);
-    return { projectId: v.project_id, dependencies: dependencyRefs(v), versionNumber: v.version_number, fileName: file.filename, downloadUrl: file.url, sizeBytes: file.size, versionMismatchWarning: false };
+    return { projectId: v.project_id, dependencies: dependencyRefs(v), incompatible: (v.dependencies ?? []).filter(d => d.dependency_type === 'incompatible').map(d => ({ projectId: d.project_id, versionId: d.version_id })), versionNumber: v.version_number, fileName: file.filename, downloadUrl: file.url, sizeBytes: file.size, versionMismatchWarning: false };
   }
   const loadersParam = JSON.stringify(loadersFor(catalog));
 
@@ -127,6 +128,7 @@ export async function resolvePluginVersion(
     return {
       projectId: best.project_id,
       dependencies: dependencyRefs(best),
+      incompatible: (best.dependencies ?? []).filter(d => d.dependency_type === 'incompatible').map(d => ({ projectId: d.project_id, versionId: d.version_id })),
       versionNumber: best.version_number,
       fileName: file.filename,
       downloadUrl: file.url,

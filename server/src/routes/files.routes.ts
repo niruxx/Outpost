@@ -1,3 +1,7 @@
+import { fileWorkspaceRouter, authorizeFiles } from './fileWorkspace.routes.js';
+import { recycle, revision } from '../services/fileWorkspaceService.js';
+import { scanIncomingUploads } from './antivirus.routes.js';
+import { scanUploadBuffers } from '../services/antivirusService.js';
 import { Router, type Request } from 'express';
 import { assertDiskRoom } from '../services/limitsService.js';
 import multer from 'multer';
@@ -7,13 +11,11 @@ import { asyncHandler, HttpError } from '../utils/asyncHandler.js';
 import { requireAuth, requirePermission, requireServerAccess } from '../auth/middleware.js';
 import {
   createDirectory,
-  deleteEntry,
   listDirectory,
   readTextFile,
   renameEntry,
   resolveForDownload,
   resolveForUpload,
-  writeTextFile,
 } from '../services/fileService.js';
 import { logAudit } from '../services/userService.js';
 import { fileChange, renameChange, snapshotFile, snapshotBuffer } from '../services/fileChangeService.js';
@@ -21,6 +23,7 @@ import { instanceDir, isSymlinkAt, safeJoinReal } from '../utils/paths.js';
 import type { Role } from '../types/index.js';
 
 export const filesRouter = Router({ mergeParams: true });
+filesRouter.use(fileWorkspaceRouter);
 filesRouter.use(requireAuth, requireServerAccess());
 
 
@@ -53,7 +56,8 @@ filesRouter.get(
   asyncHandler(async (req, res) => {
     requirePermission(req, 'files.read');
     const filePath = typeof req.query.path === 'string' ? req.query.path : '';
-    res.json({ content: await readTextFile(req.params.serverId, filePath) });
+    const content = await readTextFile(req.params.serverId, filePath);
+    res.json({ content, revision: revision(content) });
   })
 );
 
@@ -68,10 +72,16 @@ filesRouter.put(
     }
     const target = instancePath(req.params.serverId, filePath);
     const before = target ? snapshotFile(target) : null;
-    await writeTextFile(req.params.serverId, filePath, content);
+    const checkRevision = () => { if (req.body.revision && target && (!fs.existsSync(target) || revision(fs.readFileSync(target, 'utf8')) !== req.body.revision)) throw new HttpError(409, 'File changed since opening. Reopen it before saving.'); };
+    checkRevision();
+    await scanUploadBuffers([{ name: filePath, buffer: Buffer.from(content) }], req.params.serverId);
+    authorizeFiles(req); checkRevision();
+    // Synchronous publication keeps the revision check and write in one event-loop turn.
+    if (!target) throw new HttpError(400, 'Invalid path');
+    fs.mkdirSync(path.dirname(target), { recursive: true }); fs.writeFileSync(target, content, 'utf8');
     const change = before ? fileChange(clean(filePath), before, snapshotBuffer(Buffer.from(content))) : undefined;
     logAudit(req.auth!.sub, req.auth!.username, 'file.write', req.params.serverId, filePath, change);
-    res.json({ ok: true });
+    res.json({ ok: true, revision: revision(content) });
   })
 );
 
@@ -109,10 +119,10 @@ filesRouter.delete(
   asyncHandler(async (req, res) => {
     requirePermission(req, 'files.write');
     const filePath = typeof req.query.path === 'string' ? req.query.path : '';
-    // What the file held, so the history can show what was lost. Links are removed, not followed.
+    // Preserve history before moving the entry to the recycle bin. Leaf links are moved, never followed.
     const target = isSymlinkAt(instanceDir(req.params.serverId), filePath) ? null : instancePath(req.params.serverId, filePath);
     const before = target ? snapshotFile(target) : null;
-    await deleteEntry(req.params.serverId, filePath);
+    recycle(req.params.serverId, filePath);
     const change = before ? fileChange(clean(filePath), before, { exists: false, text: '' }) : undefined;
     logAudit(req.auth!.sub, req.auth!.username, 'file.delete', req.params.serverId, filePath, change);
     res.status(204).end();
@@ -132,7 +142,8 @@ filesRouter.get(
 
 filesRouter.post(
   '/upload',
-  upload.array('files'),
+  (req, _res, next) => { try { requirePermission(req, 'files.write'); assertDiskRoom(req.params.serverId, 'write'); next(); } catch (err) { next(err); } },
+  upload.array('files'), scanIncomingUploads,
   asyncHandler(async (req, res) => {
     requirePermission(req, 'files.write');
     assertDiskRoom(req.params.serverId, 'write');

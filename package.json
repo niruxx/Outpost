@@ -11,7 +11,10 @@
     "dev": "concurrently -k -n API,WEB -c blue,green \"npm:dev --workspace=server\" \"npm:dev --workspace=web\"",
     "build": "npm run build --workspace=server && npm run build --workspace=web",
     "start": "npm run start --workspace=server",
-    "setup": "npm install"
+    "setup": "npm install",
+    "test:release": "npm run build && node server/test/release-checks.mjs",
+    "test:release:checks": "node server/test/release-checks.mjs",
+    "test:fleet": "npm run build && node server/test/fleet-extensibility.mjs"
   },
   "devDependencies": {
     "concurrently": "^9.1.0"

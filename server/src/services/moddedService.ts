@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { downloadScannedMod, scanIngestedPath } from './antivirusService.js';
 import path from 'node:path';
 import AdmZip from 'adm-zip';
 import { downloadFile, fetchJson, type LogFn } from '../utils/download.js';
@@ -384,6 +385,7 @@ export async function installModpack(ref: ModpackRef, dir: string, progress: Pro
   }
   try {
     const zip = new AdmZip(packPath);
+    await scanIngestedPath(packPath);
     const { index } = inspectModpack(fs.readFileSync(packPath));
     const deps = index.dependencies;
     const mc = deps.minecraft;
@@ -404,7 +406,7 @@ export async function installModpack(ref: ModpackRef, dir: string, progress: Pro
       const url = f.downloads.find((u) => ALLOWED_HOSTS.test(u));
       if (!url) throw new Error(`${f.path}: download isn’t from a trusted host`);
       fs.mkdirSync(path.dirname(target), { recursive: true });
-      await downloadFile(url, target, undefined, undefined);
+      await downloadScannedMod(url, target);
       done++;
       progress(10 + Math.round((done / Math.max(1, serverFiles.length)) * 40), `Downloading mods (${done}/${serverFiles.length})`);
     }

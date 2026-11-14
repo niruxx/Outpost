@@ -1,3 +1,4 @@
+import { recordPlayerIdentity } from './gameWorkflowService.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { instanceDir } from '../utils/paths.js';
@@ -19,6 +20,8 @@ export interface PlayerEvent {
 
 /** Feeds one console line through the player-activity parser, updating the online set. */
 export function handleLogLine(serverId: string, line: string): PlayerEvent | null {
+  const identityLine=line.match(/UUID of player (\w{1,16}) is ([a-f0-9-]{36})/i);
+  if(identityLine){try{recordPlayerIdentity(serverId,identityLine[1],'identity',identityLine[2]);}catch{}return null;}
   let set = onlineByServer.get(serverId);
   if (!set) {
     set = new Set();
@@ -29,11 +32,13 @@ export function handleLogLine(serverId: string, line: string): PlayerEvent | nul
   if (match) {
     if (set.has(match[1].trim())) return null;
     set.add(match[1].trim());
+    try { recordPlayerIdentity(serverId, match[1].trim(), 'join', line.match(/<\d+><([^>]+)>/)?.[1]); } catch { /* History must not interrupt console processing. */ }
     return { type: 'join', name: match[1].trim() };
   }
   match = line.match(JAVA_LEAVE) ?? line.match(BEDROCK_LEAVE) ?? line.match(SOURCE_LEAVE);
   if (match) {
     set.delete(match[1].trim());
+    try { recordPlayerIdentity(serverId, match[1].trim(), 'leave'); } catch { /* History must not interrupt console processing. */ }
     return { type: 'leave', name: match[1].trim() };
   }
   return null;

@@ -1,4 +1,5 @@
 import { Cs2MatchCard } from './Cs2MatchCard.js';
+import { useChangeReview } from '../../components/ChangeReview.js';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { setVisibleInterval } from '../../lib/perf.js';
 import { formatBytes } from './StatusTab.js';
@@ -55,6 +56,7 @@ const PRESET_ICON: Record<string, string> = { surf: '🏄', bhop: '🐇', practi
 
 /** Counter-Strike 2: mode, maps, presets (surf/bhop…), server identity, bots, cvars, live actions + a command reference. */
 export function Cs2Tab() {
+  const review = useChangeReview();
   const { serverId, can } = useServerDetail();
   const toast = useToast();
   const [v, setV] = useState<Cs2View | null>(null);
@@ -104,7 +106,7 @@ export function Cs2Tab() {
     setBusy(key);
     try {
       const r = await fn();
-      if (ok) toast.success(ok);
+      if (ok && r !== false) toast.success(ok);
       return r;
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : 'Something went wrong');
@@ -116,7 +118,7 @@ export function Cs2Tab() {
   const save = () =>
     run(
       'save',
-      async () => apply(await api.put<Cs2View>(base, { ...draft, cvars: Object.fromEntries(cvarRows.filter((r) => r.k.trim()).map((r) => [r.k.trim(), r.v])) })),
+      async () => { const input = { ...draft, cvars: Object.fromEntries(cvarRows.filter((r) => r.k.trim()).map((r) => [r.k.trim(), r.v])) }; if (!await review(null, null, '', { serverId, kind: 'cs2', input })) return false; apply(await api.put<Cs2View>(base, input)); return true; },
       v.running ? 'Saved — press “Apply now” to load it (reloads the map), or restart' : 'Saved — applies on the next start',
     );
   const action = (a: string, value?: string, ok?: string) => run(a, () => api.post(`${base}/action`, { action: a, value }), ok);
@@ -137,6 +139,7 @@ export function Cs2Tab() {
                 disabled={!canEdit || !!busy}
                 onClick={() =>
                   run('preset', async () => {
+                    if (!await review(null, null, '', { serverId, kind: 'cs2-preset', input: { preset: p.id } })) return;
                     const r = await api.post<Cs2View & { tip: string | null }>(`${base}/preset`, { preset: p.id });
                     apply(r);
                     toast.success(`${p.label} preset applied${r.running ? ' — press “Apply now”' : ''}`);

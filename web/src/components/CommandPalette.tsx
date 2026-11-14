@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { api, ApiError } from '../api/client.js';
 import type { ServerRecord } from '../api/types.js';
+import { isProxyLoader } from '../api/types.js';
 import { useAuth } from '../state/AuthContext.js';
 import { THEMES, saveColorMode, saveTheme } from '../lib/theme.js';
 import { t } from '../i18n/index.js';
@@ -13,6 +14,8 @@ import { StatusDot } from './StatusBadge.js';
 import { CONFIGURATION_SECTIONS } from '../pages/ConfigurationPage.js';
 import { useConfirm } from './ConfirmDialog.js';
 import { discardUnsavedChanges, hasUnsavedChanges } from '../lib/unsaved.js';
+import { useDialogFocus } from '../lib/dialogFocus.js';
+import { openShortcuts } from './KeyboardShortcuts.js';
 
 const OPEN_EVENT = 'outpost:command-palette';
 const RECENT_KEY = 'outpost_palette_recent';
@@ -69,6 +72,7 @@ const INSTANCE_PAGES: { path: string; label: string; icon: IconName }[] = [
   { path: 'console', label: 'Console', icon: 'console' },
   { path: 'files', label: 'Files', icon: 'folder' },
   { path: 'backups', label: 'Backups', icon: 'backup' },
+  { path: 'world-health', label: 'World Health', icon: 'shieldCheck' },
   { path: 'configuration', label: 'Configuration', icon: 'configuration' },
   { path: 'tasks', label: 'Tasks & Automation', icon: 'clock' },
   { path: 'update', label: 'Versions & updates', icon: 'update' },
@@ -86,6 +90,8 @@ export function CommandPalette() {
   const [servers, setServers] = useState<ServerRecord[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useDialogFocus(open, dialogRef, () => setOpen(false));
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -132,6 +138,12 @@ export function CommandPalette() {
 
     const pages: [boolean, string, IconName, string, string?][] = [
       [true, 'Instances', 'instances', '/', 'home dashboard servers'],
+      [true, 'Dashboard', 'grid', '/dashboard', 'widgets customize health players backups'],
+      [true, 'Extensions', 'plugin', '/extensions', 'plugin SDK custom pages'],
+      [true, 'Job center', 'clock', '/jobs', 'progress installs updates imports transfers failures logs'],
+      [admin, 'Fleet bulk actions', 'checklist', '/configuration/operations?section=bulk', 'batch hosts retry configuration import preview'],
+      [admin, 'Permissions inspector', 'shieldCheck', '/configuration/operations?section=permissions', 'user access allowed blocked why'],
+      [admin, 'Antivirus', 'shieldCheck', '/configuration/operations?section=antivirus', 'malware upload protection quarantine clamav scan schedule'],
       [true, 'File Management', 'folder', '/files', 'files browser'],
       [true, 'Docker', 'container', '/docker', 'containers podman'],
       [admin || !!user.vmAccess?.length, 'Virtual Machines', 'monitor', '/libvirt', 'vm libvirt kvm'],
@@ -184,6 +196,7 @@ export function CommandPalette() {
         run: go(`/instances/${s.id}`),
       });
       for (const page of INSTANCE_PAGES) {
+        if (page.path === 'world-health' && !((s.platform === 'java' && !isProxyLoader(s.loader)) || (s.platform === 'steam' && (s.steam_preset === 'terraria' || s.steam_app_id === '105600')))) continue;
         list.push({
           id: `instance:${s.id}:${page.path}`,
           group: 'Instance pages',
@@ -212,6 +225,7 @@ export function CommandPalette() {
     }
 
     list.push({ id: 'new-instance', group: 'Actions', label: 'New instance', icon: 'plus', keywords: 'create add server', run: go('/?new=1') });
+    list.push({ id: 'shortcuts', group: 'Help', label: 'Keyboard shortcuts', icon: 'key', keywords: 'help accessibility keys reference', run: openShortcuts });
     for (const theme of THEMES) {
       list.push({ id: `theme:${theme.id}`, group: 'Theme', label: `Theme: ${theme.label}`, icon: 'eye', keywords: 'appearance look', searchOnly: true, run: () => saveTheme(theme.id) });
     }
@@ -281,6 +295,7 @@ export function CommandPalette() {
           onMouseDown={() => setOpen(false)}
         >
           <motion.div
+            ref={dialogRef} tabIndex={-1}
             role="dialog"
             aria-modal="true"
             aria-label={t('Command palette')}
@@ -315,6 +330,7 @@ export function CommandPalette() {
                 placeholder={t('Search pages, instances, settings and actions…')}
                 className="min-w-0 flex-1 bg-transparent text-base text-ink-50 placeholder-ink-500 outline-none"
                 role="combobox"
+                aria-label={t('Search commands')}
                 aria-expanded="true"
                 aria-controls="command-palette-results"
                 aria-activedescendant={ordered[active] ? `command-${active}` : undefined}

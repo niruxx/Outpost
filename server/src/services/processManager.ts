@@ -517,7 +517,21 @@ function buildLaunchEnv(server: ServerRecord, dir: string, base: NodeJS.ProcessE
   return { ...base, ...addon.env, ...presetEnv, LD_LIBRARY_PATH: libPath };
 }
 
-export async function startServer(serverId: string, options: { auto?: boolean } = {}): Promise<void> {
+export async function startServer(serverId: string, options: { auto?: boolean; workflow?: string } = {}): Promise<void> {
+  const { assertNoSecurityHold } = await import('./antivirusService.js');
+  const { assertWorldHealthIdle } = await import('./worldHealthService.js');
+  const { assertBackupIdle } = await import('./verifiedBackupService.js');
+  const { assertGameWorkflowIdle } = await import('./gameUpdateWorkflowService.js');
+  const { assertRecoveryIdle } = await import('./fleetRecoveryService.js');
+  const { assertMaintenanceIdle } = await import('./reliabilityService.js');
+  assertRecoveryIdle(serverId);
+  assertGameWorkflowIdle(serverId);
+  assertBackupIdle(serverId); assertMaintenanceIdle(serverId, options.workflow);
+  assertWorldHealthIdle(serverId);
+  assertRecoveryIdle(serverId);
+  assertGameWorkflowIdle(serverId);
+  assertBackupIdle(serverId); assertMaintenanceIdle(serverId, options.workflow);
+  assertNoSecurityHold(serverId);
   if (running.has(serverId)) throw new HttpError(409, 'Server is already running');
   // A manual start supersedes any scheduled auto-restart and resets its attempt counter.
   if (!options.auto) cancelAutoRestart(serverId);
@@ -536,6 +550,11 @@ export async function startServer(serverId: string, options: { auto?: boolean } 
     if (note) appendLog(serverId, `[Outpost] ${note}`, 'system');
   }
   const plan = await buildLaunch(server);
+  assertWorldHealthIdle(serverId);
+  assertRecoveryIdle(serverId);
+  assertGameWorkflowIdle(serverId);
+  assertBackupIdle(serverId); assertMaintenanceIdle(serverId, options.workflow);
+  assertNoSecurityHold(serverId);
 
   // First start under Wine: set up the instance's prefix in the background (it can take a minute),
   // then start for real. The request returns straight away; progress shows in the console.
@@ -569,6 +588,10 @@ export async function startServer(serverId: string, options: { auto?: boolean } 
   if (config.env?.length) appendLog(serverId, `[Outpost] Extra environment: ${config.env.map((e) => e.key).join(', ')}`, 'system');
 
   resetOnlinePlayers(serverId);
+  assertWorldHealthIdle(serverId);
+  assertRecoveryIdle(serverId);
+  assertGameWorkflowIdle(serverId);
+  assertBackupIdle(serverId); assertMaintenanceIdle(serverId, options.workflow);
   setServerStatus(serverId, 'starting');
   publish(consoleTopic(serverId), { type: 'status', status: 'starting' });
 

@@ -1,0 +1,47 @@
+import { useEffect, useState } from 'react';
+import { api } from '../api/client.js';
+import { Badge, Button, Card, ErrorText, Field, Input, Select } from '../components/ui.js';
+import { setVisibleInterval } from '../lib/perf.js';
+import { useConfirm } from '../components/ConfirmDialog.js';
+
+interface Target { nodeId: string; serverId: string; name: string; state: string; changes?: { key: string; before: unknown; after: unknown; restartRequired: boolean }[]; error?: string }
+interface Run { id: string; action: string; patch: unknown; status: string; results: Target[]; cancel: number }
+interface Node { id: string; name: string; error: string | null; inventory: { servers: { id: string; name: string; status: string }[] } | null }
+const msg = (e: unknown) => e instanceof Error ? e.message : 'Request failed';
+export function FleetBulkPanel() {
+  const confirm = useConfirm();
+  const [nodes, setNodes] = useState<Node[]>([]), [selected, setSelected] = useState<string[]>([]), [runs, setRuns] = useState<Run[]>([]), [preview, setPreview] = useState<Run | null>(null);
+  const [action, setAction] = useState('backup'), [patch, setPatch] = useState('{"autoStart": false}'), [error, setError] = useState(''), [busy, setBusy] = useState(false);
+  async function loadRuns() { try { setRuns((await api.get<{ runs: Run[] }>('/workspace/bulk')).runs); } catch (e) { setError(msg(e)); } }
+  async function inventory() { try { setNodes((await api.get<{ nodes: Node[] }>('/workspace/fleet')).nodes); } catch (e) { setError(msg(e)); } }
+  useEffect(() => { void inventory(); void loadRuns(); return setVisibleInterval(loadRuns, 3000); }, []);
+  async function review(targets?: Target[], retryAction = action, retryPatch?: unknown) {
+    setBusy(true); setError(''); setPreview(null);
+    try { const input = targets ?? nodes.flatMap(n => (n.inventory?.servers ?? []).filter(s => selected.includes(`${n.id}:${s.id}`)).map(s => ({ nodeId: n.id, serverId: s.id })));
+      setPreview(await api.post<Run>('/workspace/bulk/preview', { action: retryAction, targets: input, ...(retryAction === 'configure' ? { patch: retryPatch ?? JSON.parse(patch) } : {}) }));
+    } catch (e) { setError(msg(e)); } finally { setBusy(false); }
+  }
+  return <div className="space-y-5"><Card className="space-y-4 p-5"><h2 className="text-lg">Fleet bulk actions</h2><p className="text-sm text-ink-400">Select instances across linked hosts, review each result, then apply. Stop and restart disconnect players. Cancellation stops remaining items; an in-flight operation finishes safely.</p><Button onClick={inventory}>Refresh hosts</Button>
+    {nodes.map(n => <fieldset key={n.id} className="rounded-xl border border-surface-600 p-3"><legend className="px-2">{n.name}</legend>{n.error && <ErrorText>{n.error}</ErrorText>}{n.inventory?.servers.map(s => { const id = `${n.id}:${s.id}`; return <label key={s.id} className="flex min-h-11 items-center gap-3"><input type="checkbox" checked={selected.includes(id)} onChange={e => { setSelected(v => e.target.checked ? [...v, id] : v.filter(x => x !== id)); setPreview(null); }} />{s.name} <span className="text-xs text-ink-400">{s.status}</span></label>; })}</fieldset>)}
+    <Field label="Action"><Select value={action} onChange={e => { setAction(e.target.value); setPreview(null); }}>{['backup', 'start', 'stop', 'restart', 'configure'].map(a => <option key={a}>{a}</option>)}</Select></Field>
+    {action === 'configure' && <Field label="Configuration patch (JSON)"><textarea aria-label="Configuration patch JSON" value={patch} onChange={e => { setPatch(e.target.value); setPreview(null); }} className="ui-input min-h-28 w-full rounded-xl border border-surface-500 bg-surface-950 p-3 font-mono text-sm" /><span className="block text-xs text-ink-400">name, minMemoryMb, maxMemoryMb, autoStart, restartPolicy, restartDelaySec, restartMaxAttempts. Import a JSON settings object here; unsupported fields are rejected. Memory changes apply on the next start.</span></Field>}
+    <Button disabled={busy || !selected.length} onClick={() => void review()}>Preview {selected.length} instances</Button><ErrorText>{error}</ErrorText>
+    {preview && <div className="space-y-3 border-t border-surface-600 pt-4"><h3>Review changes</h3>{preview.results.map(r => <div key={`${r.nodeId}:${r.serverId}`} className="rounded-xl bg-surface-900 p-3"><p>{r.name} · {r.state}</p><ErrorText>{r.error}</ErrorText>{r.changes?.map(c => <p key={c.key} className="break-all text-sm"><strong>{c.key}</strong>: {JSON.stringify(c.before)} → {JSON.stringify(c.after)}{c.restartRequired ? ' · next start' : ' · immediate policy change'}</p>)}</div>)}<Button variant="primary" disabled={busy || !preview.results.some(r => r.state === 'ready')} onClick={async () => {
+      if (!await confirm({ title: 'Apply reviewed batch?', message: `${preview.action} on ${preview.results.filter(r => r.state === 'ready').length} instances. Failed preview items will be skipped.`, confirmLabel: 'Apply reviewed batch', tone: ['stop', 'restart'].includes(preview.action) ? 'danger' : undefined })) return;
+      setBusy(true); try { await api.post(`/workspace/bulk/${preview.id}/run`); setPreview(null); await loadRuns(); } catch (e) { setError(msg(e)); } finally { setBusy(false); }
+    }}>Apply reviewed batch</Button></div>}
+  </Card>
+    <h2 className="text-lg">Batch history</h2>{runs.filter(r => r.status !== 'preview').map(r => <Card key={r.id} className="space-y-3 p-5"><h3>{r.action} · {r.status}</h3><p role="status" className="text-sm">{r.results.filter(t => t.state === 'completed').length} / {r.results.length} completed</p>{r.results.map(t => <div key={`${t.nodeId}:${t.serverId}`} className="break-words text-sm"><strong>{t.name}</strong> · {t.state}{t.error && <p className="text-error">{t.error}</p>}</div>)}
+      {r.status === 'running' && <Button disabled={!!r.cancel} onClick={async () => { try { await api.post(`/workspace/bulk/${r.id}/cancel`); await loadRuns(); } catch (e) { setError(msg(e)); } }}>{r.cancel ? 'Cancellation requested' : 'Cancel remaining items'}</Button>}
+      {r.status !== 'running' && r.results.some(t => t.state === 'failed') && <Button disabled={busy} onClick={() => void review(r.results.filter(t => t.state === 'failed'), r.action, r.patch)}>Preview failed items only</Button>}
+      {r.results.some(t => ['uncertain', 'running'].includes(t.state)) && r.status !== 'running' && <p className="text-xs text-yellow-400">Completion is uncertain. Check the destination host before creating a new batch; these items are excluded from retry.</p>}
+    </Card>)}
+  </div>;
+}
+interface Report { accessible: boolean; reason: string; configurationOverrides: Record<string, boolean>; permissions: { permission: string; allowed: boolean; reason: string }[] }
+export function PermissionsInspector() {
+  const [users, setUsers] = useState<{ id: string; username: string }[]>([]), [servers, setServers] = useState<{ id: string; name: string }[]>([]), [userId, setUserId] = useState(''), [serverId, setServerId] = useState(''), [report, setReport] = useState<Report | null>(null), [error, setError] = useState(''), [query, setQuery] = useState('');
+  useEffect(() => { Promise.all([api.get<{ users: typeof users }>('/users'), api.get<{ servers: typeof servers }>('/servers')]).then(([u, s]) => { setUsers(u.users); setServers(s.servers); }).catch(e => setError(msg(e))); }, []);
+  useEffect(() => { setReport(null); if (!userId || !serverId) return; let active = true; api.get<Report>(`/workspace/permissions/${userId}/${serverId}`).then(r => { if (active) { setReport(r); setError(''); } }).catch(e => { if (active) setError(msg(e)); }); return () => { active = false; }; }, [userId, serverId]);
+  return <Card className="space-y-4 p-5"><h2 className="text-lg">Permissions inspector</h2><div className="grid gap-3 sm:grid-cols-2"><Field label="User"><Select value={userId} onChange={e => setUserId(e.target.value)}><option value="">Choose user</option>{users.map(u => <option key={u.id} value={u.id}>{u.username}</option>)}</Select></Field><Field label="Instance"><Select value={serverId} onChange={e => setServerId(e.target.value)}><option value="">Choose instance</option>{servers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</Select></Field></div><ErrorText>{error}</ErrorText>{report && <><p><Badge tone={report.accessible ? 'green' : 'red'}>{report.accessible ? 'Can access instance' : 'Instance access blocked'}</Badge> {report.reason}</p><Input aria-label="Search permissions" placeholder="Search actions or reasons" value={query} onChange={e => setQuery(e.target.value)} /><div className="grid gap-3 sm:grid-cols-2">{report.permissions.filter(p => `${p.permission} ${p.reason}`.toLowerCase().includes(query.toLowerCase())).map(p => <div key={p.permission} className="rounded-xl bg-surface-900 p-3"><p>{p.permission} · {p.allowed ? 'Allowed' : 'Blocked'}</p><p className="text-xs text-ink-400">{p.reason}</p></div>)}</div><h3>Individual configuration overrides</h3>{Object.entries(report.configurationOverrides).map(([k, v]) => <p key={k} className="break-all text-sm">{k} · {v ? 'Allowed' : 'Blocked'}</p>)}{!Object.keys(report.configurationOverrides).length && <p className="text-xs text-ink-400">No individual overrides.</p>}<p className="text-xs text-ink-400">This report evaluates account and instance permissions. API key restrictions, resource limits and runtime state can additionally block a request.</p></>}</Card>;
+}

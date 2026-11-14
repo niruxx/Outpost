@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { protectionEnabled, stageFile, discardStage, scanUploadBuffers } from './antivirusService.js';
 import { assertDiskRoom } from './limitsService.js';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -161,7 +162,7 @@ function noteFailure(ip: string) {
 // SFTP operations, rooted at the instance folder
 // ---------------------------------------------------------------------------
 
-type Handle = { kind: 'file'; fd: number; abs: string; rel: string; wrote: boolean; before?: FileSnapshot } | { kind: 'dir'; abs: string; rel: string; done: boolean };
+type Handle = { kind: 'file'; fd: number; abs: string; rel: string; wrote: boolean; before?: FileSnapshot; stage?: { dir: string; file: string }; pending?: number; drain?: () => void; closing?: boolean; append?: boolean; protectedSize?: number; failed?: boolean } | { kind: 'dir'; abs: string; rel: string; done: boolean };
 
 function toAttrs(st: fs.Stats): Attributes {
   return { mode: st.mode, uid: 0, gid: 0, size: st.size, atime: Math.floor(st.atimeMs / 1000), mtime: Math.floor(st.mtimeMs / 1000) };
@@ -263,6 +264,22 @@ function serveSftp(sftp: SFTPWrapper, login: NonNullable<ReturnType<typeof resol
     const mode = utils.sftp.flagsToString(flags) ?? 'r';
     // Taken before opening: a truncating open would already have emptied the file.
     const before = writing ? snapshotFile(r.abs) : undefined;
+    if (writing && protectionEnabled()) {
+      let stage: { dir: string; file: string } | undefined;
+      try {
+        if ((flags & OPEN.EXCL) && fs.existsSync(r.abs)) throw new Error('File already exists');
+        if (!(flags & OPEN.CREAT) && !fs.existsSync(r.abs)) throw new Error('File does not exist');
+        if (fs.existsSync(r.abs) && (!fs.lstatSync(r.abs).isFile() || fs.lstatSync(r.abs).isSymbolicLink())) throw new Error('Protected uploads require regular files');
+        stage = stageFile(Buffer.alloc(0));
+        if (!(flags & OPEN.TRUNC) && fs.existsSync(r.abs)) {
+          if (fs.statSync(r.abs).size > 1024 ** 3) throw new Error('Protected SFTP uploads must be under 1 GiB');
+          fs.copyFileSync(r.abs, stage.file);
+        }
+        const fd = fs.openSync(stage.file, flags & OPEN.APPEND ? 'a+' : 'r+');
+        sftp.handle(reqid, newHandle({ kind: 'file', fd, abs: r.abs, rel: r.rel, wrote: true, before, stage, pending: 0, append: !!(flags & OPEN.APPEND), protectedSize: fs.statSync(stage.file).size }));
+      } catch (err) { if (stage) discardStage(stage.dir); sftp.status(reqid, STATUS.FAILURE, err instanceof Error ? err.message : 'Cannot stage protected upload'); }
+      return;
+    }
     fs.open(r.abs, mode, 0o644, (e, fd) => (e ? fail(reqid, e) : sftp.handle(reqid, newHandle({ kind: 'file', fd, abs: r.abs, rel: r.rel, wrote: false, before }))));
   });
   sftp.on('READ', (reqid, handle, offset, length) => {
@@ -275,8 +292,14 @@ function serveSftp(sftp: SFTPWrapper, login: NonNullable<ReturnType<typeof resol
     const h = getHandle(handle);
     if (!h || h.kind !== 'file') return sftp.status(reqid, STATUS.FAILURE);
     if (denyWrite(reqid)) return;
+    if (h.closing) return sftp.status(reqid, STATUS.FAILURE, 'Handle is closing');
+    if (protectionEnabled() && !h.stage) return sftp.status(reqid, STATUS.FAILURE, 'Upload protection changed; reopen this upload');
+    if (h.stage && (!Number.isSafeInteger(offset) || offset < 0 || offset + data.length > 1024 ** 3 || (h.append && (h.protectedSize ?? 0) + data.length > 1024 ** 3))) { h.failed = true; return sftp.status(reqid, STATUS.FAILURE, 'Protected upload limit is 1 GiB'); }
+    if (h.append) h.protectedSize = (h.protectedSize ?? 0) + data.length;
+    h.pending = (h.pending ?? 0) + 1;
     fs.write(h.fd, data, 0, data.length, offset, (e) => {
-      if (e) return fail(reqid, e);
+      h.pending = (h.pending ?? 1) - 1; if (!h.pending) h.drain?.();
+      if (e) { h.failed = true; return fail(reqid, e); }
       h.wrote = true;
       sftp.status(reqid, STATUS.OK);
     });
@@ -287,6 +310,26 @@ function serveSftp(sftp: SFTPWrapper, login: NonNullable<ReturnType<typeof resol
     if (!h) return sftp.status(reqid, STATUS.FAILURE);
     handles.delete(key);
     if (h.kind === 'dir') return sftp.status(reqid, STATUS.OK);
+    h.closing = true;
+    if (h.stage) {
+      void (async () => {
+        if (h.pending) await new Promise<void>(resolve => { h.drain = resolve; });
+        await new Promise<void>((resolve, reject) => fs.close(h.fd, err => err ? reject(err) : resolve())).catch(err => { discardStage(h.stage!.dir); throw err; });
+        try {
+          if (!protectionEnabled()) throw new Error('Upload protection changed; reopen this upload');
+          if (h.failed || fs.statSync(h.stage!.file).size > 1024 ** 3) throw new Error('Upload had failed writes or exceeded the protected size limit');
+          const buffer = fs.readFileSync(h.stage!.file);
+          await scanUploadBuffers([{ name: h.rel, buffer }], login.server.id);
+          const current = resolve(h.rel); if (!current || current.abs !== h.abs) throw new Error('Upload destination changed');
+          const temp = safeJoinReal(root, `${h.rel}.av-${crypto.randomUUID()}.tmp`);
+          try { fs.writeFileSync(temp, buffer, { mode: h.before?.exists && fs.existsSync(h.abs) ? fs.statSync(h.abs).mode & 0o777 : 0o644, flag: 'wx' }); fs.renameSync(temp, current.abs); }
+          finally { if (fs.existsSync(temp)) fs.unlinkSync(temp); }
+          audit('file.write', h.rel, h.before ? fileChange(h.rel, h.before, snapshotFile(h.abs)) : undefined);
+          sftp.status(reqid, STATUS.OK);
+        } finally { discardStage(h.stage!.dir); }
+      })().catch(err => sftp.status(reqid, STATUS.FAILURE, err instanceof Error ? err.message : 'Antivirus rejected upload'));
+      return;
+    }
     fs.close(h.fd, (e) => {
       if (h.wrote) audit('file.write', h.rel, h.before ? fileChange(h.rel, h.before, snapshotFile(h.abs)) : undefined);
       e ? fail(reqid, e) : sftp.status(reqid, STATUS.OK);
@@ -334,7 +377,7 @@ function serveSftp(sftp: SFTPWrapper, login: NonNullable<ReturnType<typeof resol
   sftp.on('READLINK', (reqid) => sftp.status(reqid, STATUS.OP_UNSUPPORTED));
   sftp.on('SYMLINK', (reqid) => sftp.status(reqid, STATUS.PERMISSION_DENIED, 'Symlinks aren’t allowed'));
   sftp.on('end', () => {
-    for (const h of handles.values()) if (h.kind === 'file') fs.close(h.fd, () => {});
+    for (const h of handles.values()) if (h.kind === 'file') fs.close(h.fd, () => { if (h.stage) discardStage(h.stage.dir); });
     handles.clear();
   });
 }

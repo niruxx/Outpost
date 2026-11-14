@@ -1,3 +1,14 @@
+import {fleetAdvancedRouter,enrollmentPublicRouter,recoveryDownloadRouter,billingInboundRouter,extensionUserRouter} from './routes/fleetAdvanced.routes.js';
+import {reloadExtensionAdapters} from './services/extensionService.js';
+import {expireBillingServices} from './services/billingService.js';
+import {recoverEnrollmentJobs} from './services/hostEnrollmentService.js';
+import {recoverFleetRecoveryJobs} from './services/fleetRecoveryService.js';
+import { gameWorkflowsRouter, fastdlPublicRouter } from './routes/gameWorkflows.routes.js';
+import { discordAdminRouter, discordInteractionRouter } from './routes/discordIntegration.routes.js';
+import { initMinecraftSleep, stopMinecraftSleep } from './services/minecraftSleepService.js';
+import { expireTimedBans } from './services/gameWorkflowService.js';
+import { reliabilityRouter } from './routes/reliability.routes.js';
+import { initReliability, stopReliability } from './services/reliabilityService.js';
 import { operationsRouter, automationRouter, hooksRouter } from './routes/operations.routes.js';
 import { initAutomation } from './services/automationService.js';
 import { registerVmConsole } from './services/vmConsoleService.js';
@@ -64,6 +75,12 @@ import { cs2Router } from './routes/cs2.routes.js';
 import { gameCustomizationRouter } from './routes/gameCustomization.routes.js';
 import { gameControlsRouter } from './routes/gameControls.routes.js';
 import { bannerRouter } from './routes/banner.routes.js';
+import { worldHealthRouter } from './routes/worldHealth.routes.js';
+import { initWorldHealth, stopWorldHealth } from './services/worldHealthService.js';
+import { antivirusRouter, instanceAntivirusRouter } from './routes/antivirus.routes.js';
+import { initAntivirus, stopAntivirus } from './services/antivirusService.js';
+import { workspaceRouter, recoverBulkRuns } from './routes/workspace.routes.js';
+import { recoverJobs } from './services/jobService.js';
 import { dbHostsRouter, serverDatabasesRouter } from './routes/databases.routes.js';
 import { startSftp, stopSftp } from './services/sftpService.js';
 import { consoleLogsRouter, consoleLogSettingsRouter } from './routes/consoleLogs.routes.js';
@@ -91,6 +108,8 @@ const PORT = Number(process.env.PORT ?? 8642);
 
 const app = express();
 app.use(httpsRedirect);
+app.use('/api/billing',billingInboundRouter);
+app.use('/api/integrations/discord', discordInteractionRouter);
 app.use(express.json({ limit: '5mb' }));
 // Secrets stored on server records never leave the panel, whichever route sends the record.
 app.set('json replacer', (key: string, value: unknown) => {
@@ -121,6 +140,7 @@ app.use((req, res, next) => {
 app.use('/api/auth', authRouter);
 app.use('/api/users', usersRouter);
 app.use('/api/servers/:serverId/files', filesRouter);
+app.use('/api/servers/:serverId/reliability', reliabilityRouter);
 app.use('/api/servers/:serverId/backups', backupsRouter);
 app.use('/api/servers/:serverId/whitelist', whitelistRouter);
 app.use('/api/servers/:serverId/plugins', pluginsRouter);
@@ -148,6 +168,18 @@ app.use('/api/servers/:serverId/cs2', cs2Router);
 app.use('/api/servers/:serverId', gameCustomizationRouter);
 app.use('/api/servers/:serverId/game-controls', gameControlsRouter);
 app.use('/api/servers/:serverId/banner', bannerRouter);
+app.use('/api/servers/:serverId/world-health', worldHealthRouter);
+app.use('/api/antivirus', antivirusRouter);
+app.use('/api/servers/:serverId/antivirus', instanceAntivirusRouter);
+recoverJobs(); recoverBulkRuns(); recoverEnrollmentJobs(); recoverFleetRecoveryJobs();
+app.use('/api/fleet',fleetAdvancedRouter);
+app.use('/api/fleet-enrollment',enrollmentPublicRouter);
+app.use('/api/fleet-recovery',recoveryDownloadRouter);
+app.use('/api/extensions',extensionUserRouter);
+app.use('/api/workspace', workspaceRouter);
+app.use('/api/integrations/discord', discordAdminRouter);
+app.use('/api/servers/:serverId/game-workflows', gameWorkflowsRouter);
+app.use('/fastdl', fastdlPublicRouter);
 app.use('/api/database-hosts', dbHostsRouter);
 app.use('/api/servers/:serverId/databases', serverDatabasesRouter);
 app.use('/api/servers/:serverId/sftp', instanceSftpRouter);
@@ -196,6 +228,8 @@ app.use((err: unknown, _req: express.Request, res: express.Response, _next: expr
   res.status(status).json({ error: message });
 });
 
+reloadExtensionAdapters();
+const billingTimer=setInterval(()=>{void expireBillingServices().catch(error=>logger.error('Billing expiry check failed',error));},60000);billingTimer.unref();
 initAutomation();
 const httpServer = http.createServer(app);
 const wss = new WebSocketServer({ noServer: true });
@@ -251,6 +285,11 @@ function handleConsoleUpgrade(req: http.IncomingMessage, socket: import('node:st
 }
 
 async function bootstrap() {
+  initReliability();
+  void initMinecraftSleep();
+  const moderationTimer = setInterval(() => { try { expireTimedBans(); } catch {} }, 30000); moderationTimer.unref();
+  initWorldHealth();
+  initAntivirus();
   initScheduler();
   initAutoUpdates();
   initConsoleHistory();
@@ -298,6 +337,10 @@ async function bootstrap() {
 bootstrap();
 
 function shutdown(signal: string) {
+  stopReliability();
+  stopMinecraftSleep();
+  stopWorldHealth();
+  stopAntivirus();
   logger.info(`Received ${signal}, shutting down`);
   stopAllForShutdown();
   stopHostTerminals();

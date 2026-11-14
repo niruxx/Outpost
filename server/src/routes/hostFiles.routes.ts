@@ -1,3 +1,5 @@
+import { scanIncomingUploads } from './antivirus.routes.js';
+import { scanUploadBuffers } from '../services/antivirusService.js';
 import { Router, type Request } from 'express';
 import multer from 'multer';
 import path from 'node:path';
@@ -88,6 +90,7 @@ hostFilesRouter.put(
   asyncHandler(async (req, res) => {
     const { path: filePath, content } = req.body ?? {};
     if (typeof filePath !== 'string' || typeof content !== 'string') throw new HttpError(400, 'path and content are required');
+    await scanUploadBuffers([{ name: filePath, buffer: Buffer.from(content) }]);
     await runHostFileOp(token(req), 'writeText', { path: filePath, content });
     audit(req, 'host.file.write', filePath);
     res.json({ ok: true });
@@ -159,7 +162,7 @@ hostFilesRouter.get(
 
 hostFilesRouter.post(
   '/upload',
-  upload.array('files'),
+  upload.array('files'), scanIncomingUploads,
   asyncHandler(async (req, res) => {
     const dir = typeof req.body?.path === 'string' ? req.body.path : '';
     const targetDir = normalizeHostPath(dir);

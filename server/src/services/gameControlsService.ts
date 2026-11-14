@@ -293,7 +293,7 @@ export function renderGameFiles(server: ServerRecord, profile: GameProfile, cont
   files[relative] = patched;
   return files;
 }
-export function saveGameControls(server: ServerRecord, input: Record<string, unknown>) {
+export function saveGameControls(server: ServerRecord, input: Record<string, unknown>, dryRun = false) {
   const profile = requireGameProfile(server);
   if (input.revision !== controlsRevision(server, profile)) throw new HttpError(409, 'Settings changed since you opened this page. Reload before saving.');
   const controls = sanitize(server, profile, input);
@@ -302,6 +302,7 @@ export function saveGameControls(server: ServerRecord, input: Record<string, unk
   assertManualPort(port, server.id);
   const values = Object.fromEntries(Object.entries(controls.values).filter(([key]) => !profile.fields.some((f) => f.key === key && f.type === 'password')));
   const raw = JSON.parse(server.game_settings ?? '{}');
+  if (dryRun) return { before: { ...controlsOf(server, profile), port: server.server_port }, after: { ...controls, port } };
   writeFiles({ ...server, server_port: port }, renderGameFiles({ ...server, server_port: port }, profile, controls));
   if (profile.format === 'launch') setSetting(`game_controls_secrets:${server.id}`, JSON.stringify(Object.fromEntries(profile.fields.filter((f) => f.type === 'password').map((f) => [f.key, controls.values[f.key]]))));
   prep('UPDATE servers SET game_settings = ?, server_port = ? WHERE id = ?').run(JSON.stringify({ ...raw, controls: { ...controls, values } }), port, server.id);

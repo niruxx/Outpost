@@ -1,3 +1,4 @@
+import { observeProfilerLine } from './profilerObservationService.js';
 import { publish, consoleTopic } from './wsHub.js';
 import { recordLine } from './consoleHistoryService.js';
 
@@ -27,6 +28,7 @@ export function onLine(serverId: string, fn: LineListener): () => void {
 }
 
 export function appendLine(serverId: string, line: string, stream: LogStream = 'system'): void {
+  try { observeProfilerLine(serverId, line); } catch { /* Optional diagnostics must not interrupt console logs. */ }
   recordLine(serverId, line, stream);
   for (const fn of listeners.get(serverId) ?? []) {
     try {

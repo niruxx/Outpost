@@ -1,3 +1,5 @@
+import { scanIncomingUploads } from './antivirus.routes.js';
+import { scanUploadBuffers } from '../services/antivirusService.js';
 import { isRunning } from '../services/processManager.js';
 import { listModVersions } from '../services/pluginRegistryService.js';
 import { resolveModPlan } from '../services/modDependencyService.js';
@@ -142,6 +144,7 @@ pluginsRouter.post(
       if (profile.kind === 'bedrock') {
         // Bedrock packs go through the same installer as uploads (unpacks .mcaddon, activates for the world).
         const buffer = await downloadToBuffer(file.downloadUrl, MAX_DOWNLOAD_BYTES);
+        await scanUploadBuffers([{ name: file.fileName, buffer }], server.id);
         installed = installUploadedAddon(server, file.fileName, buffer);
       } else {
         await installPluginFile(server, file.downloadUrl, file.fileName, (line) => appendLine(server.id, line));
@@ -178,7 +181,8 @@ pluginsRouter.post(
 
 pluginsRouter.post(
   '/upload',
-  upload.array('files'),
+  (req, _res, next) => { try { requirePermission(req, 'plugins'); next(); } catch (err) { next(err); } },
+  upload.array('files'), scanIncomingUploads,
   asyncHandler(async (req, res) => {
     requirePermission(req, 'plugins');
     const server = requireServer(req.params.serverId);

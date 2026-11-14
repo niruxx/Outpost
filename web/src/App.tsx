@@ -1,7 +1,11 @@
+import { ExtensionsPage } from './pages/ExtensionsPage.js';
 import { GlobalActivityBar } from './components/GlobalActivityBar.js';
 import { CommandPalette } from './components/CommandPalette.js';
+import { KeyboardShortcuts } from './components/KeyboardShortcuts.js';
 import { UnsavedChangesGuard } from './lib/unsaved.js';
 import { OperationsPage } from './pages/OperationsPage.js';
+import { DashboardPage } from './pages/DashboardPage.js';
+import { JobsPage } from './pages/JobsPage.js';
 import { Navigate, Route, BrowserRouter, Routes, useParams } from 'react-router-dom';
 import { MotionConfig } from 'framer-motion';
 import { useEffectsMode } from './lib/perf.js';
@@ -99,6 +103,10 @@ function AppRoutes() {
         }
       />
       <Route path="/servers/:serverId/*" element={<LegacyServerRedirect />} />
+      <Route path="/dashboard" element={<RequireAuth><DashboardPage /></RequireAuth>} />
+      <Route path="/extensions" element={<RequireAuth><ExtensionsPage /></RequireAuth>} />
+      <Route path="/extensions/:extensionId/:pageId" element={<RequireAuth><ExtensionsPage /></RequireAuth>} />
+      <Route path="/jobs" element={<RequireAuth><JobsPage /></RequireAuth>} />
       <Route path="/operations" element={<Navigate to="/configuration/operations" replace />} />
       <Route path="/configuration/operations" element={<RequireAuth><OperationsPage /></RequireAuth>} />
       <Route path="/libvirt/*" element={<RequireAuth><LibvirtPage /></RequireAuth>} />
@@ -192,6 +200,7 @@ export default function App() {
               <ActivityTracker />
               <AppRoutes />
               <CommandPalette />
+              <KeyboardShortcuts />
               <UnsavedChangesGuard />
             </ContextMenuProvider>
           </ConfirmProvider>

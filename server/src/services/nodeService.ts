@@ -1,4 +1,8 @@
 import crypto from 'node:crypto';
+import { assertCapacityAdmission } from './fleetCapacityService.js';
+import { assertManualPort } from './allocationService.js';
+import { scanIngestedPath } from './antivirusService.js';
+import { beginJob, progressJob, finishJob } from './jobService.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import { spawn } from 'node:child_process';
@@ -252,6 +256,8 @@ export function startTransfer(serverId: string, nodeId: string, deleteSource: bo
     error: null,
   };
   transfers.set(serverId, state);
+  const job = beginJob('transfer', serverId, `Transferring to ${node.name}`);
+  progressJob(job, `Streaming instance files to ${node.name}`, null);
   setStatus(serverId, 'transferring');
   appendLine(serverId, `[Outpost] Transferring to node "${node.name}" (${node.url})…`);
 
@@ -320,9 +326,11 @@ export function startTransfer(serverId: string, nodeId: string, deleteSource: bo
         updateServerRecord(serverId, { autoStart: false });
       }
       state.state = 'done';
+      finishJob(job);
     } catch (err) {
       tar.kill();
       state.state = 'failed';
+      finishJob(job, err);
       state.error = err instanceof Error ? err.message : String(err);
       appendLine(serverId, `[Outpost] Transfer failed: ${state.error}`, 'stderr');
       logger.error(`Transfer of ${serverId} to node ${node.id} failed`, err);
@@ -346,6 +354,8 @@ export async function receiveTransfer(req: Request): Promise<ServerRecord> {
     throw new HttpError(400, 'Invalid instance metadata');
   }
   if (!meta?.name || !['java', 'bedrock', 'steam', 'custom', 'docker'].includes(meta.platform)) throw new HttpError(400, 'Invalid instance metadata');
+  assertCapacityAdmission(meta.max_memory_mb);
+  assertManualPort(meta.server_port);
 
   const record = createServerRecord({
     name: meta.name,
@@ -366,6 +376,8 @@ export async function receiveTransfer(req: Request): Promise<ServerRecord> {
     dockerConfig: meta.docker_config ?? null,
   });
   setServerStatus(record.id, 'transferring');
+  const job = beginJob('import', record.id, 'Receiving instance files');
+  progressJob(job, 'Unpacking received files', null);
 
   try {
     const dir = instanceDir(record.id);
@@ -381,12 +393,15 @@ export async function receiveTransfer(req: Request): Promise<ServerRecord> {
     });
     if (code !== 0) throw new Error(`tar failed (exit ${code}): ${tarError.trim() || 'unknown error'}`);
 
+    await scanIngestedPath(dir, true);
     applyTransferredFields(record.id, meta);
     setServerStatus(record.id, 'stopped');
     appendLine(record.id, `[Outpost] Received "${meta.name}" from another node`);
+    finishJob(job);
     return getServer(record.id)!;
   } catch (err) {
     deleteServerRecord(record.id);
+    finishJob(job, err);
     throw new HttpError(500, err instanceof Error ? err.message : String(err));
   }
 }

@@ -1,3 +1,4 @@
+import { scanIncomingUploads } from './antivirus.routes.js';
 import { Router } from 'express';
 import multer from 'multer';
 import { asyncHandler, HttpError } from '../utils/asyncHandler.js';
@@ -39,7 +40,7 @@ gameControlsRouter.post('/maps/change', asyncHandler(async (req, res) => {
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 256 * 1048576, files: 1, fields: 0 } });
 gameControlsRouter.post('/maps/upload', (req, _res, next) => {
   try { requirePermission(req, 'settings'); requirePermission(req, 'files.write'); const s = stopped(req); assertDiskRoom(s.id, 'write'); next(); } catch (err) { next(err); }
-}, upload.single('file'), asyncHandler(async (req, res) => {
+}, upload.single('file'), scanIncomingUploads, asyncHandler(async (req, res) => {
   const s = stopped(req); assertDiskRoom(s.id, 'write'); if (!req.file) throw new HttpError(400, 'Choose a map or world file');
   const result = uploadGameMap(s, req.file.originalname, req.file.buffer);
   logAudit(req.auth!.sub, req.auth!.username, 'server.game.map.upload', s.id, req.file.originalname); res.json({ ...view(req), uploaded: result.files });
@@ -78,7 +79,7 @@ gameControlsRouter.post('/satisfactory/action', asyncHandler(async (req, res) =>
 }));
 gameControlsRouter.post('/satisfactory/upload', (req, _res, next) => {
   try { requirePermission(req, 'settings'); requirePermission(req, 'files.write'); const s = sf(req); if (!isRunning(s.id)) throw new HttpError(409, 'Start Satisfactory first'); assertDiskRoom(s.id, 'write'); next(); } catch (err) { next(err); }
-}, upload.single('file'), asyncHandler(async (req, res) => {
+}, upload.single('file'), scanIncomingUploads, asyncHandler(async (req, res) => {
   const s = sf(req); if (!isRunning(s.id)) throw new HttpError(409, 'Start Satisfactory first');
   if (!req.file || !/^[A-Za-z0-9][A-Za-z0-9 _.-]{0,127}\.sav$/i.test(req.file.originalname)) throw new HttpError(400, 'Upload a .sav file with a simple filename');
   const name = req.file.originalname.slice(0, -4);

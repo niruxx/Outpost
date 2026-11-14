@@ -1,3 +1,4 @@
+import { scanIncomingUploads } from './antivirus.routes.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -43,7 +44,7 @@ environmentRouter.get(
 
 environmentRouter.post(
   '/import',
-  upload.single('archive'),
+  upload.single('archive'), scanIncomingUploads,
   asyncHandler(async (req, res) => {
     const file = req.file;
     if (!file) throw new HttpError(400, 'No archive file was uploaded');

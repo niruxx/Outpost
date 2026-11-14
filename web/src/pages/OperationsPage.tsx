@@ -10,6 +10,9 @@ import { useAuth } from '../state/AuthContext.js';
 import { api } from '../api/client.js';
 import { createRequestId } from '../lib/requestId.js';
 import { useConfirm } from '../components/ConfirmDialog.js';
+import { FleetBulkPanel, PermissionsInspector } from './WorkspacePanels.js';
+import { AntivirusPanel } from '../components/AntivirusPanel.js';
+import { FleetCapacityPanel, HostEnrollmentPanel, FleetRecoveryPanel, BillingPanel, ExtensionAdminPanel, CommunityCatalogPanel } from './FleetAdvancedPanels.js';
 const message = (e: unknown) => e instanceof Error ? e.message : 'Request failed';
 interface Policy { enabled: boolean; reserveMemoryMb: number; maxInstances: number; tags: string[] }
 interface Node { id: string; name: string; url: string; error: string | null; policy: Policy; inventory: { info: { hostname: string; platform: string; cpus: number; totalMemoryMb: number; freeMemoryMb: number; reservedMemoryMb: number }; servers: { id: string; name: string; platform: string; status: ServerStatus; port: number }[]; pools: { id: string; name: string }[] } | null }
@@ -20,6 +23,15 @@ export function OperationsPage() {
   const sections: Section[] = [
     ...(admin ? [
       { id: 'fleet', label: 'Host fleet', icon: 'node', description: 'Registered Outpost hosts and how instances are placed on them.', content: <FleetPanel /> },
+      { id: 'enrollment', label: 'Host enrollment', icon: 'node', description: 'Review and install a linked Linux host over pinned SSH.', content: <HostEnrollmentPanel /> },
+      { id: 'capacity', label: 'Capacity & placement', icon: 'port', description: 'Explain placement and reserve memory, CPU, disk and port bundles.', content: <FleetCapacityPanel /> },
+      { id: 'recovery', label: 'Fleet recovery', icon: 'backup', description: 'Prepare verified standbys and review a fenced host evacuation.', content: <FleetRecoveryPanel /> },
+      { id: 'billing', label: 'Billing integrations', icon: 'key', description: 'Plans and signed lifecycle events, including the WHMCS module.', content: <BillingPanel /> },
+      { id: 'extensions', label: 'Extension SDK', icon: 'plugin', description: 'Review versioned pages, backend actions and game adapters.', content: <ExtensionAdminPanel /> },
+      { id: 'community', label: 'Community catalog', icon: 'plugin', description: 'Trust signed sources and review immutable package versions.', content: <CommunityCatalogPanel /> },
+      { id: 'bulk', label: 'Fleet bulk actions', icon: 'checklist', description: 'Review and apply actions or configuration across hosts.', content: <FleetBulkPanel /> },
+      { id: 'permissions', label: 'Permissions inspector', icon: 'shieldCheck', description: 'Explain what a selected user can access and why.', content: <PermissionsInspector /> },
+      { id: 'antivirus', label: 'Antivirus', icon: 'shieldCheck', description: 'Upload protection, instance scans, schedules and quarantine on this host.', content: <AntivirusPanel /> },
       { id: 'allocations', label: 'IP / port pools', icon: 'port', description: 'Address and primary-port pools handed out to new instances.', content: <AllocationsPanel /> },
     ] satisfies Section[] : []),
     { id: 'steam', label: 'My Steam accounts', icon: 'key', description: 'Encrypted Steam logins for games that need an owned license.', content: <SteamAccountsPanel /> },

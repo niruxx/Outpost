@@ -12,8 +12,10 @@
     "start": "node dist/index.js"
   },
   "dependencies": {
+    "@iarna/toml": "^2.2.5",
     "adm-zip": "^0.5.16",
     "express": "^4.21.2",
+    "fast-xml-parser": "^5.12.1",
     "mcbe-leveldb-reader": "^5.0.1",
     "multer": "^2.0.1",
     "mysql2": "^3.11.5",
@@ -24,7 +26,8 @@
     "prismarine-provider-anvil": "^2.13.0",
     "prismarine-registry": "^1.12.0",
     "ssh2": "^1.16.0",
-    "ws": "^8.18.0"
+    "ws": "^8.18.0",
+    "yaml": "^2.9.1"
   },
   "devDependencies": {
     "@types/adm-zip": "^0.5.6",

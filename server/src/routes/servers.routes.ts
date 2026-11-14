@@ -1,3 +1,6 @@
+import { assertCapacityAdmission, commitCapacity, capacityLease, capacityPortClaims } from '../services/fleetCapacityService.js';
+import { saveLimits } from '../services/limitsService.js';
+import { scanIncomingUploads } from './antivirus.routes.js';
 import { resolveCurseForgePack } from '../services/curseforgePackService.js';
 import { ownSteamAccount } from '../services/steamAccountService.js';
 import { reserveAllocation, commitAllocation, releaseAllocation, instanceAllocation, assertManualPort } from '../services/allocationService.js';
@@ -30,6 +33,7 @@ import {
 import { getPrimaryAddress, listHostAddresses } from '../services/networkService.js';
 import { getTransferState, startTransfer } from '../services/nodeService.js';
 import { installServer, listAvailableVersions } from '../services/downloadService.js';
+import { beginJob, progressJob, finishJob } from '../services/jobService.js';
 import { checkForUpdate, runUpdate } from '../services/updateService.js';
 import { forgetHistory } from '../services/consoleHistoryService.js';
 import { dropAllForServer } from '../services/databaseService.js';
@@ -96,18 +100,22 @@ serversRouter.use(requireAuth);
  * no way to know it, so this only verifies the file actually exists afterward.
  */
 async function runServerInstall(server: ServerRecord, afterInstall?: () => void): Promise<void> {
+  const job = beginJob('install', server.id);
   if (server.platform === 'docker') {
     // "Installing" a Docker instance = pulling its image.
     try {
+      progressJob(job, 'Pulling container image', null);
       publish(consoleTopic(server.id), { type: 'install_progress', pct: 5, message: `Pulling ${server.version}` });
       await pullImage(server.version, (line) => appendLine(server.id, line));
       appendLine(server.id, '[Outpost] Image ready — the instance can start');
       setServerStatus(server.id, 'stopped');
+      finishJob(job);
       publish(consoleTopic(server.id), { type: 'status', status: 'stopped' });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       appendLine(server.id, `[Outpost] Image pull failed: ${message}`, 'stderr');
       setServerStatus(server.id, 'install_failed');
+      finishJob(job, err);
       publish(consoleTopic(server.id), { type: 'status', status: 'install_failed', error: message });
     }
     return;
@@ -118,7 +126,7 @@ async function runServerInstall(server: ServerRecord, afterInstall?: () => void)
       server.loader,
       server.version,
       instanceDir(server.id),
-      (pct, message) => publish(consoleTopic(server.id), { type: 'install_progress', pct, message }),
+      (pct, message) => { progressJob(job, message, pct); publish(consoleTopic(server.id), { type: 'install_progress', pct, message }); },
       (line) => appendLine(server.id, line),
       server.platform === 'steam' ? server.steam_app_id ?? undefined : undefined,
       server.steam_login,
@@ -160,11 +168,13 @@ async function runServerInstall(server: ServerRecord, afterInstall?: () => void)
       writeServerProperties(server.id, server.platform, { 'server-port': String(getServer(server.id)?.server_port ?? server.server_port), ...(server.platform === 'java' && allocation ? { 'server-ip': allocation.address === '0.0.0.0' ? '' : allocation.address } : {}) });
     }
     appendLine(server.id, '[Outpost] Installation finished — server is ready to start');
+    finishJob(job);
     setServerStatus(server.id, 'stopped');
     publish(consoleTopic(server.id), { type: 'status', status: 'stopped' });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     appendLine(server.id, `[Outpost] Installation failed: ${message}`, 'stderr');
+    finishJob(job, err);
     setServerStatus(server.id, 'install_failed');
     publish(consoleTopic(server.id), { type: 'status', status: 'install_failed', error: message });
   }
@@ -421,7 +431,9 @@ export async function createInstance(req: Request, res: Response) {
     const desiredProtocol = platform === 'java' ? 'tcp' : preset?.portProtocol ?? 'udp';
     const allocation = req.body?.allocationPoolId ? reserveAllocation(String(req.body.allocationPoolId), desiredProtocol) : null;
     const chosenPort = allocation?.port ?? ((dockerConfig ? JSON.parse(dockerConfig).ports[0].host : 0) || Number(serverPort) || preset?.defaultPort || (platform === 'bedrock' ? 19132 : 25565));
-    if (!allocation) assertManualPort(chosenPort);
+    const capacityId=req.auth!.role==='admin'?req.get('X-Outpost-Capacity-Lease'):undefined;
+    assertCapacityAdmission(Number(maxMemoryMb)||2048,capacityId,platform,chosenPort);
+    if (!allocation) assertManualPort(chosenPort,undefined,capacityId);
     if (allocation && platform !== 'java' && platform !== 'bedrock' && platform !== 'steam') { releaseAllocation(allocation.token); throw new HttpError(400, 'Automatic allocation supports Java, Bedrock and Steam instances'); }
     const record = createServerRecord({
       name: name.trim(),
@@ -443,6 +455,8 @@ export async function createInstance(req: Request, res: Response) {
       dockerConfig,
     });
 
+    if(capacityId){try{commitCapacity(capacityId,record.id);const budget=capacityLease(capacityId).resources;saveLimits(record,{cpuPercent:budget.cpuPercent||null,diskMb:Math.max(100,budget.diskMb)});}catch(error){deleteServerRecord(record.id);throw error;}}
+    if(typeof res.locals.onInstanceCreated==='function')res.locals.onInstanceCreated(record);
     if (res.locals.fleetRequestId) { const { prep } = await import('../db/db.js'); prep('UPDATE fleet_requests SET server_id=? WHERE id=?').run(record.id, res.locals.fleetRequestId); }
     if (allocation) commitAllocation(allocation.token, record.id);
     if (platform === 'java' || platform === 'bedrock') writeServerProperties(record.id, platform, { 'server-port': String(chosenPort), ...(platform === 'java' && allocation && allocation.address !== '0.0.0.0' ? { 'server-ip': allocation.address } : {}) });
@@ -517,7 +531,8 @@ export async function createInstance(req: Request, res: Response) {
 
 serversRouter.post(
   '/',
-  multer({ storage: multer.memoryStorage(), limits: { fileSize: 256 * 1024 * 1024, fields: 1, files: 1, fieldSize: 1024 * 1024 } }).single('mrpack'),
+  (req, _res, next) => { try { if (!getEffectiveCreation(req.auth!.sub, req.auth!.role).canCreate) throw new HttpError(403, 'Instance creation is not allowed'); next(); } catch (err) { next(err); } },
+  multer({ storage: multer.memoryStorage(), limits: { fileSize: 256 * 1024 * 1024, fields: 1, files: 1, fieldSize: 1024 * 1024 } }).single('mrpack'), scanIncomingUploads,
   asyncHandler(createInstance)
 );
 
@@ -819,7 +834,8 @@ serversRouter.delete(
 
 /** First port at or after `from` that no instance or allocation is using. */
 function nextFreePort(from: number): number {
-  const used = new Set((prep('SELECT server_port AS port FROM servers UNION SELECT port FROM allocations WHERE port IS NOT NULL').all() as { port: number }[]).map((r) => r.port));
+  const used = new Set((prep('SELECT server_port AS port FROM servers UNION SELECT port FROM allocations WHERE port IS NOT NULL UNION SELECT port FROM auxiliary_ports').all() as { port: number }[]).map((r) => r.port));
+  for(const port of capacityPortClaims()) used.add(port);
   for (let port = Math.max(1024, from); port <= 65535; port++) if (!used.has(port)) return port;
   throw new HttpError(409, 'No free port left to give the copy');
 }

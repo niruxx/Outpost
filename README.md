@@ -935,3 +935,15 @@ Features other game panels (Pterodactyl, AMP, Crafty, PufferPanel) have that Out
 <p align="center"><sub>Made with 💚 for people who'd rather play than SSH.</sub></p>
 
 Advanced host storage includes software RAID, PV extent migration, LUKS2 keyslot/crypttab management, supported encrypted ext4 shrinking, SMART self-tests and disk erasure. See [supported workflows and limitations](docs/expert-storage.md).
+
+Optional [ClamAV malware protection](docs/antivirus.md) adds upload-time scanning, live mod/plugin-folder monitoring, private blocked-upload quarantine, manual and scheduled instance scans, signature readiness checks and security holds. Configure it under **Configuration → Operations → Antivirus** after installing ClamAV on the host.
+
+[World Health](docs/world-health.md) checks Minecraft Java region/NBT storage and Terraria world-file envelopes, with clickable findings and backup-first recovery actions where a safe local repair is available.
+
+[Files, uploads and editing](docs/file-workspace.md) adds folder uploads, resumable transfer queues, collision and bandwidth controls, a 30-day recycle bin, content search and configuration editor diagnostics to instance file management.
+
+[Game workflows and reliability](docs/game-reliability-workflows.md) covers Minecraft sleep/wake, port bundles, managed mod update plans, staging/promotion, world import checks, configuration profiles, moderation, tournament records, optional spark/FastDL/Discord integrations, health alerts, maintenance, deduplicated/verified backups and troubleshooting exports.
+
+[Fleet, integrations and extensibility](docs/fleet-integrations.md) covers reviewed SSH host enrollment, capacity reservations, verified fenced recovery, WHMCS billing lifecycle integration, the versioned extension SDK and signed community catalogs. These controls are under Configuration → Operations; deployment prerequisites and recovery limits are documented in the guide.
+
+Run `npm run test:release` before release to check repeated navigation, reconnects, slow/failing networks, large upload recovery and background-job failures. See [release resilience checks](docs/release-checks.md) for browser setup, CI and diagnostic artifacts.

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useChangeReview } from '../../components/ChangeReview.js';
 import { api, ApiError, type UploadProgress } from '../../api/client.js';
 import { Badge, Button, Card, CardTitle, ErrorText, Field, Input, Notice, Select, Spinner } from '../../components/ui.js';
 import { UploadTracker } from '../../components/UploadTracker.js';
@@ -21,6 +22,7 @@ interface View {
   running: boolean;
 }
 export function Tf2Tab() {
+  const review = useChangeReview();
   const { serverId, server, can } = useServerDetail();
   const toast = useToast();
   const confirm = useConfirm();
@@ -137,7 +139,9 @@ export function Tf2Tab() {
               const i = line.indexOf('='); if (i < 1) throw new Error('Each cvar needs name=value');
               return [line.slice(0, i).trim(), line.slice(i + 1).trim()];
             });
-            apply(await api.put<View>(base, { ...draft, rotation: rotation.split(/\r?\n/).map((s) => s.trim()).filter(Boolean), cvars: Object.fromEntries(entries), password, gslt, clearPassword, clearGslt }));
+            const input = { ...draft, rotation: rotation.split(/\r?\n/).map((s) => s.trim()).filter(Boolean), cvars: Object.fromEntries(entries), password, gslt, clearPassword, clearGslt };
+            if (!await review(null, null, '', { serverId, kind: 'tf2', input })) return;
+            apply(await api.put<View>(base, input));
             toast.success(running ? 'Saved — apply saved cvars now, or restart for all settings' : 'Saved — applies on next start');
           })}>{busy === 'save' ? 'Saving…' : 'Save settings'}</Button>
           <Button disabled={!canEdit || !can('console') || locked || dirty || server?.status !== 'running'} onClick={() => void run('apply', async () => { await api.post(`${base}/action`, { action: 'apply' }); toast.success('Saved cvars sent to TF2'); })}>Apply saved cvars now</Button>

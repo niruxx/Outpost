@@ -1,0 +1,18 @@
+{
+  "format": "outpost-extension",
+  "sdkVersion": 1,
+  "id": "instance-overview",
+  "name": "Instance overview example",
+  "version": "1.0.0",
+  "author": "Outpost SDK examples",
+  "description": "A minimal sandboxed page using a permission-checked instance summary action.",
+  "minPanelVersion": "1.0.1",
+  "pages": [{
+    "id": "overview",
+    "title": "Instance summary",
+    "permissions": ["files.read"],
+    "html": "<!doctype html><html><meta charset='utf-8'><style>body{font:16px system-ui;padding:24px;color:#18202b}pre{white-space:pre-wrap}</style><h1>Instance overview</h1><pre id='output'>Loading the selected instance...</pre><script>const requestId='overview-'+Date.now();addEventListener('message',e=>{if(e.source===parent&&e.data?.type==='outpost.extension.response'&&e.data.requestId===requestId)document.getElementById('output').textContent=e.data.error||JSON.stringify(e.data.result,null,2)});parent.postMessage({type:'outpost.extension.invoke',sdkVersion:1,requestId,action:'summary',input:{}},'*');</script></html>"
+  }],
+  "actions": [{"id":"summary","title":"Read instance summary","kind":"instance.summary","permissions":["files.read"]}],
+  "gameAdapters": []
+}

@@ -1,6 +1,9 @@
-import { UploadTracker } from '../../components/UploadTracker.js';
-import type { UploadProgress } from '../../api/client.js';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { FileUploadQueue } from '../../components/FileUploadQueue.js';
+import { FileWorkspaceTools } from '../../components/FileWorkspaceTools.js';
+import { useUnsavedChanges } from '../../lib/unsaved.js';
+
+
+import { useCallback, useEffect, useState } from 'react';
 import { SftpConnectInfo } from '../../components/SftpCard.js';
 import { useServerDetail } from './ServerContext.js';
 import { api, ApiError, downloadUrl } from '../../api/client.js';
@@ -54,8 +57,20 @@ export function FilesTab() {
   const [editorContent, setEditorContent] = useState('');
   const [editorDirty, setEditorDirty] = useState(false);
   const [editorSaving, setEditorSaving] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [revision, setRevision] = useState('');
+  const [diagnostics, setDiagnostics] = useState<{line: number; message: string; severity: string}[]>([]);
+  const [hint, setHint] = useState('');
+  const [schemaHints, setSchemaHints] = useState<{key:string;type:string;min?:number;max?:number;options?:string[];help:string}[]>([]);
+  useUnsavedChanges(editorDirty, editingPath ?? 'File editor');
+  useEffect(() => {
+    if (!editingPath) return;
+    let live = true;
+    const timer = setTimeout(() => { api.post<{diagnostics: typeof diagnostics; hint: string; hints: typeof schemaHints}>(`/servers/${serverId}/files/validate`, {path: editingPath, content: editorContent}).then(r => {if (live) {setDiagnostics(r.diagnostics); setHint(r.hint); setSchemaHints(r.hints);}}).catch(() => { if (live) setHint('Validation unavailable. Use Validate to retry.'); }); }, 400);
+    return () => {live = false; clearTimeout(timer);};
+  }, [editingPath, editorContent, serverId]);
+  async function validateEditor(format = false) {
+    try { const r = await api.post<{diagnostics: typeof diagnostics; hint: string; hints: typeof schemaHints; formatted?: string}>(`/servers/${serverId}/files/validate`, {path: editingPath, content: editorContent, format}); setDiagnostics(r.diagnostics); setHint(r.hint); setSchemaHints(r.hints); if (r.formatted !== undefined && r.formatted !== editorContent) {setEditorContent(r.formatted); setEditorDirty(true);} return r.diagnostics; } catch (e) {setError((e as Error).message); return null;}
+  }
   const toast = useToast();
 
   const fileUrl = (entry: FileEntry) => downloadUrl(`/servers/${serverId}/files/download?path=${encodeURIComponent(entry.path)}`);
@@ -80,7 +95,7 @@ export function FilesTab() {
 
   const folderMenu = useContextMenu((): MenuItems => [
     canWrite && { label: 'New folder…', icon: 'folder', onSelect: createFolder },
-    canWrite && { label: 'Upload files…', icon: 'upload', disabled: !!uploadProgress, onSelect: () => fileInputRef.current?.click() },
+    canWrite && { label: 'Upload files…', icon: 'upload', onSelect: () => document.querySelector<HTMLInputElement>('[data-upload-instance]')?.click() },
     { label: 'Refresh', icon: 'refresh', onSelect: () => load(path) },
     'separator',
     !!path && { label: 'Up one level', icon: 'chevronUp', onSelect: () => setPath(path.split('/').slice(0, -1).join('/')) },
@@ -110,9 +125,9 @@ export function FilesTab() {
       return;
     }
     try {
-      const res = await api.get<{ content: string }>(`/servers/${serverId}/files/content?path=${encodeURIComponent(entry.path)}`);
+      const res = await api.get<{ content: string; revision: string }>(`/servers/${serverId}/files/content?path=${encodeURIComponent(entry.path)}`);
       setEditingPath(entry.path);
-      setEditorContent(res.content);
+      setEditorContent(res.content); setRevision(res.revision); setError(''); setDiagnostics([]);
       setEditorDirty(false);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to open file');
@@ -122,8 +137,13 @@ export function FilesTab() {
   async function saveFile() {
     if (!editingPath) return;
     setEditorSaving(true);
+    const problems = await validateEditor();
+    if (!problems) { setEditorSaving(false); return; }
+    if (problems.some(d => d.severity === 'error') && !await confirm({title: 'Save invalid configuration?', message: 'Validation found errors. The server may fail to load this configuration.', confirmLabel: 'Save anyway', tone: 'danger'})) { setEditorSaving(false); return; }
+    setEditorSaving(true);
     try {
-      await api.put(`/servers/${serverId}/files/content`, { path: editingPath, content: editorContent });
+      const saved = await api.put<{revision: string}>(`/servers/${serverId}/files/content`, { path: editingPath, content: editorContent, revision });
+      setRevision(saved.revision);
       setEditorDirty(false);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to save file');
@@ -146,7 +166,7 @@ export function FilesTab() {
   async function deleteEntry(entry: FileEntry) {
     const ok = await confirm({
       title: entry.isDirectory ? 'Delete folder' : 'Delete file',
-      message: `Delete ${entry.name}? This cannot be undone.`,
+      message: `Delete ${entry.name}? You can restore it from the recycle bin for 30 days.`,
       confirmLabel: 'Delete',
       tone: 'danger',
     });
@@ -171,26 +191,10 @@ export function FilesTab() {
     }
   }
 
-  async function onUpload(files: FileList | null) {
-    if (!files || files.length === 0 || uploadProgress) return;
-    const formData = new FormData();
-    formData.append('path', path);
-    Array.from(files).forEach((f) => formData.append('files', f));
-    try {
-      await api.upload(`/servers/${serverId}/files/upload`, formData, setUploadProgress);
-      await load(path);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Upload failed');
-    } finally {
-      setUploadProgress(null);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
-  }
-
   if (editingPath) {
     return (
       <div className="flex h-[calc(100dvh-8.5rem)] min-h-[20rem] flex-col gap-3">
-        <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+        <div className="flex min-w-0 flex-wrap items-center gap-2 sm:gap-3">
           <Button
             variant="ghost"
             onClick={async () => {
@@ -203,7 +207,7 @@ export function FilesTab() {
                 });
                 if (!ok) return;
               }
-              setEditingPath(null);
+              setEditingPath(null); setEditorDirty(false);
             }}
           >
             ← Back
@@ -211,25 +215,27 @@ export function FilesTab() {
           <span className="min-w-0 truncate font-mono text-sm text-ink-300" title={editingPath}>
             {editingPath}
           </span>
-          <div className="ml-auto flex shrink-0 items-center gap-2">
+          <div className="ml-auto flex flex-wrap items-center gap-2">
             {canSeeHistory && (
               <Button variant="ghost" onClick={() => setHistoryPath(editingPath)} title="See who changed this file, when, and what changed">
                 <Icon name="history" className="h-4 w-4" /> History
               </Button>
             )}
             {canWrite && (
-              <Button variant="primary" onClick={saveFile} disabled={!editorDirty || editorSaving}>
+              <><Button onClick={() => validateEditor()}>Validate</Button><Button disabled={editorSaving} onClick={async () => {setEditorSaving(true); try {await validateEditor(true);} finally {setEditorSaving(false);}}}>Format draft</Button><Button data-save-shortcut variant="primary" onClick={saveFile} disabled={!editorDirty || editorSaving}>
                 {editorSaving ? 'Saving…' : 'Save'}
-              </Button>
+              </Button></>
             )}
           </div>
         </div>
         <FileHistoryModal serverId={serverId} path={historyPath} onClose={() => setHistoryPath(null)} />
-        <textarea
+        <ErrorText>{error}</ErrorText>
+        <div className="max-h-36 overflow-auto text-xs" aria-live="polite"><p className="text-ink-400">{hint}</p>{schemaHints.length > 0 && <details><summary>Configuration schema hints ({schemaHints.length})</summary>{schemaHints.map(h => <p key={h.key}><code>{h.key}</code>: {h.type} {h.min !== undefined ? `minimum ${h.min}` : ''} {h.max !== undefined ? `maximum ${h.max}` : ''} {h.options?.join(', ')} ? {h.help}</p>)}</details>}{diagnostics.map((d,i) => <p key={i} className={d.severity === 'error' ? 'text-red-400' : 'text-amber-400'}>Line {d.line}: {d.message}</p>)}</div>
+        <textarea aria-label={`Edit ${editingPath}`}
           className="console-view flex-1 resize-none rounded-lg border border-surface-700 bg-surface-900 p-4 text-[13px] text-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-600/60"
           value={editorContent}
           spellCheck={false}
-          readOnly={!canWrite}
+          readOnly={!canWrite || editorSaving}
           onChange={(e) => {
             setEditorContent(e.target.value);
             setEditorDirty(true);
@@ -260,14 +266,14 @@ export function FilesTab() {
         </div>
         {canWrite && (
           <div className="flex gap-2">
-            <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(e) => onUpload(e.target.files)} />
-            <Button disabled={!!uploadProgress} onClick={() => fileInputRef.current?.click()}>Upload</Button>
+
             <Button onClick={createFolder}>New folder</Button>
           </div>
         )}
       </div>
 
-      <UploadTracker progress={uploadProgress} />
+      {canWrite && <FileUploadQueue serverId={serverId} basePath={path} onChanged={() => load(path)} />}
+      <FileWorkspaceTools serverId={serverId} canWrite={canWrite} onChanged={() => load(path)} onOpen={entry => openFile({name: entry.path.split('/').pop()!, path: entry.path, size: entry.size, isDirectory: false, modifiedAt: ''})} />
       <ErrorText>{error}</ErrorText>
 
       <Card {...folderMenu} className="divide-y divide-surface-800">

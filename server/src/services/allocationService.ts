@@ -1,3 +1,4 @@
+import { activeCapacityLeases, capacityPortClaims } from './fleetCapacityService.js';
 import crypto from 'node:crypto';
 import net from 'node:net';
 import os from 'node:os';
@@ -27,7 +28,7 @@ export function reserveAllocation(poolId: string, protocol: string) {
     const pools = prep('SELECT * FROM allocation_pools ORDER BY name').all() as unknown as Pool[];
     const compatible = pools.filter(p => (poolId === 'auto' || p.id === poolId) && (p.protocol === 'both' || p.protocol === protocol));
     if (!compatible.length) throw new HttpError(409, 'No compatible allocation pool');
-    const used = new Set((prep('SELECT server_port AS port FROM servers UNION SELECT port FROM allocations').all() as { port: number }[]).map(r => r.port));
+    const used = new Set([...capacityPortClaims(), ...(prep('SELECT server_port AS port FROM servers UNION SELECT port FROM allocations UNION SELECT port FROM auxiliary_ports').all() as { port: number }[]).map(r => r.port)]);
     const pool = compatible.find(p => Array.from({ length: p.last_port - p.first_port + 1 }, (_, i) => p.first_port + i).some(port => !used.has(port)));
     const port = pool ? Array.from({ length: pool.last_port - pool.first_port + 1 }, (_, i) => pool.first_port + i).find(p => !used.has(p)) : undefined;
     if (!pool || !port) throw new HttpError(409, 'Allocation pool is full');
@@ -40,7 +41,9 @@ export function commitAllocation(token: string, serverId: string) {
   if (!result.changes) throw new HttpError(409, 'Allocation lease expired');
 }
 export function releaseAllocation(token: string) { prep('DELETE FROM allocations WHERE token=? AND server_id IS NULL').run(token); }
-export function assertManualPort(port: number, serverId?: string) {
+export function assertManualPort(port: number, serverId?: string, capacityLeaseId?: string) {
+  if(activeCapacityLeases().some(l=>l.id!==capacityLeaseId&&l.ports.some(p=>p.port===port)))throw new HttpError(409,'Port is held by an active capacity reservation');
+  if (prep('SELECT port FROM auxiliary_ports WHERE port=? AND server_id<>?').get(port, serverId ?? '')) throw new HttpError(409, 'Port is reserved by a game port bundle');
   const assigned = instanceAllocation(serverId ?? '');
   if (assigned && assigned.port !== port) throw new HttpError(409, 'This instance has an allocated port; release its assignment before changing ports');
   const conflict = prep('SELECT port FROM allocations WHERE port=? AND (server_id IS NOT NULL OR expires>?) AND (server_id IS NULL OR server_id<>?)').get(port, Date.now(), serverId ?? '');

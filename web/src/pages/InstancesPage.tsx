@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useState } from 'react';
 import { setVisibleInterval } from '../lib/perf.js';
 import { t } from '../i18n/index.js';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
@@ -21,6 +21,7 @@ import { useConfirm } from '../components/ConfirmDialog.js';
 import { usePinnedInstances } from '../lib/pins.js';
 import { MoreButton, useContextMenu, type MenuItems } from '../components/ContextMenu.js';
 import { instanceMenu } from '../components/instanceMenu.js';
+import { useInstanceViews, INSTANCE_COLUMNS } from '../components/InstanceViews.js';
 
 type ViewMode = 'list' | 'grid' | 'box';
 const VIEW_KEY = 'outpost_instances_view';
@@ -119,6 +120,7 @@ export function IconAction({
 }
 
 interface RowProps {
+  columns?: string[];
   server: ServerRecord;
   metrics: InstanceListMetrics | undefined;
   hostMemMb: number | null;
@@ -247,20 +249,20 @@ function ListRow(props: RowProps) {
   const f = useInstanceFigures(props);
   const contextMenu = useContextMenu(props.menu);
   return (
-    <div {...contextMenu} className={`group/card state-layer relative grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-2xl px-3 py-2.5 md:grid-cols-[auto_minmax(0,2fr)_110px_90px_90px_70px_80px_auto] ${selectedRing(props)}`}>
+    <div {...contextMenu} style={{ '--instance-columns': `auto minmax(0,2fr) ${(props.columns ?? INSTANCE_COLUMNS).map(() => '90px').join(' ')} auto` } as React.CSSProperties} className={`group/card state-layer relative grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-2xl px-3 py-2.5 md:[grid-template-columns:var(--instance-columns)] ${selectedRing(props)}`}>
       <StretchedLink {...props} />
       {props.selecting ? <span className="flex h-9 w-9 items-center justify-center"><SelectMark selected={props.selected} /></span> : <GameTile kind={gameKindOf(server)} className="h-9 w-9 !rounded-xl" running={server.status === 'running'} />}
       <div className="min-w-0">
         <p className="truncate text-sm font-medium text-ink-50">{server.name}</p>
         <p className="truncate text-xs text-ink-400">{subtitle(server)}</p>
       </div>
-      <div className="hidden md:block">
+      <div className={(props.columns ?? INSTANCE_COLUMNS).includes('status') ? 'hidden md:block' : 'hidden'}>
         <Badge server={server} />
       </div>
-      <span className="hidden text-xs text-ink-300 md:block">{f.cpu !== null ? `${f.cpu}% CPU` : '—'}</span>
-      <span className="hidden text-xs text-ink-300 md:block">{f.memMb !== null ? formatBytes(f.memMb * 1048576) : '—'}</span>
-      <span className="hidden text-xs text-ink-300 md:block">{f.players !== null && f.live ? `${f.players} online` : '—'}</span>
-      <span className="hidden text-xs text-ink-300 md:block">{f.uptime ?? '—'}</span>
+      <span className={`hidden text-xs text-ink-300 ${(props.columns ?? INSTANCE_COLUMNS).includes('cpu') ? 'md:block' : ''}`}>{f.cpu !== null ? `${f.cpu}% CPU` : '—'}</span>
+      <span className={`hidden text-xs text-ink-300 ${(props.columns ?? INSTANCE_COLUMNS).includes('memory') ? 'md:block' : ''}`}>{f.memMb !== null ? formatBytes(f.memMb * 1048576) : '—'}</span>
+      <span className={`hidden text-xs text-ink-300 ${(props.columns ?? INSTANCE_COLUMNS).includes('players') ? 'md:block' : ''}`}>{f.players !== null && f.live ? `${f.players} online` : '—'}</span>
+      <span className={`hidden text-xs text-ink-300 ${(props.columns ?? INSTANCE_COLUMNS).includes('uptime') ? 'md:block' : ''}`}>{f.uptime ?? '—'}</span>
       <div className="relative z-10 flex gap-1">
         <span className="md:hidden">
           <Badge server={server} />
@@ -435,6 +437,7 @@ export function InstancesPage() {
   const [servers, setServers] = useState<ServerRecord[] | null>(null);
   const [unreachable, setUnreachable] = useState(false);
   const [metrics, setMetrics] = useState<Record<string, InstanceListMetrics>>({});
+  const [owners, setOwners] = useState<Record<string, string>>({});
   const [hostMemMb, setHostMemMb] = useState<number | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -443,6 +446,13 @@ export function InstancesPage() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [filter, setFilter] = useState<'all' | InstanceCategory>(readFilter);
   const [params, setParams] = useSearchParams();
+  const instanceViews = useInstanceViews(servers ?? [], user?.id, { q: query, status: statusFilter, category: filter, view }, owners);
+  function viewParam(key: string, value: string) { setParams(p => { const next = new URLSearchParams(p); next.set(key, value); return next; }, { replace: true }); }
+  useEffect(() => {
+    setQuery(params.get('q') ?? ''); setStatusFilter(params.get('status') ?? 'all');
+    const category = params.get('category'); if (category && FILTERS.some(f => f.id === category)) setFilter(category as 'all' | InstanceCategory);
+    const layout = params.get('view'); if (layout && ['list', 'grid', 'box'].includes(layout)) setView(layout as ViewMode);
+  }, [params]);
   const confirm = useConfirm();
   const { isPinned, toggle: togglePin } = usePinnedInstances();
   const [selecting, setSelecting] = useState(false);
@@ -485,6 +495,7 @@ export function InstancesPage() {
 
   function changeFilter(next: 'all' | InstanceCategory) {
     setFilter(next);
+    viewParam('category', next);
     try {
       localStorage.setItem(FILTER_KEY, next);
     } catch {
@@ -494,10 +505,11 @@ export function InstancesPage() {
 
   const load = useCallback(async () => {
     try {
-      const res = await api.get<{ servers: ServerRecord[]; metrics: Record<string, InstanceListMetrics> }>('/servers');
+      const res = await api.get<{ servers: ServerRecord[]; metrics: Record<string, InstanceListMetrics>; owners?: Record<string, string> }>('/servers');
       setServers(res.servers);
       setUnreachable(false);
       setMetrics(res.metrics ?? {});
+      setOwners(res.owners ?? {});
     } catch (err) {
       // A network failure (no HTTP response) means the panel server itself isn't reachable.
       if (err instanceof ApiError) toast.error(err.message);
@@ -515,6 +527,7 @@ export function InstancesPage() {
 
   function changeView(next: ViewMode) {
     setView(next);
+    viewParam('view', next);
     try {
       localStorage.setItem(VIEW_KEY, next);
     } catch {
@@ -588,12 +601,12 @@ export function InstancesPage() {
   }, {});
   // If the remembered filter no longer matches anything, fall back to everything.
   const activeFilter = filter !== 'all' && !counts[filter] ? 'all' : filter;
-  const visible = (servers ?? []).filter((s) =>
+  const visible = instanceViews.apply((servers ?? []).filter((s) =>
     (activeFilter === 'all' || instanceCategory(s) === activeFilter) &&
     (statusFilter === 'all' || (statusFilter === 'running' ? s.status === 'running' : s.status !== 'running')) &&
     `${s.name} ${subtitle(s)}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()),
   // Pinned instances first; otherwise keep the server's order (Array.sort is stable).
-  ).sort((a, b) => Number(isPinned(b.id)) - Number(isPinned(a.id)));
+  ).sort((a, b) => Number(isPinned(b.id)) - Number(isPinned(a.id))));
   const canActOn = (s: ServerRecord) => canAct || s.created_by === user?.id;
   const selectableVisible = visible.filter((s) => canActOn(s) && !s.suspended);
   const selectedCount = (servers ?? []).filter((s) => selected.has(s.id)).length;
@@ -667,15 +680,16 @@ export function InstancesPage() {
         <div className="ui-instance-tools mb-4 flex flex-col gap-3 rounded-3xl bg-surface-850 p-3 sm:flex-row">
           <div className="relative min-w-0 flex-1">
             <Icon name="search" className="pointer-events-none absolute left-4 top-3.5 h-4 w-4 text-ink-400" />
-            <Input type="search" aria-label={t('Search instances')} placeholder={t('Search by name, game or port…')} value={query} onChange={(e) => setQuery(e.target.value)} className="!rounded-full !border-transparent !bg-surface-900 !py-3 !pl-11" />
+            <Input type="search" aria-label={t('Search instances')} placeholder={t('Search by name, game or port…')} value={query} onChange={(e) => { setQuery(e.target.value); viewParam('q', e.target.value); }} className="!rounded-full !border-transparent !bg-surface-900 !py-3 !pl-11" />
           </div>
-          <Select aria-label={t('Filter by status')} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="!w-auto !rounded-full !border-transparent !px-4 !py-3">
+          <Select aria-label={t('Filter by status')} value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); viewParam('status', e.target.value); }} className="!w-auto !rounded-full !border-transparent !px-4 !py-3">
             <option value="all">{t('All statuses')}</option>
             <option value="running">{t('Running')}</option>
             <option value="offline">{t('Not running')}</option>
           </Select>
         </div>
 
+        {instanceViews.tools}
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Filter instances">
             {FILTERS.filter((f) => f.id === 'all' || counts[f.id]).map((f) => (
@@ -749,13 +763,15 @@ export function InstancesPage() {
             <Icon name="search" className="mx-auto mb-3 h-8 w-8 text-ink-400" />
             <h3 className="mb-2 text-lg font-medium text-ink-100">{t('No matching instances')}</h3>
             <p className="mb-5 text-sm text-ink-400">{t('Try another search or clear your filters.')}</p>
-            <Button onClick={() => { setQuery(''); setStatusFilter('all'); changeFilter('all'); }}>{t('Clear filters')}</Button>
+            <Button onClick={() => { setQuery(''); setStatusFilter('all'); setFilter('all'); setParams(p => { const next = new URLSearchParams(p); for (const key of ['q', 'status', 'category', 'owner', 'game', 'tag']) next.delete(key); return next; }); }}>{t('Clear filters')}</Button>
           </Card>
         ) : (
           <LayoutGroup>
             <motion.div layout className={CONTAINER[view]} transition={{ duration: 0.35, ease: EMPHASIZED }}>
               <AnimatePresence mode="popLayout">
                 {visible.map((server, i) => (
+                  <Fragment key={`${view}-${server.id}`}>
+                    {instanceViews.groupOf(server) && (i === 0 || instanceViews.groupOf(visible[i - 1]) !== instanceViews.groupOf(server)) && <h3 className="col-span-full mb-1 mt-4 border-b border-surface-600 pb-2 text-sm font-medium text-ink-300">{instanceViews.groupOf(server)}</h3>}
                   <motion.div
                     key={`${view}-${server.id}`}
                     layout
@@ -765,6 +781,7 @@ export function InstancesPage() {
                     transition={{ duration: 0.35, ease: EMPHASIZED, delay: Math.min(i, 12) * 0.035 }}
                   >
                     <Row
+                      columns={instanceViews.columns}
                       server={server}
                       metrics={metrics[server.id]}
                       hostMemMb={hostMemMb}
@@ -779,6 +796,7 @@ export function InstancesPage() {
                       menu={menuFor(server)}
                     />
                   </motion.div>
+                  </Fragment>
                 ))}
               </AnimatePresence>
             </motion.div>

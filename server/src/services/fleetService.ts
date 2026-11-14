@@ -1,3 +1,4 @@
+import { localCapacity } from './fleetCapacityService.js';
 import crypto from 'node:crypto';
 import { prep } from '../db/db.js';
 import { listNodes, getNode, localNodeInfo, type NodeInfo } from './nodeService.js';
@@ -7,9 +8,9 @@ import { getSetting, setSetting } from './systemSettingsService.js';
 import { HttpError } from '../utils/asyncHandler.js';
 import { findPresetFor } from './steamGames.js';
 
-export interface NodeInventory { info: NodeInfo; servers: { id: string; name: string; platform: string; status: string; memoryMb: number; port: number }[]; pools: ReturnType<typeof allocationPools> }
+export interface NodeInventory { capacity?: ReturnType<typeof localCapacity>; info: NodeInfo; servers: { id: string; name: string; platform: string; status: string; memoryMb: number; port: number }[]; pools: ReturnType<typeof allocationPools> }
 export function localInventory(): NodeInventory {
-  return { info: localNodeInfo(), pools: allocationPools(), servers: listServers().map(s => ({ id: s.id, name: s.name, platform: s.platform, status: s.status, memoryMb: s.max_memory_mb, port: s.server_port })) };
+  return { capacity: localCapacity(), info: localNodeInfo(), pools: allocationPools(), servers: listServers().map(s => ({ id: s.id, name: s.name, platform: s.platform, status: s.status, memoryMb: s.max_memory_mb, port: s.server_port })) };
 }
 export interface NodePolicy { enabled: boolean; reserveMemoryMb: number; maxInstances: number; tags: string[] }
 export function nodePolicy(id: string): NodePolicy {
@@ -25,7 +26,7 @@ export async function remoteNode<T>(id: string, endpoint: string, input?: unknow
   const node = getNode(id);
   const response = await fetch(`${node.url}/api/node-link${endpoint}`, { method: input === undefined ? 'GET' : 'POST', redirect: 'error', headers: { 'x-outpost-node-key': node.api_key, ...(input === undefined ? {} : { 'Content-Type': 'application/json' }), ...(requestId ? { 'X-Outpost-Provision-Id': requestId } : {}) }, ...(input === undefined ? {} : { body: JSON.stringify(input) }), signal: AbortSignal.timeout(input === undefined ? 8000 : 180000) });
   const result = await response.json() as { error?: string };
-  if (!response.ok) throw new HttpError(response.status === 409 ? 409 : 502, result.error ?? `Node request failed (${response.status})`);
+  if (!response.ok) throw new HttpError(response.status, result.error ?? `Node request failed (${response.status})`);
   return result as T;
 }
 export async function fleetInventory() {

@@ -25,3 +25,6 @@ Thumbs.db
 
 # Machine-specific Windows login launcher.
 /state/windows-launch.ps1
+
+# Disposable release-check reports and screenshots.
+/artifacts/

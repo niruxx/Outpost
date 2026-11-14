@@ -102,7 +102,7 @@ export function UnsavedBar({
           <span className="min-w-0 flex-1 text-sm text-ink-100">{t(message)}</span>
           <Button variant="ghost" onClick={onDiscard} disabled={saving}>Discard</Button>
           {canSave && (
-            <Button variant="primary" onClick={onSave} disabled={saving}>
+            <Button data-save-shortcut variant="primary" onClick={onSave} disabled={saving}>
               {saving ? <><Spinner /> {t('Saving…')}</> : t('Save changes')}
             </Button>
           )}

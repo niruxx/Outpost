@@ -1,4 +1,5 @@
 import { UploadTracker } from '../../components/UploadTracker.js';
+import { ModProtectionNotice } from '../../components/ModProtectionNotice.js';
 import type { UploadProgress } from '../../api/client.js';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useServerDetail } from './ServerContext.js';
@@ -155,6 +156,7 @@ export function PluginsTab() {
       </div>
 
       <UploadTracker progress={uploadProgress} />
+      <ModProtectionNotice serverId={serverId} />
       {profile.warning && <Notice tone="warning">{profile.warning}</Notice>}
       {profile.notes.length > 0 && (
         <Notice tone="info">

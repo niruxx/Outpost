@@ -5,6 +5,7 @@ import AdmZip from 'adm-zip';
 import { instanceDir, safeJoinReal } from '../utils/paths.js';
 import { extractZipSafely } from '../utils/zip.js';
 import { downloadFile, type LogFn } from '../utils/download.js';
+import { protectionEnabled, stageFile, discardStage, scanUploadBuffers } from './antivirusService.js';
 import { HttpError } from '../utils/asyncHandler.js';
 import { readServerProperties } from './propertiesService.js';
 import { findPresetFor } from './steamGames.js';
@@ -582,6 +583,19 @@ export async function installPluginFile(
   const dir = addonDir(server, profile);
   fs.mkdirSync(dir, { recursive: true });
   const destination = safeJoinReal(dir, safeFileName(fileName));
+  if (protectionEnabled()) {
+    const stage = stageFile(Buffer.alloc(0));
+    try {
+      await downloadFile(downloadUrl, stage.file, undefined, onLog);
+      if (fs.statSync(stage.file).size > 1024 ** 3) throw new HttpError(413, 'Protected plugin downloads must be under 1 GiB');
+      const buffer = fs.readFileSync(stage.file);
+      await scanUploadBuffers([{ name: fileName, buffer }], server.id);
+      const temp = safeJoinReal(dir, `.av-${crypto.randomUUID()}.tmp`);
+      try { fs.writeFileSync(temp, buffer, { flag: 'wx' }); fs.renameSync(temp, destination); }
+      finally { if (fs.existsSync(temp)) fs.unlinkSync(temp); }
+    } finally { discardStage(stage.dir); }
+    return;
+  }
   await downloadFile(downloadUrl, destination, undefined, onLog);
 }
 

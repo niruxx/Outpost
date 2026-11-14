@@ -317,4 +317,26 @@ CREATE TABLE IF NOT EXISTS host_service_metrics (
   PRIMARY KEY (at, unit)
 );
 CREATE INDEX IF NOT EXISTS host_service_metrics_unit ON host_service_metrics(unit, at);
+CREATE TABLE IF NOT EXISTS ui_preferences (user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, kind TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY(user_id,kind));
+CREATE TABLE IF NOT EXISTS panel_jobs (id TEXT PRIMARY KEY, server_id TEXT, kind TEXT NOT NULL, status TEXT NOT NULL, stage TEXT NOT NULL, progress REAL, logs TEXT NOT NULL DEFAULT '[]', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS panel_jobs_created ON panel_jobs(created_at);
+CREATE TABLE IF NOT EXISTS ui_bulk_runs (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, action TEXT NOT NULL, patch TEXT, results TEXT NOT NULL, cancel INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL, created_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS antivirus_scans (id TEXT PRIMARY KEY, server_id TEXT REFERENCES servers(id) ON DELETE CASCADE, source TEXT NOT NULL, status TEXT NOT NULL, started_at INTEGER NOT NULL, finished_at INTEGER, report TEXT NOT NULL DEFAULT '{}');
+CREATE TABLE IF NOT EXISTS antivirus_schedules (server_id TEXT PRIMARY KEY REFERENCES servers(id) ON DELETE CASCADE, expression TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS antivirus_holds (server_id TEXT PRIMARY KEY REFERENCES servers(id) ON DELETE CASCADE, scan_id TEXT NOT NULL, at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS antivirus_quarantine (id TEXT PRIMARY KEY, server_id TEXT REFERENCES servers(id) ON DELETE SET NULL, name TEXT NOT NULL, signature TEXT NOT NULL, sha256 TEXT NOT NULL, bytes INTEGER NOT NULL, retained INTEGER NOT NULL, at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS world_health (server_id TEXT PRIMARY KEY REFERENCES servers(id) ON DELETE CASCADE, report TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS auxiliary_ports (server_id TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE, role TEXT NOT NULL, port INTEGER PRIMARY KEY, protocol TEXT NOT NULL, UNIQUE(server_id,role));
+CREATE TABLE IF NOT EXISTS fleet_capacity_leases (id TEXT PRIMARY KEY, request_hash TEXT NOT NULL, resources TEXT NOT NULL, ports TEXT NOT NULL, expires INTEGER NOT NULL, server_id TEXT REFERENCES servers(id) ON DELETE SET NULL, created_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS fleet_recovery_runs (id TEXT PRIMARY KEY, owner TEXT NOT NULL, data TEXT NOT NULL, updated_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS fleet_snapshot_tickets (id TEXT PRIMARY KEY, secret_hash TEXT NOT NULL, server_id TEXT NOT NULL, file_name TEXT NOT NULL, digest TEXT NOT NULL, expires INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS fleet_enrollments (id TEXT PRIMARY KEY, owner TEXT NOT NULL, secret_hash TEXT NOT NULL, data TEXT NOT NULL, created_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS billing_connections (id TEXT PRIMARY KEY, name TEXT NOT NULL, secret TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1, allow_termination INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS billing_plans (id TEXT PRIMARY KEY, data TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS billing_services (connection_id TEXT NOT NULL, external_id TEXT NOT NULL, user_id TEXT NOT NULL, server_id TEXT, plan_id TEXT NOT NULL, state TEXT NOT NULL, expires INTEGER, data TEXT NOT NULL, PRIMARY KEY(connection_id,external_id));
+CREATE TABLE IF NOT EXISTS billing_events (connection_id TEXT NOT NULL, event_id TEXT NOT NULL, request_hash TEXT NOT NULL, state TEXT NOT NULL, result TEXT, at INTEGER NOT NULL, PRIMARY KEY(connection_id,event_id));
+CREATE TABLE IF NOT EXISTS panel_extensions (id TEXT PRIMARY KEY, manifest TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 0, provenance TEXT NOT NULL, history TEXT NOT NULL DEFAULT '[]');
+CREATE TABLE IF NOT EXISTS community_sources (id TEXT PRIMARY KEY, name TEXT NOT NULL, url TEXT NOT NULL, public_key TEXT NOT NULL, manifest TEXT, synced_at INTEGER, enabled INTEGER NOT NULL DEFAULT 1);
+CREATE TABLE IF NOT EXISTS community_pins (source_id TEXT NOT NULL, package_id TEXT NOT NULL, version TEXT NOT NULL, digest TEXT NOT NULL, kind TEXT NOT NULL, PRIMARY KEY(source_id,package_id,version));
+CREATE TABLE IF NOT EXISTS community_installations (package_id TEXT NOT NULL, source_id TEXT NOT NULL, kind TEXT NOT NULL, version TEXT NOT NULL, digest TEXT NOT NULL, target_id TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY(package_id,source_id));
 `;

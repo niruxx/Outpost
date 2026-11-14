@@ -1,4 +1,5 @@
 import { pullImage } from './containerService.js';
+import { beginJob, progressJob, finishJob } from './jobService.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import AdmZip from 'adm-zip';
@@ -306,6 +307,14 @@ export async function performUpdate(
  * Resolves when done; rejects (after logging) on failure.
  */
 export async function runUpdate(server: ServerRecord, targetVersion: string | undefined, startedBy: string): Promise<UpdateResult> {
+  const { updatePreflight } = await import('./reliabilityService.js');
+  const preflightJob = beginJob('update-preflight', server.id, 'Checking disk, runtime and game readiness');
+  try {
+    const preflight = await updatePreflight(server.id, targetVersion);
+    if (!preflight.ready) throw new Error('Update preflight failed: ' + preflight.checks.filter(c => !c.ok).map(c => c.name + ': ' + c.detail).join('; ') + '. Review recovery steps under Reliability.');
+    finishJob(preflightJob);
+  } catch (error) { finishJob(preflightJob, error); appendLine(server.id, '[Outpost] ' + (error instanceof Error ? error.message : String(error)), 'stderr'); throw error; }
+  const job = beginJob('update', server.id);
   setServerStatus(server.id, 'updating');
   publish(consoleTopic(server.id), { type: 'status', status: 'updating' });
   appendLine(server.id, `[Outpost] Update requested by ${startedBy}`);
@@ -313,17 +322,19 @@ export async function runUpdate(server: ServerRecord, targetVersion: string | un
     const result = await performUpdate(
       server,
       targetVersion,
-      (pct, message) => publish(consoleTopic(server.id), { type: 'install_progress', pct, message }),
+      (pct, message) => { progressJob(job, message, pct); publish(consoleTopic(server.id), { type: 'install_progress', pct, message }); },
       (line) => appendLine(server.id, line)
     );
     setServerVersion(server.id, result.version, result.jarFile, result.build);
     appendLine(server.id, '[Outpost] Update finished — server is ready to start');
+    finishJob(job);
     setServerStatus(server.id, 'stopped');
     publish(consoleTopic(server.id), { type: 'status', status: 'stopped' });
     return result;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     appendLine(server.id, `[Outpost] Update failed: ${message}`, 'stderr');
+    finishJob(job, err);
     setServerStatus(server.id, 'stopped');
     publish(consoleTopic(server.id), { type: 'status', status: 'stopped', error: message });
     throw err;
