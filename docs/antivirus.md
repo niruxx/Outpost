@@ -8,6 +8,27 @@ Outpost uses the OS-installed **ClamAV `clamscan`** engine and **FreshClam** upd
 
 Install current packages using the [ClamAV platform instructions](https://docs.clamav.net/manual/Installing/Packages.html). For example, Debian/Ubuntu use `sudo apt install clamav clamav-freshclam`; Fedora uses `sudo dnf install clamav clamav-update`; macOS uses `brew install clamav`. Windows installations need absolute paths to `clamscan.exe` and `freshclam.exe`, plus a configured signature database. Some packages need additional archive support, particularly RAR.
 
+### Arch Linux / Manjaro
+
+The [`clamav` package](https://archlinux.org/packages/extra/x86_64/clamav/files/) includes both `clamscan` and `freshclam`, plus the `clamav-freshclam.service` updater. Install it with the normal full package upgrade:
+
+```sh
+sudo pacman -Syu clamav
+```
+
+For a new installation, initialize the signatures, then enable automatic updates:
+
+```sh
+sudo freshclam
+sudo systemctl enable --now clamav-freshclam.service
+```
+
+If an updater service or timer is already running, keep using it and skip the manual `freshclam` invocation to avoid competing updates. If FreshClam refuses to run because of an example configuration, review `/etc/clamav/freshclam.conf` and comment out its `Example` directive. The [Arch FreshClam configuration manual](https://man.archlinux.org/man/extra/clamav/freshclam.conf.5.en) documents this directive and the default database directory, `/var/lib/clamav`.
+
+In Outpost, keep **ClamScan executable** as `clamscan` and **FreshClam executable** as `freshclam`. Leave **Signature database directory** blank for the OS default, then choose **Check saved scanner** before enabling protection. The Outpost service account needs read access to signatures; the OS service handles updates. This integration uses `clamscan` and does not require enabling the `clamd` daemon.
+
+### Scanner readiness
+
 Configure FreshClam and initialize the signatures as described in [signature management](https://docs.clamav.net/manual/Usage/SignatureManagement.html). Prefer the distribution's automatic FreshClam service. The panel's **Update signatures** runs a single update using the saved executable and optional database directory; it may fail if another updater holds the database or the Outpost account lacks permission. Do not grant blanket sudo access to work around that: use the OS updater service and give Outpost read access to signatures instead.
 
 Save executable/database paths with protection disabled, then choose **Check saved scanner**. Enabling protection also runs a real readiness scan and refuses to enable if the engine or signatures are unavailable. Signatures older than seven days cause scans to fail. Empty database directory means ClamAV's OS default. Executables accept the standard command name or an absolute path, without shell arguments. Outpost invokes them without a shell.
