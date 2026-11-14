@@ -1,4 +1,5 @@
 import zlib from 'node:zlib';
+import { assertAddonIdle } from './addonOperationService.js';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
@@ -23,6 +24,7 @@ const locks = new Set<string>();
 export function assertGameWorkflowIdle(id: string) { if (locks.has(id))
     throw new HttpError(423, 'A game workflow holds this instance stopped'); }
 async function lock<T>(ids: string[], work: () => Promise<T>) { for (const id of ids) {
+    assertAddonIdle(id);
     assertGameWorkflowIdle(id);
     if (isRunning(id))
         throw new HttpError(409, 'Stop all involved instances first');
@@ -39,6 +41,7 @@ function assertTree(dir: string) { if (!fs.existsSync(dir))
     for (const n of fs.readdirSync(p))
         visit(path.join(p, n)); }; visit(dir); }
 interface Managed {
+    explicit?: boolean;
     file: string;
     version: string;
     project: string;
@@ -52,6 +55,7 @@ interface ModPlan {
     revision: string;
     current: Managed[];
     files: {
+        explicit?: boolean;
         file: string;
         version: string;
         url: string;
@@ -77,9 +81,9 @@ export async function planModUpdate(id: string, owner: string, refs: unknown) {
         const plan = await resolveModPlan('modrinth', ref, p.catalog, s.version);
         if (plan.resolved.versionMismatchWarning)
             warnings.push(`${ref}: no confirmed game-version compatibility`);
-        const resolutions = [{ ref, resolved: plan.resolved }, ...plan.dependencies.filter(d => d.required).map(d => ({ ref: d.id, resolved: d.resolved }))];
+        const resolutions = [{ ref, resolved: plan.resolved,explicit:true }, ...plan.dependencies.filter(d => d.required).map(d => ({ ref: d.id, resolved: d.resolved,explicit:false }))];
         plan.dependencies.filter(d => d.error).forEach(d => warnings.push(`${d.title}: ${d.error}`));
-        for (const { ref: project, resolved: r } of resolutions) {
+        for (const { ref: project, resolved: r,explicit } of resolutions) {
             if (r?.incompatible)
                 incompatible.push(...r.incompatible.map(c => ({ ...c, source: project })));
             if (!r) {
@@ -92,7 +96,8 @@ export async function planModUpdate(id: string, owner: string, refs: unknown) {
             if (old && old.url !== r.downloadUrl)
                 warnings.push(`Conflicting versions/files for ${project}`);
             else if (!old)
-                files.push({ file: r.fileName, version: r.versionNumber, url: r.downloadUrl, project: r.projectId ?? project });
+                files.push({ file: r.fileName, version: r.versionNumber, url: r.downloadUrl, project: r.projectId ?? project,explicit });
+            else if(explicit)old.explicit=true;
         }
     }
     for (const conflict of incompatible) {
@@ -132,7 +137,7 @@ export async function applyModUpdate(id: string, owner: string, planId: string, 
                 progressJob(job, `Downloading ${file.file}`, i / p.files.length * 100);
                 const target = path.join(stage, file.file);
                 await downloadScannedMod(file.url, target, id);
-                managed.push({ file: file.file, version: file.version, project: file.project, hash: await hashFile(target) });
+                managed.push({ file: file.file, version: file.version, project: file.project, hash: await hashFile(target),explicit:file.explicit??true });
             }
             await scanIngestedPath(stage, true);
             authorize();

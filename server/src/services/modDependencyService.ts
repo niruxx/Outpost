@@ -1,4 +1,4 @@
-import { resolvePluginVersion, modrinthProjectTitle, type ResolvedPluginVersion } from './pluginRegistryService.js';
+import { resolvePluginVersion, modrinthProjectTitle, modrinthVersionProject, type ResolvedPluginVersion } from './pluginRegistryService.js';
 import { curseforge, type CfTarget } from './curseforgeService.js';
 import type { AddonCatalog } from './pluginService.js';
 
@@ -28,10 +28,10 @@ export async function resolveModPlan(source: string, ref: string, catalog: Addon
       if (source === 'curseforge') {
         const file = await curseforge.resolveFile(Number(id), gameVersion, catalog as CfTarget, versionId ? Number(versionId) : undefined);
         row.title = file.title;
-        resolved = { versionNumber: file.versionLabel, fileName: file.fileName, downloadUrl: file.downloadUrl, sizeBytes: file.sizeBytes, versionMismatchWarning: file.versionMismatchWarning };
+        resolved = { source:'curseforge',projectId:String(id),versionId:file.fileId===undefined?undefined:String(file.fileId),title:file.title,dependencies:file.dependencies.filter(d=>[2,3].includes(d.relationType)).map(d=>({projectId:String(d.modId),versionId:null,required:d.relationType===3})),versionNumber: file.versionLabel, fileName: file.fileName, downloadUrl: file.downloadUrl, sizeBytes: file.sizeBytes, versionMismatchWarning: file.versionMismatchWarning };
         refs = file.dependencies.filter(d => [2, 3].includes(d.relationType)).map(d => ({ id: String(d.modId), required: d.relationType === 3 }));
       } else {
-        resolved = await resolvePluginVersion(id, catalog, gameVersion, versionId);
+        resolved = await resolvePluginVersion(versionId&&id===versionId?await modrinthVersionProject(versionId):id, catalog, gameVersion, versionId);
         row.title = await modrinthProjectTitle(resolved.projectId ?? id);
         refs = (resolved.dependencies ?? []).map(d => ({ id: d.projectId ?? d.versionId ?? '', versionId: d.versionId ?? undefined, required: d.required }));
       }
@@ -39,9 +39,11 @@ export async function resolveModPlan(source: string, ref: string, catalog: Addon
       if (required) {
         const project = resolved.projectId ?? id;
         const previous = projects.get(project);
-        if (previous && previous !== resolved.fileName) throw new Error(`Conflicting required versions of ${row.title}; install compatible versions manually`);
-        projects.set(project, resolved.fileName);
+        const identity=`${resolved.versionId??resolved.versionNumber}:${resolved.fileName}:${resolved.downloadUrl}`;
+        if (previous && previous !== identity) throw new Error(`Conflicting required versions of ${row.title}; install compatible versions manually`);
+        projects.set(project, identity);
       }
+      resolved={...resolved,source:source==='curseforge'?'curseforge':'modrinth',title:row.title};
       row.resolved = resolved;
       if (required) for (const dep of refs) {
         if (!dep.id) {

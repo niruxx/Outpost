@@ -42,6 +42,10 @@ jobs:
         run: node server/test/fleet-extensibility.mjs
       - name: Record game capability and browser checks
         run: node server/test/publish-game-capabilities.mjs --browser
+      - name: Check installed mods and dependency-safe uninstall
+        env:
+          OUTPOST_TEST_BROWSER_UI: '1'
+        run: node server/test/installed-addons.mjs
       - name: Preserve reports and screenshots
         if: always()
         uses: actions/upload-artifact@v7
@@ -51,5 +55,6 @@ jobs:
             artifacts/release-checks/
             artifacts/fleet-integrations/
             artifacts/game-capabilities/
+            artifacts/installed-addons/
           retention-days: 14
           if-no-files-found: warn

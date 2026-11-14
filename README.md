@@ -948,4 +948,6 @@ Optional [ClamAV malware protection](docs/antivirus.md) adds upload-time scannin
 
 [Game compatibility matrix](docs/game-capability-matrix.md) publishes recorded checks by game, fixture version/loader and host OS. The panel’s Compatibility page and per-instance Capabilities tab explain unavailable controls and setup requirements. Fixture/browser coverage is kept separate from live game-build certification.
 
+[Installed mods and dependency-aware uninstall](docs/installed-mods.md) adds per-instance searchable inventories, per-mod detail pages, catalog provenance and reviewed cleanup that retains shared/explicit dependencies. Unknown dependency metadata disables automatic pruning.
+
 Run `npm run test:release` before release to check repeated navigation, reconnects, slow/failing networks, large upload recovery and background-job failures. See [release resilience checks](docs/release-checks.md) for browser setup, CI and diagnostic artifacts.

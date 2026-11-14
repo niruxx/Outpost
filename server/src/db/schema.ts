@@ -339,4 +339,6 @@ CREATE TABLE IF NOT EXISTS panel_extensions (id TEXT PRIMARY KEY, manifest TEXT 
 CREATE TABLE IF NOT EXISTS community_sources (id TEXT PRIMARY KEY, name TEXT NOT NULL, url TEXT NOT NULL, public_key TEXT NOT NULL, manifest TEXT, synced_at INTEGER, enabled INTEGER NOT NULL DEFAULT 1);
 CREATE TABLE IF NOT EXISTS community_pins (source_id TEXT NOT NULL, package_id TEXT NOT NULL, version TEXT NOT NULL, digest TEXT NOT NULL, kind TEXT NOT NULL, PRIMARY KEY(source_id,package_id,version));
 CREATE TABLE IF NOT EXISTS community_installations (package_id TEXT NOT NULL, source_id TEXT NOT NULL, kind TEXT NOT NULL, version TEXT NOT NULL, digest TEXT NOT NULL, target_id TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY(package_id,source_id));
+CREATE TABLE IF NOT EXISTS addon_installations (server_id TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE, file TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(server_id,file));
+CREATE TABLE IF NOT EXISTS addon_action_plans (id TEXT PRIMARY KEY, server_id TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE, owner TEXT NOT NULL, expires INTEGER NOT NULL, data TEXT NOT NULL);
 `;

@@ -5,11 +5,11 @@ import AdmZip from 'adm-zip';
 import { instanceDir, safeJoinReal } from '../utils/paths.js';
 import { extractZipSafely } from '../utils/zip.js';
 import { downloadFile, type LogFn } from '../utils/download.js';
-import { protectionEnabled, stageFile, discardStage, scanUploadBuffers } from './antivirusService.js';
+import { protectionEnabled, scanUploadBuffers } from './antivirusService.js';
 import { HttpError } from '../utils/asyncHandler.js';
 import { readServerProperties } from './propertiesService.js';
 import { findPresetFor } from './steamGames.js';
-import { deleteGmodAddon, installGmodUpload, isGmod, listGmodAddons, setGmodAddonEnabled } from './gmodService.js';
+import { deleteGmodAddon, installGmodUpload, isGmod, listGmodAddons, setGmodAddonEnabled, gmodAddonFile } from './gmodService.js';
 import type { ServerRecord } from '../types/index.js';
 import { isProxyLoader, PLUGIN_CAPABLE_LOADERS } from '../types/index.js';
 
@@ -76,7 +76,7 @@ function bepinexInstalled(server: ServerRecord): boolean {
 }
 
 export function getAddonSupport(server: ServerRecord): AddonSupport {
-  if (isModded(server.loader)) {
+  if (server.platform === 'java' && isModded(server.loader)) {
     const ecosystem = server.loader === 'mohist' || server.loader === 'spongeforge' ? 'forge' : server.loader;
     const notes = ['Restart the server after adding, removing or toggling a mod.', 'Players need the same client-side mods to join (server-only mods excepted).'];
     if (server.loader === 'mohist') notes.push('Mohist also runs Bukkit plugins — put those in plugins/ (File Management).');
@@ -96,7 +96,7 @@ export function getAddonSupport(server: ServerRecord): AddonSupport {
       },
     };
   }
-  if (isProxyLoader(server.loader)) {
+  if (server.platform === 'java' && isProxyLoader(server.loader)) {
     const velocity = server.loader === 'velocity';
     return {
       supported: true,
@@ -115,7 +115,7 @@ export function getAddonSupport(server: ServerRecord): AddonSupport {
       },
     };
   }
-  if (PLUGIN_CAPABLE_LOADERS.includes(server.loader)) {
+  if (server.platform === 'java' && PLUGIN_CAPABLE_LOADERS.includes(server.loader)) {
     return {
       supported: true,
       profile: {
@@ -131,7 +131,7 @@ export function getAddonSupport(server: ServerRecord): AddonSupport {
     };
   }
 
-  if (server.loader === 'vanilla') {
+  if (server.platform === 'java' && server.loader === 'vanilla') {
     return {
       supported: true,
       profile: {
@@ -304,7 +304,10 @@ function listFileAddons(server: ServerRecord, profile: AddonProfile): InstalledP
   const out: InstalledPlugin[] = [];
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
-    const stat = fs.statSync(full);
+    const stat = fs.lstatSync(full);
+    if(stat.isSymbolicLink()&&hasExtension(entry.name,listedExtensions)){
+      out.push({fileName:entry.name,displayName:entry.name,enabled:!entry.name.endsWith(DISABLED_SUFFIX),canToggle:false,sizeBytes:0,modifiedAt:stat.mtime.toISOString(),detail:'Symbolic link: metadata is not inspected'});continue;
+    }
     if (entry.isFile() && hasExtension(entry.name, listedExtensions)) {
       const enabled = !entry.name.endsWith(DISABLED_SUFFIX);
       out.push({
@@ -343,6 +346,7 @@ function resolveAddonPath(server: ServerRecord, profile: AddonProfile, fileName:
 function safeFileName(name: string): string {
   return path.basename(name).replace(/[^a-zA-Z0-9._ +-]/g, '_');
 }
+export const normalizeAddonFileName = (name:string) => safeFileName(name);
 
 // ---------------------------------------------------------------------------
 // Bedrock packs
@@ -413,7 +417,8 @@ function setPackActive(server: ServerRecord, type: PackType, manifest: PackManif
 
 function readPackFolderManifest(folder: string): PackManifest | null {
   const file = path.join(folder, 'manifest.json');
-  return fs.existsSync(file) ? parseManifest(fs.readFileSync(file, 'utf8')) : null;
+  if(!fs.existsSync(file))return null;const st=fs.lstatSync(file);if(!st.isFile()||st.isSymbolicLink()||st.size>1048576)return null;
+  return parseManifest(fs.readFileSync(file, 'utf8'));
 }
 
 function listBedrockPacks(server: ServerRecord): InstalledPlugin[] {
@@ -506,6 +511,14 @@ export function listPlugins(server: ServerRecord): InstalledPlugin[] {
   return profile.kind === 'bedrock' ? listBedrockPacks(server) : listFileAddons(server, profile);
 }
 
+/** The exact artifact represented by an installed row, including native pack/add-on identifiers. */
+export function addonArtifactFile(server: ServerRecord, fileName: string): string {
+  const profile=requireAddonProfile(server);
+  if(profile.kind==='bedrock')return resolveBedrockPack(server,fileName).folder;
+  if(profile.kind==='gmod')return gmodAddonFile(server,fileName);
+  return resolveAddonPath(server,profile,fileName);
+}
+
 export function setPluginEnabled(server: ServerRecord, fileName: string, enable: boolean): void {
   const profile = requireAddonProfile(server);
   if (profile.kind === 'bedrock') {
@@ -520,6 +533,7 @@ export function setPluginEnabled(server: ServerRecord, fileName: string, enable:
   const isDisabled = fileName.endsWith(DISABLED_SUFFIX);
   if (enable === !isDisabled) return; // already in the requested state
   const target = enable ? current.slice(0, -DISABLED_SUFFIX.length) : current + DISABLED_SUFFIX;
+  if (fs.existsSync(target)) throw new HttpError(409, 'The target add-on filename already exists; no file was overwritten');
   fs.renameSync(current, target);
 }
 
@@ -577,26 +591,20 @@ export async function installPluginFile(
   server: ServerRecord,
   downloadUrl: string,
   fileName: string,
-  onLog?: LogFn
+  onLog?: LogFn,
+  authorize?: () => void
 ): Promise<void> {
   const profile = requireAddonProfile(server);
   const dir = addonDir(server, profile);
   fs.mkdirSync(dir, { recursive: true });
   const destination = safeJoinReal(dir, safeFileName(fileName));
-  if (protectionEnabled()) {
-    const stage = stageFile(Buffer.alloc(0));
-    try {
-      await downloadFile(downloadUrl, stage.file, undefined, onLog);
-      if (fs.statSync(stage.file).size > 1024 ** 3) throw new HttpError(413, 'Protected plugin downloads must be under 1 GiB');
-      const buffer = fs.readFileSync(stage.file);
-      await scanUploadBuffers([{ name: fileName, buffer }], server.id);
-      const temp = safeJoinReal(dir, `.av-${crypto.randomUUID()}.tmp`);
-      try { fs.writeFileSync(temp, buffer, { flag: 'wx' }); fs.renameSync(temp, destination); }
-      finally { if (fs.existsSync(temp)) fs.unlinkSync(temp); }
-    } finally { discardStage(stage.dir); }
-    return;
-  }
-  await downloadFile(downloadUrl, destination, undefined, onLog);
+  const temp=safeJoinReal(dir,`.outpost-addon-${crypto.randomUUID()}.tmp`);
+  try{
+    await downloadFile(downloadUrl,temp,undefined,onLog);
+    if(fs.statSync(temp).size>1024**3)throw new HttpError(413,'Add-on downloads must be under 1 GiB');
+    if(protectionEnabled())await scanUploadBuffers([{name:fileName,buffer:fs.readFileSync(temp)}],server.id);
+    authorize?.();fs.renameSync(temp,destination);
+  }finally{if(fs.existsSync(temp))fs.unlinkSync(temp);}
 }
 
 /** Extra environment a server's mod loader needs at launch (currently: BepInEx for Valheim on Linux,

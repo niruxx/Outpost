@@ -3,7 +3,9 @@ import { scanUploadBuffers } from '../services/antivirusService.js';
 import { isRunning } from '../services/processManager.js';
 import { listModVersions } from '../services/pluginRegistryService.js';
 import { resolveModPlan } from '../services/modDependencyService.js';
-import { Router } from 'express';
+import { Router, type Request, type Response } from 'express';
+import * as addonInventory from '../services/installedAddonService.js';
+import { withAddonOperation } from '../services/addonOperationService.js';
 import type { CfTarget } from '../services/curseforgeService.js';
 import multer from 'multer';
 import { asyncHandler, HttpError } from '../utils/asyncHandler.js';
@@ -13,6 +15,7 @@ import {
   deletePlugin,
   getAddonSupport,
   installPluginFile,
+  normalizeAddonFileName,
   installUploadedAddon,
   listPlugins,
   requireAddonProfile,
@@ -21,11 +24,12 @@ import {
 import { resolvePluginVersion } from '../services/pluginRegistryService.js';
 import { curseforge } from '../services/curseforgeService.js';
 import { appendLine } from '../services/consoleLogService.js';
-import { logAudit } from '../services/userService.js';
+import { logAudit, getUserById } from '../services/userService.js';
 import type { ServerRecord } from '../types/index.js';
 
 export const pluginsRouter = Router({ mergeParams: true });
-pluginsRouter.use(requireAuth, requireServerAccess());
+pluginsRouter.use(requireAuth,(req,_res,next)=>{const user=getUserById(req.auth!.sub);if(!user||user.disabled)return next(new HttpError(403,'Current account access required'));req.auth!.role=user.role;next();}, requireServerAccess());
+const mutating=(work:(req:Request,res:Response)=>Promise<unknown>)=>asyncHandler(async(req,res)=>withAddonOperation(req.params.serverId,async()=>{addonInventory.authorizeAddonMutation(req.auth!.sub,req.params.serverId);addonInventory.assertAddonStopped(req.params.serverId);return work(req,res);}));
 
 const MAX_DOWNLOAD_BYTES = 512 * 1024 * 1024;
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_DOWNLOAD_BYTES } });
@@ -60,9 +64,15 @@ pluginsRouter.get(
   asyncHandler(async (req, res) => {
     const server = requireServer(req.params.serverId);
     const support = getAddonSupport(server);
-    res.json({ support, plugins: support.supported ? listPlugins(server) : [] });
+    res.json({ support, plugins: support.supported ? listPlugins(server) : [], inventory:await addonInventory.installedAddons(server) });
   })
 );
+
+pluginsRouter.get('/installed/:id',asyncHandler(async(req,res)=>res.json(await addonInventory.addonDetails(requireServer(req.params.serverId),req.params.id))));
+pluginsRouter.post('/installed/:id/plan',asyncHandler(async(req,res)=>res.json(await addonInventory.planAddonAction(requireServer(req.params.serverId),req.auth!.sub,req.params.id,req.body??{}))));
+pluginsRouter.post('/installed/actions/:id/apply',asyncHandler(async(req,res)=>{const result=await addonInventory.applyAddonAction(req.params.serverId,req.auth!.sub,req.params.id,req.body?.acknowledged===true);logAudit(req.auth!.sub,req.auth!.username,'addon.action',req.params.serverId,req.params.id);res.json(result);}));
+pluginsRouter.post('/installed/:id/keep',mutating(async(req,res)=>{await addonInventory.pinAddon(requireServer(req.params.serverId),req.params.id);logAudit(req.auth!.sub,req.auth!.username,'addon.keep',req.params.serverId,req.params.id);res.json({ok:true});}));
+pluginsRouter.post('/installed/recovery/:id/resolve',asyncHandler(async(req,res)=>{res.json(await addonInventory.resolveAddonRecovery(req.params.serverId,req.auth!.sub,req.params.id));logAudit(req.auth!.sub,req.auth!.username,'addon.recovery.resolve',req.params.serverId,req.params.id);}));
 
 pluginsRouter.post('/versions', asyncHandler(async (req, res) => {
   requirePermission(req, 'plugins');
@@ -98,7 +108,7 @@ pluginsRouter.post(
 
 pluginsRouter.post(
   '/install',
-  asyncHandler(async (req, res) => {
+  mutating(async (req, res) => {
     requirePermission(req, 'plugins');
     const server = requireServer(req.params.serverId);
     const profile = requireAddonProfile(server);
@@ -118,12 +128,17 @@ pluginsRouter.post(
         throw new HttpError(409, 'Some required dependencies cannot be downloaded. Review the dependency list before installing.');
       }
       const files = req.body?.includeDependencies === true ? [...required.map(d => d.resolved!), plan.resolved] : [plan.resolved];
+      const byFile=new Map<string,string>();for(const file of files){const name=normalizeAddonFileName(file.fileName),prior=byFile.get(name);if(prior&&prior!==file.downloadUrl)throw new HttpError(409,'Different resolved mods use the same filename; review the dependency versions');byFile.set(name,file.downloadUrl);}
+      const before=await addonInventory.installedAddons(server);
       const installed: string[] = [];
       for (const file of files) {
-        if (installed.includes(file.fileName)) continue;
-        await installPluginFile(server, file.downloadUrl, file.fileName, line => appendLine(server.id, line));
-        installed.push(file.fileName);
+        const name=normalizeAddonFileName(file.fileName);if (installed.includes(name)) continue;
+        await installPluginFile(server, file.downloadUrl, name, line => appendLine(server.id, line),()=>{addonInventory.authorizeAddonMutation(req.auth!.sub,server.id);addonInventory.assertAddonStopped(server.id);});
+        const previous=before.items.find(i=>i.fileName===name);
+        await addonInventory.recordCatalogAddon(server,name,{source,project:file.projectId,versionId:file.versionId,version:file.versionNumber,title:file.title,dependencies:file.dependencies},file===plan.resolved,!!previous&&previous.installation!=='dependency');
+        installed.push(name);
       }
+      await addonInventory.recordCatalogAddon(server,normalizeAddonFileName(plan.resolved.fileName),{source,project:plan.resolved.projectId,versionId:plan.resolved.versionId,version:plan.resolved.versionNumber,title:plan.resolved.title,dependencies:plan.resolved.dependencies},true);
       if (oldMod && !installed.includes(oldMod.fileName)) setPluginEnabled(server, oldMod.fileName, false);
       appendLine(server.id, `[Outpost] Installed ${installed.join(', ')} - restart the server to apply`);
       logAudit(req.auth!.sub, req.auth!.username, 'plugin.install', server.id, installed.join(', '));
@@ -183,14 +198,16 @@ pluginsRouter.post(
   '/upload',
   (req, _res, next) => { try { requirePermission(req, 'plugins'); next(); } catch (err) { next(err); } },
   upload.array('files'), scanIncomingUploads,
-  asyncHandler(async (req, res) => {
+  mutating(async (req, res) => {
     requirePermission(req, 'plugins');
     const server = requireServer(req.params.serverId);
     const files = (req.files as Express.Multer.File[] | undefined) ?? [];
     if (!files.length) throw new HttpError(400, 'No files uploaded');
     const installed: string[] = [];
     for (const file of files) {
-      installed.push(...installUploadedAddon(server, file.originalname, file.buffer));
+      const added=installUploadedAddon(server, file.originalname, file.buffer);
+      for(const name of added)await addonInventory.recordUploadedAddon(server,name);
+      installed.push(...added);
     }
     appendLine(server.id, `[Outpost] Installed ${installed.join(', ')} — restart the server for changes to apply`);
     logAudit(req.auth!.sub, req.auth!.username, 'plugin.upload', server.id, installed.join(', '));
@@ -198,26 +215,15 @@ pluginsRouter.post(
   })
 );
 
-pluginsRouter.post(
-  '/:fileName/toggle',
-  asyncHandler(async (req, res) => {
-    requirePermission(req, 'plugins');
-    const server = requireServer(req.params.serverId);
-    const { enabled } = req.body ?? {};
-    if (typeof enabled !== 'boolean') throw new HttpError(400, 'enabled must be a boolean');
-    setPluginEnabled(server, req.params.fileName, enabled);
-    logAudit(req.auth!.sub, req.auth!.username, 'plugin.toggle', server.id, `${req.params.fileName}=${enabled}`);
-    res.json({ plugins: listPlugins(server) });
-  })
-);
-
-pluginsRouter.delete(
-  '/:fileName',
-  asyncHandler(async (req, res) => {
-    requirePermission(req, 'plugins');
-    const server = requireServer(req.params.serverId);
-    deletePlugin(server, req.params.fileName);
-    logAudit(req.auth!.sub, req.auth!.username, 'plugin.delete', server.id, req.params.fileName);
-    res.status(204).end();
-  })
-);
+pluginsRouter.post('/:fileName/toggle',asyncHandler(async(req,res)=>{
+  requirePermission(req,'plugins');const server=requireServer(req.params.serverId);if(typeof req.body?.enabled!=='boolean')throw new HttpError(400,'enabled must be boolean');
+  const inventory=await addonInventory.installedAddons(server),item=inventory.items.find(i=>i.fileName===req.params.fileName);if(!item)throw new HttpError(404,'Installed add-on not found');
+  const plan=await addonInventory.planAddonAction(server,req.auth!.sub,item.id,{action:req.body.enabled?'enable':'disable'});
+  await addonInventory.applyAddonAction(server.id,req.auth!.sub,plan.id,req.body?.acknowledged===true);
+  logAudit(req.auth!.sub,req.auth!.username,'plugin.toggle',server.id,item.fileName);res.json({plugins:listPlugins(server)});
+}));
+pluginsRouter.delete('/:fileName',asyncHandler(async(req,res)=>{
+  requirePermission(req,'plugins');const server=requireServer(req.params.serverId),inventory=await addonInventory.installedAddons(server),item=inventory.items.find(i=>i.fileName===req.params.fileName);if(!item)throw new HttpError(404,'Installed add-on not found');
+  const plan=await addonInventory.planAddonAction(server,req.auth!.sub,item.id,{action:'remove',cleanup:false});await addonInventory.applyAddonAction(server.id,req.auth!.sub,plan.id,false);
+  logAudit(req.auth!.sub,req.auth!.username,'plugin.delete',server.id,item.fileName);res.status(204).end();
+}));

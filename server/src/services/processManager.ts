@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { assertAddonIdle } from './addonOperationService.js';
 import os from 'node:os';
 import { assertDiskRoom, wrapWithLimits } from './limitsService.js';
 import path from 'node:path';
@@ -525,11 +526,11 @@ export async function startServer(serverId: string, options: { auto?: boolean; w
   const { assertRecoveryIdle } = await import('./fleetRecoveryService.js');
   const { assertMaintenanceIdle } = await import('./reliabilityService.js');
   assertRecoveryIdle(serverId);
-  assertGameWorkflowIdle(serverId);
+  assertGameWorkflowIdle(serverId); assertAddonIdle(serverId);
   assertBackupIdle(serverId); assertMaintenanceIdle(serverId, options.workflow);
   assertWorldHealthIdle(serverId);
   assertRecoveryIdle(serverId);
-  assertGameWorkflowIdle(serverId);
+  assertGameWorkflowIdle(serverId); assertAddonIdle(serverId);
   assertBackupIdle(serverId); assertMaintenanceIdle(serverId, options.workflow);
   assertNoSecurityHold(serverId);
   if (running.has(serverId)) throw new HttpError(409, 'Server is already running');
@@ -552,7 +553,7 @@ export async function startServer(serverId: string, options: { auto?: boolean; w
   const plan = await buildLaunch(server);
   assertWorldHealthIdle(serverId);
   assertRecoveryIdle(serverId);
-  assertGameWorkflowIdle(serverId);
+  assertGameWorkflowIdle(serverId); assertAddonIdle(serverId);
   assertBackupIdle(serverId); assertMaintenanceIdle(serverId, options.workflow);
   assertNoSecurityHold(serverId);
 
@@ -590,7 +591,7 @@ export async function startServer(serverId: string, options: { auto?: boolean; w
   resetOnlinePlayers(serverId);
   assertWorldHealthIdle(serverId);
   assertRecoveryIdle(serverId);
-  assertGameWorkflowIdle(serverId);
+  assertGameWorkflowIdle(serverId); assertAddonIdle(serverId);
   assertBackupIdle(serverId); assertMaintenanceIdle(serverId, options.workflow);
   setServerStatus(serverId, 'starting');
   publish(consoleTopic(serverId), { type: 'status', status: 'starting' });

@@ -26,6 +26,7 @@ import { PlayersTab } from './server/PlayersTab.js';
 import { OperatorTab } from './server/OperatorTab.js';
 import { WhitelistTab } from './server/WhitelistTab.js';
 import { PluginsTab, addonNavLabel } from './server/PluginsTab.js';
+import { InstalledAddonTab } from './server/InstalledAddonTab.js';
 import { MapsTab } from './server/MapsTab.js';
 import { SettingsTab } from './server/SettingsTab.js';
 import { FilesTab } from './server/FilesTab.js';
@@ -456,6 +457,7 @@ function InstancePageInner() {
             <Route path="configuration" element={<SettingsTab />} />
             <Route path="files" element={<FilesTab />} />
             <Route path="plugins" element={<PluginsTab />} />
+            <Route path="plugins/:addonId" element={<InstalledAddonTab />} />
             {world && <Route path="players" element={<PlayersTab />} />}
             {hasBrowserStats(server) && <Route path="players" element={<SteamPlayersTab />} />}
             {world && <Route path="operator" element={<OperatorTab />} />}

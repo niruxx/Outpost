@@ -328,6 +328,8 @@ export function setGmodAddonEnabled(server: ServerRecord, id: string, enable: bo
   fs.renameSync(entry.full, target);
 }
 
+export function gmodAddonFile(server: ServerRecord, id: string) { return entryPath(server,id).full; }
+
 export function deleteGmodAddon(server: ServerRecord, id: string) {
   const entry = entryPath(server, id);
   if (entry.kind === 'gma' && workshopId(entry.name)) throw new HttpError(400, 'Workshop items are removed on the Workshop tab, so they don’t come back on the next apply');

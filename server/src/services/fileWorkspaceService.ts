@@ -60,6 +60,18 @@ export function recycle(server: string, relative: string): Recycled {
   return item;
 }
 export const trash = (server: string) => rows<Recycled>('trash', server);
+/** Synchronous batch publication with an undo handle for an enclosing add-on/database transaction. */
+export function recycleBatch(server: string, paths: string[]) {
+  const items:Recycled[]=[];
+  const undo=()=>{for(const item of [...items].reverse()){
+    const target=confined(server,item.path),source=path.join(privateDir('trash',server),item.id,'payload');
+    if(fs.existsSync(target))throw new HttpError(409,'An original add-on path was recreated; retained recycle copies need review');
+    fs.mkdirSync(path.dirname(target),{recursive:true});fs.renameSync(source,target);
+    fs.unlinkSync(metadataFile('trash',server,item.id));fs.rmdirSync(path.dirname(source));
+  }};
+  try{for(const relative of paths)items.push(recycle(server,relative));return {items,undo};}
+  catch(error){try{undo();}catch{const failure=Object.assign(new HttpError(409,'Add-on removal failed and a recycle copy needs administrator review'),{recoveryRequired:true});throw failure;}throw error;}
+}
 export async function restore(server: string, id: string, authorize: () => void) {
   if (busy.has(id)) throw new HttpError(409, 'Item is busy');
   const item = trash(server).find(i => i.id === id); if (!item) throw new HttpError(404, 'Recycle item not found');

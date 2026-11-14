@@ -2,6 +2,9 @@ import { UploadTracker } from '../../components/UploadTracker.js';
 import { ModProtectionNotice } from '../../components/ModProtectionNotice.js';
 import type { UploadProgress } from '../../api/client.js';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
+import type { AddonInventory, AddonAction, InstalledAddon } from '../../api/addons.js';
+import { AddonActionModal } from '../../components/AddonActionModal.js';
 import { useServerDetail } from './ServerContext.js';
 import { api, ApiError } from '../../api/client.js';
 import type { AddonSupport, InstalledPlugin, ServerRecord } from '../../api/types.js';
@@ -9,15 +12,15 @@ import { isProxyLoader, PLUGIN_CAPABLE_LOADERS } from '../../api/types.js';
 import { useToast } from '../../components/Toast.js';
 import { useConfirm } from '../../components/ConfirmDialog.js';
 import { PluginSearchModal } from '../../components/PluginSearchModal.js';
-import { Badge, Button, Card, Notice, Spinner } from '../../components/ui.js';
+import { Badge, Button, Card, ErrorText, Input, Select, Notice, Spinner } from '../../components/ui.js';
 import { Icon } from '../../components/icons.js';
 import { gameKindOf } from '../../components/GameArt.js';
 
 /** Sidebar label for an instance's add-on page — each game calls them something different. */
 export function addonNavLabel(server: ServerRecord): string {
-  if (PLUGIN_CAPABLE_LOADERS.includes(server.loader) || isProxyLoader(server.loader)) return 'Plugins';
-  if (server.loader === 'vanilla') return 'Data Packs';
   if (server.platform === 'bedrock') return 'Add-ons';
+  if (server.platform === 'java' && (PLUGIN_CAPABLE_LOADERS.includes(server.loader) || isProxyLoader(server.loader))) return 'Plugins';
+  if (server.platform === 'java' && server.loader === 'vanilla') return 'Data Packs';
   if (server.platform === 'steam' && (server.steam_preset === 'gmod' || server.steam_app_id === '4020')) return 'Addons';
   return gameKindOf(server) === 'valheim' ? 'Plugins' : 'Mods';
 }
@@ -28,37 +31,42 @@ function formatSize(bytes: number): string {
 }
 
 export function PluginsTab() {
-  const { serverId, can } = useServerDetail();
+  const { serverId, server, can } = useServerDetail();
   const canWrite = can('plugins');
   const toast = useToast();
   const confirm = useConfirm();
   const [support, setSupport] = useState<AddonSupport | null>(null);
   const [plugins, setPlugins] = useState<InstalledPlugin[] | null>(null);
   const [browsing, setBrowsing] = useState(false);
-  const [busyFile, setBusyFile] = useState<string | null>(null);
+  const [inventory,setInventory]=useState<AddonInventory|null>(null),[query,setQuery]=useState(''),[filter,setFilter]=useState('all'),[error,setError]=useState(''),[action,setAction]=useState<{item:InstalledAddon;action:AddonAction}|null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  const currentInstance=useRef(serverId),sequence=useRef(0);currentInstance.current=serverId;
+  const stopped=!!server&&['stopped','crashed','install_failed'].includes(server.status);
 
   const load = useCallback(async () => {
+    if(currentInstance.current!==serverId)return;const seq=++sequence.current;
     try {
-      const res = await api.get<{ support: AddonSupport; plugins: InstalledPlugin[] }>(`/servers/${serverId}/plugins`);
+      const res = await api.get<{ support: AddonSupport; plugins: InstalledPlugin[];inventory:AddonInventory }>(`/servers/${serverId}/plugins`);
+      if(currentInstance.current!==serverId||seq!==sequence.current)return;
       setSupport(res.support);
       setPlugins(res.plugins);
+      setInventory(res.inventory);setError('');
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Failed to load');
+      if(currentInstance.current===serverId&&seq===sequence.current)setError(err instanceof Error?err.message:'Failed to load');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serverId]);
 
   useEffect(() => {
-    load();
+    setSupport(null);setPlugins(null);setInventory(null);setAction(null);setQuery('');setFilter('all');setBrowsing(false);void load();return()=>{sequence.current++;};
   }, [load]);
 
-  if (!support || plugins === null) {
+  if (!support || plugins === null || (inventory && inventory.serverId !== serverId)) {
     return (
       <div className="flex items-center gap-2 text-sm text-ink-400">
-        <Spinner /> Loading…
+        {error?<><ErrorText>{error}</ErrorText><Button onClick={load}>Retry installed add-ons</Button></>:<><Spinner /> Reading installed add-ons and manifests…</>}
       </div>
     );
   }
@@ -84,7 +92,7 @@ export function PluginsTab() {
     setUploading(true);
     try {
       const res = await api.upload<{ installed: string[]; plugins: InstalledPlugin[] }>(`/servers/${serverId}/plugins/upload`, form, setUploadProgress);
-      setPlugins(res.plugins);
+      if(currentInstance.current===serverId){setPlugins(res.plugins);await load();}
       toast.success(`Installed ${res.installed.join(', ')}`);
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : 'Upload failed');
@@ -95,40 +103,8 @@ export function PluginsTab() {
     }
   }
 
-  async function toggle(plugin: InstalledPlugin) {
-    setBusyFile(plugin.fileName);
-    try {
-      const res = await api.post<{ plugins: InstalledPlugin[] }>(`/servers/${serverId}/plugins/${encodeURIComponent(plugin.fileName)}/toggle`, {
-        enabled: !plugin.enabled,
-      });
-      setPlugins(res.plugins);
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Failed to toggle');
-    } finally {
-      setBusyFile(null);
-    }
-  }
-
-  async function remove(plugin: InstalledPlugin) {
-    const ok = await confirm({
-      title: `Delete ${profile.singular}`,
-      message: `Delete ${plugin.displayName}? This can't be undone.`,
-      confirmLabel: 'Delete',
-      tone: 'danger',
-    });
-    if (!ok) return;
-    setBusyFile(plugin.fileName);
-    try {
-      await api.delete(`/servers/${serverId}/plugins/${encodeURIComponent(plugin.fileName)}`);
-      toast.success(`Deleted ${plugin.displayName}`);
-      await load();
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Failed to delete');
-    } finally {
-      setBusyFile(null);
-    }
-  }
-
+  function openAction(plugin:InstalledPlugin,action:AddonAction){const item=inventory?.items.find(i=>i.fileName===plugin.fileName);if(!item){setError('Installed metadata changed; refresh the list.');return;}setAction({item,action});}
+  const shown=plugins.filter(p=>{const item=inventory?.items.find(i=>i.fileName===p.fileName);const match=[p.fileName,item?.name??p.displayName,item?.metadata.version??'',...(item?.provides??[])].join(' ').toLowerCase().includes(query.toLowerCase());return match&&(filter==='all'||filter==='enabled'&&p.enabled||filter==='disabled'&&!p.enabled||filter===item?.installation);});
   const actions = canWrite && (
     <div className="flex flex-wrap gap-2">
       {profile.catalog && (
@@ -136,7 +112,7 @@ export function PluginsTab() {
           <Icon name="search" className="h-4 w-4" /> Browse {profile.label.toLowerCase()}
         </Button>
       )}
-      <Button variant={profile.catalog ? 'default' : 'primary'} disabled={uploading} onClick={() => fileInput.current?.click()}>
+      <Button variant={profile.catalog ? 'default' : 'primary'} disabled={uploading||!stopped} onClick={() => fileInput.current?.click()}>
         {uploading ? <Spinner /> : <Icon name="upload" className="h-4 w-4" />} Upload {profile.extensions.join(' / ')}
       </Button>
       <input ref={fileInput} type="file" multiple accept={profile.extensions.join(',')} className="hidden" onChange={(e) => upload(e.target.files)} />
@@ -145,9 +121,10 @@ export function PluginsTab() {
 
   return (
     <div className="space-y-4">
+      <ErrorText>{error}</ErrorText>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h2 className="text-xl font-normal text-ink-50">{profile.label}</h2>
+          <h2 className="text-xl font-normal text-ink-50">Installed {profile.label.toLowerCase()} ({plugins.length})</h2>
           <p className="mt-1 text-sm text-ink-400">
             Stored in <span className="font-mono text-ink-300">{profile.folder}</span>
           </p>
@@ -155,6 +132,8 @@ export function PluginsTab() {
         {actions}
       </div>
 
+      {!stopped&&<Notice tone="info">The installed list and detail pages are available while running. Stop the instance and finish background jobs before changing add-ons.</Notice>}
+      {!canWrite&&<Notice tone="info">Managing installed add-ons requires plugins permission.</Notice>}
       <UploadTracker progress={uploadProgress} />
       <ModProtectionNotice serverId={serverId} />
       {profile.warning && <Notice tone="warning">{profile.warning}</Notice>}
@@ -168,42 +147,48 @@ export function PluginsTab() {
         </Notice>
       )}
 
+      <div className="grid gap-3 sm:grid-cols-[1fr_220px]"><Input aria-label="Search installed add-ons" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search names, versions, files or mod IDs"/><Select aria-label="Filter installed add-ons" value={filter} onChange={e=>setFilter(e.target.value)}><option value="all">All installed</option><option value="enabled">Enabled</option><option value="disabled">Disabled</option><option value="explicit">Explicitly installed / kept</option><option value="dependency">Automatic dependencies</option><option value="untracked">Untracked</option></Select></div>
+      {!!inventory?.interrupted?.length&&<Card className="space-y-3 p-5"><h2>Interrupted add-on action: recovery required</h2><p className="text-sm text-amber-400">Startup is blocked. Restore the original artifacts from the File Management recycle bin or the recorded backup, then verify recovery here.</p>{inventory.interrupted.map(p=><div className="space-y-2" key={p.id}><p className="break-all text-xs">{p.action} - {p.id}</p>{p.backup&&<p className="break-all text-xs">Recovery backup: {p.backup}</p>}<Link className="text-sm text-accent-400 underline" to={`/instances/${serverId}/files`}>Open File Management</Link> <Link className="text-sm text-accent-400 underline" to={`/instances/${serverId}/backups`}>Open backups</Link><Button disabled={!canWrite||!stopped} onClick={async()=>{if(!await confirm({title:'Verify restored add-on set',message:'Compare every installed add-on with the pre-action hashes before clearing the startup fence?',confirmLabel:'Verify original files restored'}))return;try{await api.post('/servers/'+serverId+'/plugins/installed/recovery/'+p.id+'/resolve');await load();}catch(e){setError((e as Error).message);}}}>Confirm original files restored</Button></div>)}</Card>}
       <Card className="overflow-hidden">
-        {plugins.length === 0 ? (
-          <div className="px-4 py-12 text-center text-sm text-ink-400">No {profile.label.toLowerCase()} installed yet.</div>
+        {shown.length === 0 ? (
+          <div className="px-4 py-12 text-center text-sm text-ink-400">{plugins.length?'No installed add-ons match these filters.':`No ${profile.label.toLowerCase()} installed yet.`}</div>
         ) : (
           <div className="divide-y divide-surface-700">
-            {plugins.map((p, i) => (
-              <div key={p.fileName} style={{ animationDelay: `${Math.min(i, 20) * 18}ms` }} className="animate-fade-in-up flex items-center gap-3 px-4 py-3">
+            {shown.map((p, i) => {const item=inventory?.items.find(n=>n.fileName===p.fileName);return (
+              <div key={p.fileName} style={{ animationDelay: `${Math.min(i, 20) * 18}ms` }} className="animate-fade-in-up flex flex-wrap items-center gap-3 px-4 py-3">
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface-700 text-ink-300">
                   <Icon name="plugin" className="h-[18px] w-[18px]" />
                 </span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-ink-100">{p.displayName}</p>
+                <div className="min-w-40 flex-1">
+                  <p className="break-words text-sm font-medium text-ink-100">{item?<Link className="text-accent-400 hover:underline" to={`/instances/${serverId}/plugins/${item.id}`}>{item.name}</Link>:p.displayName}</p>
                   <p className="truncate text-xs text-ink-400">
-                    {formatSize(p.sizeBytes)}
+                    {item?.metadata.version??item?.provenance?.version??'Unknown version'} - {formatSize(p.sizeBytes)}
                     {p.detail && ` · ${p.detail}`}
                   </p>
                 </div>
+                {item&&<><p className="text-xs text-ink-400">{item.installation==='dependency'?'Automatic dependency':item.installation==='explicit'?'Explicitly installed / kept':'Untracked'}{item.requiredBy.length?' - Required by '+item.requiredBy.length+' installed add-on(s)':''}</p><Link className="rounded-full border border-surface-600 px-3 py-2 text-sm text-ink-300" to={`/instances/${serverId}/plugins/${item.id}`}>Details</Link></>}
                 <Badge tone={p.enabled ? 'green' : 'neutral'}>{p.enabled ? 'Enabled' : 'Disabled'}</Badge>
                 {canWrite && (
                   <div className="flex gap-1.5">
                     {p.canToggle && (
-                      <Button disabled={busyFile === p.fileName} onClick={() => toggle(p)}>
+                      <Button disabled={uploading||!stopped} onClick={() => openAction(p,p.enabled?'disable':'enable')}>
                         {p.enabled ? 'Disable' : 'Enable'}
                       </Button>
                     )}
-                    <Button variant="danger" disabled={busyFile === p.fileName} onClick={() => remove(p)}>
-                      Delete
+                    <Button variant="danger" disabled={uploading||!stopped} onClick={() => openAction(p,'remove')}>
+                      Uninstall
                     </Button>
                   </div>
                 )}
               </div>
-            ))}
+            );})}
           </div>
         )}
       </Card>
 
+      {inventory?.warnings.map((w,i)=><Notice key={i} tone="warning">{w}</Notice>)}
+      <p className="text-xs text-ink-400">Dependency cleanup uses declared manifests and recorded installation ownership. Shared and explicitly kept mods are retained. Untracked dependencies are kept unless selected for review.</p>
+      {action&&<AddonActionModal key={serverId+action.item.id+action.action} serverId={serverId} item={action.item} action={action.action} dependencyCleanup={inventory?.dependencyCleanup??false} onClose={()=>setAction(null)} onApplied={r=>{setAction(null);toast.success(r.action==='remove'?'Uninstalled '+r.removed.map(i=>i.name).join(', '):'Add-on state updated');void load();}}/>}
       {profile.catalog && (
         <PluginSearchModal
           open={browsing}
