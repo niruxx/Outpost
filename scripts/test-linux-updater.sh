@@ -45,5 +45,18 @@ preflight "$TEMP/broken" 'Git cannot read this checkout'
 "$REAL_GIT" -C "$TEMP/repo" worktree add -qb fixture-worktree "$TEMP/worktree"
 preflight "$TEMP/worktree" 'No git remote configured'
 preflight "$TEMP/worktree" 'No git remote configured' 1
+# Backups must happen after service shutdown; transient scanner data is disposable.
+stop_line="$(awk '/sudo systemctl stop/ { print NR; exit }' "$ROOT/dist/linux/update.sh")"
+backup_line="$(awk '/tar -czf/ { print NR; exit }' "$ROOT/dist/linux/update.sh")"
+[[ "$stop_line" -lt "$backup_line" ]]
+mkdir -p "$TEMP/data/antivirus/incoming-fixture"
+printf 'settings' > "$TEMP/data/outpost.db"
+printf 'quarantine' > "$TEMP/data/antivirus/retained.bin"
+printf 'scratch' > "$TEMP/data/antivirus/clamav-fixture.tmp"
+printf 'staging' > "$TEMP/data/antivirus/incoming-fixture/payload"
+tar -czf "$TEMP/backup.tar.gz" --exclude='data/antivirus/clamav-*.tmp' --exclude='data/antivirus/incoming-*' -C "$TEMP" data
+contents="$(tar -tzf "$TEMP/backup.tar.gz")"
+[[ "$contents" == *data/outpost.db* && "$contents" == *data/antivirus/retained.bin* ]]
+[[ "$contents" != *clamav-fixture* && "$contents" != *incoming-fixture* ]]
 bash -n "$ROOT/dist/linux/update.sh"
 echo 'Linux updater preflight: checkout, sudo ownership, archive, corrupt metadata and linked worktree checks passed.'

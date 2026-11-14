@@ -26,8 +26,19 @@ const currentAccount: RequestHandler = (req, _res, next) => {
 antivirusRouter.use(requireAuth, currentAccount, requireRole('admin'));
 antivirusRouter.get('/', (_req, res) => res.json({ disabled: antivirusDisabled(), allowed: allowedItems(), excludedInstances: antivirusExclusions(), config: antivirusConfig(), realtime: realtimeAntivirusStatus(), scans: scanRows(), holds: securityHoldRows(), quarantine: quarantineRows(), schedules: antivirusSchedules(), timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }));
 antivirusRouter.put('/exclusion/:serverId', (req, res, next) => { try { setInstanceExcluded(req.params.serverId, req.body?.excluded); logAudit(req.auth!.sub, req.auth!.username, 'security.antivirus.exclusion', req.params.serverId, JSON.stringify({ excluded: req.body.excluded })); res.json({ ok: true }); } catch (err) { next(err); } });
+antivirusRouter.post('/enable', asyncHandler(async (req, res) => { const config = await saveAntivirusConfig({ ...antivirusConfig(), enabled: true }); logAudit(req.auth!.sub, req.auth!.username, 'security.antivirus.enable'); res.json({ config }); }));
 antivirusRouter.post('/disable', (req, res) => { disableAntivirus(); logAudit(req.auth!.sub, req.auth!.username, 'security.antivirus.disable'); res.json({ ok: true }); });
-antivirusRouter.post('/allow/:serverId', (req, res, next) => { try { const item = allowFinding(req.params.serverId, req.body?.scanId, req.body?.index); logAudit(req.auth!.sub, req.auth!.username, 'security.antivirus.allow', req.params.serverId, item.path); res.json(item); } catch (err) { next(err); } });
+antivirusRouter.post('/allow/:serverId', (req, res, next) => { try { const item = allowFinding(req.params.serverId, req.body?.scanId, req.body?.index); logAudit(req.auth!.sub, req.auth!.username, 'security.antivirus.allow', req.params.serverId, item.path); const hold = securityHoldRows(req.params.serverId)[0];
+  const needsScan = securityHold(req.params.serverId);
+  let scanQueued = false;
+  if (needsScan && hold?.report?.findings?.length) {
+    // Retry an incomplete scan after all recorded findings have been reviewed.
+    const approved = allowedItems(req.params.serverId);
+    if (hold.report.findings.every((finding: string) => approved.some(row => row.path === finding.slice(0, finding.indexOf(': '))))) {
+      try { startInstanceScan(req.params.serverId); scanQueued = true; } catch { /* Approval remains saved; the UI offers a manual scan retry. */ }
+    }
+  }
+  res.json({ ...item, needsScan, scanQueued }); } catch (err) { next(err); } });
 antivirusRouter.delete('/allow/:serverId', (req, res, next) => { try { revokeAllowed(req.params.serverId, req.body?.path); logAudit(req.auth!.sub, req.auth!.username, 'security.antivirus.revoke', req.params.serverId, req.body?.path); res.json({ ok: true }); } catch (err) { next(err); } });
 antivirusRouter.get('/health', asyncHandler(async (_req, res) => res.json(await antivirusHealth())));
 antivirusRouter.put('/config', asyncHandler(async (req, res) => { const config = await saveAntivirusConfig(req.body); logAudit(req.auth!.sub, req.auth!.username, 'security.antivirus.configure'); res.json({ config }); }));

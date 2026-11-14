@@ -142,6 +142,17 @@ try {
   assert.equal((await request(`/antivirus/quarantine/${blocked.id}`, 'DELETE', null, viewer)).status, 403);
   assert.equal((await request(`/antivirus/quarantine/${blocked.id}`, 'DELETE')).status, 200);
   assert.equal(fs.existsSync(path.join(temp, 'antivirus', `${blocked.id}.bin`)), false);
+  fs.mkdirSync(path.join(instanceDir('av-instance'), 'mods'), { recursive: true });
+  fs.writeFileSync(path.join(instanceDir('av-instance'), 'mods', 'chipped-fabric-1.20.1-3.0.7.jar'), 'reviewed fixture');
+  db.prepare('INSERT INTO antivirus_scans(id,server_id,source,status,started_at,report) VALUES (?,?,?,?,?,?)').run('limit-fixture', 'av-instance', 'manual', 'detected', Date.now(), JSON.stringify({ findings: ['mods/chipped-fabric-1.20.1-3.0.7.jar: Heuristics.Limits.Exceeded.MaxFiles FOUND'], note: 'Scanner also reported an incomplete scan.' }));
+  db.prepare('INSERT INTO antivirus_holds(server_id,scan_id,at) VALUES (?,?,?)').run('av-instance', 'limit-fixture', Date.now());
+  const limitApproval = await request('/antivirus/allow/av-instance', 'POST', { scanId: 'limit-fixture', index: 0 });
+  assert.equal(limitApproval.status, 200);
+  const limitApprovalBody = await limitApproval.json();
+  assert.equal(limitApprovalBody.needsScan, true);
+  assert.equal(limitApprovalBody.scanQueued, true, 'reviewed limit finding triggers follow-up scan');
+  await waitFor(() => !av.securityHold('av-instance'), 'follow-up scan clears incomplete hold');
+  assert.ok(lastScanArgs.some(arg => arg.startsWith('--exclude=') && arg.includes('chipped-fabric-1')));
   fs.writeFileSync(path.join(instanceDir('av-instance'), 'finding.txt'), 'OUTPOST_TEST_THREAT');
   const scan = av.startInstanceScan('av-instance'); assert.throws(() => av.startInstanceScan('av-instance'), { status: 409 });
   await waitFor(() => av.scanRows('av-instance').find(s => s.id === scan.id)?.status === 'detected', 'scan detection');
@@ -159,7 +170,17 @@ try {
   assert.doesNotThrow(() => av.assertNoSecurityHold('av-instance'));
   assert.equal(av.antivirusDisabled(), true);
   assert.equal(av.antivirusConfig().enabled, false);
-  assert.equal((await request('/antivirus/config', 'PUT', config)).status, 200);
+  assert.equal((await request('/antivirus/enable', 'POST', null, viewer)).status, 403);
+  mode = 'missing';
+  assert.equal((await request('/antivirus/enable', 'POST')).status, 503);
+  assert.equal(av.antivirusDisabled(), true, 'failed readiness leaves antivirus disabled');
+  mode = 'normal';
+  const enabledResult = await request('/antivirus/enable', 'POST');
+  assert.equal(enabledResult.status, 200);
+  assert.equal((await enabledResult.json()).config.enabled, true);
+  assert.equal(av.antivirusDisabled(), false);
+  assert.equal(av.antivirusConfig().enabled, true);
+
   assert.throws(() => av.assertNoSecurityHold('av-instance'), { status: 423 }, 're-enabling restores unresolved holds');
   const hostHolds = (await (await request('/antivirus')).json()).holds;
   const instanceHolds = (await (await request('/servers/av-instance/antivirus', 'GET', null, viewer)).json()).holds;
