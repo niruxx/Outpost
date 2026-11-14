@@ -1,3 +1,4 @@
+import { spawnSupervised, connectSupervisor, supervisorStates, supervisorLocation, type SupervisedChild } from './instanceSupervisor.js';
 import fs from 'node:fs';
 import { assertAddonIdle } from './addonOperationService.js';
 import os from 'node:os';
@@ -384,6 +385,10 @@ function resolveStopStrategy(server: ServerRecord, config: LaunchConfig): StopPl
 
 /** Sends a signal to the instance — to its whole process group when it was spawned detached. */
 function signalInstance(instance: RunningInstance, signal: NodeJS.Signals) {
+  if ('detach' in instance.child) {
+    if (instance.server.platform === 'docker' && signal === 'SIGKILL') killContainer(instance.server);
+    instance.child.kill(signal); return;
+  }
   const pid = instance.child.pid;
   // The attached CLI proxies catchable signals into the container, but SIGKILL can't be proxied.
   if (instance.server.platform === 'docker' && signal === 'SIGKILL') killContainer(instance.server);
@@ -610,31 +615,33 @@ export async function startServer(serverId: string, options: { auto?: boolean; w
     appendLog(serverId, `[Outpost] Sandboxed (bubblewrap): only ${dir} is writable; the rest of the host's files are read-only system folders or hidden`, 'system');
   }
 
-  const child = spawn(target.cmd, target.args, {
-    cwd: plan.cwd,
-    windowsHide: true,
-    shell: plan.useShell && !sandboxed,
-    detached: plan.detached,
-    env,
-    // fd 3 carries bwrap's {"child-pid": …} report
-    stdio: sandboxed ? ['pipe', 'pipe', 'pipe', 'pipe'] : ['pipe', 'pipe', 'pipe'],
-  }) as unknown as ChildProcessWithoutNullStreams;
+  const ready = resolveReadyRegex(server, config);
+  const child = await spawnSupervised(serverId, {
+    cmd: target.cmd, args: target.args, cwd: plan.cwd, env,
+    shell: plan.useShell && !sandboxed, detached: plan.detached, sandboxed,
+    ready: ready ? { source: ready.source, flags: ready.flags } : null,
+    context: { config, cwd: plan.cwd, groupKill: plan.detached, sandboxed },
+  });
+  attachRuntime(server, config, plan.cwd, plan.detached, sandboxed, child);
+}
 
+function attachRuntime(server: ServerRecord, config: LaunchConfig, cwd: string, groupKill: boolean, sandboxed: boolean, child: SupervisedChild, reattached = false) {
+  const serverId = server.id;
   const readyRegex = resolveReadyRegex(server, config);
   const instance: RunningInstance = {
     child,
-    startedAt: Date.now(),
-    manualStop: false,
+    startedAt: child.supervisorState.startedAt,
+    manualStop: child.supervisorState.manualStop,
     lastStats: emptyStats(),
     readyRegex,
     stopStrategy: resolveStopStrategy(server, config),
     stopTimeoutMs: (config.stopTimeoutSec ?? DEFAULT_STOP_TIMEOUT_MS / 1000) * 1000,
-    groupKill: plan.detached,
-    innerPid: null,
+    groupKill,
+    innerPid: child.supervisorState.innerPid,
     sandboxed,
     server,
     config,
-    cwd: plan.cwd,
+    cwd,
   };
   running.set(serverId, instance);
   if (sandboxed) {
@@ -728,7 +735,33 @@ export async function startServer(serverId: string, options: { auto?: boolean; w
     publish(consoleTopic(serverId), { type: 'stats', ...stats });
     recordStats(serverId, stats);
   }, STATS_INTERVAL_MS);
+  if (reattached && !child.supervisorState.exited) setServerStatus(serverId, child.supervisorState.manualStop ? 'stopping' : child.supervisorState.ready ? 'running' : 'starting');
+  child.resume();
 }
+
+/** Reattach before schedulers and auto-start can launch duplicates. Failure stops bootstrap. */
+export async function restoreRunningInstances(): Promise<void> {
+  for (const state of supervisorStates()) {
+    const server = getServer(state.serverId); if (!server) continue;
+    let child: SupervisedChild;
+    try { child = await connectSupervisor(state); }
+    catch (error) {
+      const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch (e) { return (e as NodeJS.ErrnoException).code !== 'ESRCH'; } };
+      if (state.exited || (!alive(state.workerPid) && !alive(state.pid))) {
+        setServerStatus(server.id, state.exited && (state.manualStop || state.code === 0) ? 'stopped' : 'crashed');
+        fs.unlinkSync(path.join(supervisorLocation(server.id), 'state.json'));
+        continue;
+      }
+      throw error;
+    }
+    const reconciledExit = child.supervisorState.exited ? new Promise<void>(resolve => child.once('exit', () => resolve())) : null;
+    const context = child.supervisorState.context;
+    attachRuntime(server, context.config, context.cwd, context.groupKill, context.sandboxed, child, true);
+    if (reconciledExit) await reconciledExit;
+    appendLog(server.id, '[Outpost] Reconnected to persistent instance supervisor', 'system');
+  }
+}
+
 
 export function stopServer(serverId: string, options: { force?: boolean } = {}): void {
   const instance = running.get(serverId);
@@ -738,6 +771,7 @@ export function stopServer(serverId: string, options: { force?: boolean } = {}):
     throw new HttpError(409, 'Server is not running');
   }
   instance.manualStop = true;
+  (instance.child as SupervisedChild).markManualStop?.();
 
   if (options.force) {
     signalInstance(instance, 'SIGKILL');
@@ -818,17 +852,15 @@ export function getLogBuffer(serverId: string): string[] {
   return consoleLog.getBuffer(serverId);
 }
 
-/** Called at server shutdown so child MC processes don't become orphaned. */
+/** Disconnect the panel while supervisors retain the game processes and console pipes. */
 export function stopAllForShutdown(): void {
   shuttingDown = true;
-  for (const timer of pendingRestarts.values()) clearTimeout(timer.timer);
+  for (const { timer } of pendingRestarts.values()) clearTimeout(timer);
   for (const [serverId, instance] of running) {
-    instance.manualStop = true;
-    try {
-      issueStop(serverId, instance);
-    } catch {
-      signalInstance(instance, 'SIGTERM');
-    }
-    logger.info(`Sent stop to server ${serverId} for panel shutdown`);
+    if (instance.statsTimer) clearInterval(instance.statsTimer);
+    if (instance.forceKillTimer) clearTimeout(instance.forceKillTimer);
+    flushStats(serverId);
+    (instance.child as SupervisedChild).detach();
+    logger.info(`Left instance ${serverId} running under its supervisor`);
   }
 }

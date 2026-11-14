@@ -100,7 +100,7 @@ import { recoverInterruptedTransfers } from './services/nodeService.js';
 import { authenticate } from './auth/tokens.js';
 import { userHasServerAccess } from './services/userService.js';
 import { getServer, listServers } from './services/serverService.js';
-import { getLogBuffer, getRuntimeInfo, isRunning, startServer, stopAllForShutdown } from './services/processManager.js';
+import { getLogBuffer, getRuntimeInfo, isRunning, startServer, stopAllForShutdown, restoreRunningInstances } from './services/processManager.js';
 import { consoleTopic, subscribe } from './services/wsHub.js';
 import { initScheduler } from './services/schedulerService.js';
 import './db/db.js'; // ensure the database + schema are initialized before anything else runs
@@ -288,6 +288,8 @@ function handleConsoleUpgrade(req: http.IncomingMessage, socket: import('node:st
 }
 
 async function bootstrap() {
+  initConsoleHistory();
+  await restoreRunningInstances();
   initReliability();
   void initMinecraftSleep();
   const moderationTimer = setInterval(() => { try { expireTimedBans(); } catch {} }, 30000); moderationTimer.unref();
@@ -295,7 +297,6 @@ async function bootstrap() {
   initAntivirus();
   initScheduler();
   initAutoUpdates();
-  initConsoleHistory();
   void startSftp();
   initPanelVersion();
   initDiskQuotas({
@@ -325,7 +326,7 @@ async function bootstrap() {
   recoverInterruptedTransfers();
 
   for (const server of listServers()) {
-    if (server.auto_start && server.status !== 'installing' && !server.suspended) {
+    if (!isRunning(server.id) && server.auto_start && server.status !== 'installing' && !server.suspended) {
       logger.info(`Auto-starting server ${server.name} (${server.id})`);
       startServer(server.id).catch((err) => logger.error(`Auto-start failed for ${server.id}`, err));
     }
@@ -337,7 +338,7 @@ async function bootstrap() {
   initTls(app, attachUpgrades);
 }
 
-bootstrap();
+bootstrap().catch(error => { logger.error('Cannot safely restore instance supervisors; panel startup aborted', error); process.exit(1); });
 
 function shutdown(signal: string) {
   stopReliability();

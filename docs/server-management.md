@@ -26,11 +26,11 @@ The same `--guide` option works on the root update/uninstall launchers.
 | `server/data/runtimes/<major>/` | Managed Java versions |
 | `../outpost-update-backups/` | Host updater data archives and rollback information |
 
-The data root defaults to `server/data`; `DATA_DIR`, `OUTPOST_DATA_DIR` or the legacy `MULTICRAFT_DATA_DIR` can override it. Relative data paths resolve from `server/`. Check your configured instance backup paths too. Stop Outpost before making a manual filesystem copy of its live database/worlds. Keep the data directory when rebuilding or reinstalling.
+The data root defaults to `server/data`; `DATA_DIR`, `OUTPOST_DATA_DIR` or the legacy `MULTICRAFT_DATA_DIR` can override it. Relative data paths resolve from `server/`. Check your configured instance backup paths too. Stop Outpost before copying its database, and explicitly stop game instances before making an offline copy of their worlds. Panel shutdown alone leaves supervised games running. Keep the data directory when rebuilding or reinstalling.
 
 ## Panel service versus game instances
 
-The OS service runs the Outpost panel. Use the browser at `http://localhost:8642` to create individual instances and use their Start, Stop, Restart, Console, Files and Backups controls. Stopping/restarting the panel can also interrupt running game servers; save and stop instances first. Never run a foreground panel and a background panel against the same data directory at once.
+The OS service runs the Outpost panel. Use the browser at `http://localhost:8642` to create individual instances and use their Start, Stop, Restart, Console, Files and Backups controls. New instance launches use persistent supervisors, so panel updates and restarts leave their game processes running and reconnect their consoles. Older running instances need one stop/start to adopt supervision. See [persistent instances](persistent-instances.md) for service configuration, backup behavior and limitations. Never run a foreground panel and a background panel against the same data directory at once.
 
 On macOS the current supported installation target is Minecraft Java. Containers, SteamCMD/Wine and broader host features remain planned; visible menu entries are not a compatibility guarantee. Choose a Minecraft version and let Outpost select the matching managed Java runtime, or select one in the instance's Java settings. Java 16 is legacy and may not be available for every architecture.
 

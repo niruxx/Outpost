@@ -58,5 +58,8 @@ tar -czf "$TEMP/backup.tar.gz" --exclude='data/antivirus/clamav-*.tmp' --exclude
 contents="$(tar -tzf "$TEMP/backup.tar.gz")"
 [[ "$contents" == *data/outpost.db* && "$contents" == *data/antivirus/retained.bin* ]]
 [[ "$contents" != *clamav-fixture* && "$contents" != *incoming-fixture* ]]
+grep -q 'KillMode=process' "$ROOT/dist/linux/update.sh"
+grep -q 'KillMode=process' "$ROOT/dist/linux/install.sh"
+grep -q 'instance-supervisors' "$ROOT/dist/linux/update.sh"
 bash -n "$ROOT/dist/linux/update.sh"
 echo 'Linux updater preflight: checkout, sudo ownership, archive, corrupt metadata and linked worktree checks passed.'

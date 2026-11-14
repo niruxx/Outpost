@@ -533,7 +533,7 @@ else
       ok "Removed multicraft.service"
     fi
     RUN_GROUP="$(id -gn)"
-    NPM_PATH="$(command -v npm)"
+    NODE_PATH="$(command -v node)"
 
     if [[ -f "$SERVICE_FILE" ]]; then
       confirm "$SERVICE_FILE already exists — overwrite it?" n || { warn "Leaving the existing service file untouched."; SERVICE_FILE=""; }
@@ -552,7 +552,9 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=$PROJECT_DIR
-ExecStart=$NPM_PATH start
+ExecStart="$NODE_PATH" "$PROJECT_DIR/server/dist/index.js"
+# Instance supervisors own game processes; stop only the panel during updates.
+KillMode=process
 Restart=on-failure
 User=$RUN_USER
 Group=$RUN_GROUP

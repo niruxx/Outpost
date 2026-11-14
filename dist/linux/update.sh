@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Outpost updater: pulls the latest commits from GitHub, rebuilds, and restarts â€”
+# Outpost updater: pulls the latest commits from GitHub, rebuilds, and restarts —
 # without ever touching server/data/ (the database, every server's files, and backups).
 #
 # Safety, in order:
@@ -10,7 +10,7 @@
 #      would require one, rather than doing something clever/destructive automatically.
 #   4. Builds, then lets you test the new build (starts it, checks /api/health) before
 #      restarting your live service.
-#   5. If the test fails â€” or you just want to undo an update later â€” offers to roll the
+#   5. If the test fails — or you just want to undo an update later — offers to roll the
 #      code back to the exact commit it was on before, and reminds you where the data
 #      backup is.
 #
@@ -36,15 +36,15 @@ else
   RED=''; GREEN=''; YELLOW=''; BLUE=''; BOLD=''; NC=''
 fi
 info()    { printf '%s==>%s %s\n' "$BLUE" "$NC" "$*"; }
-ok()      { printf '%sâœ“%s %s\n' "$GREEN" "$NC" "$*"; }
+ok()      { printf '%s✓%s %s\n' "$GREEN" "$NC" "$*"; }
 warn()    { printf '%s!%s %s\n' "$YELLOW" "$NC" "$*"; }
-err()     { printf '%sâœ—%s %s\n' "$RED" "$NC" "$*" >&2; }
+err()     { printf '%s✗%s %s\n' "$RED" "$NC" "$*" >&2; }
 die()     { err "$*"; exit 1; }
 heading() { printf '\n%s%s%s\n' "$BOLD" "$*" "$NC"; }
 
 NONINTERACTIVE=0
 ROLLBACK_ONLY=0
-# full | settings (no instance files) | none â€” unset means "ask" when interactive, full otherwise
+# full | settings (no instance files) | none — unset means "ask" when interactive, full otherwise
 BACKUP_MODE=""
 for arg in "$@"; do
   case "$arg" in
@@ -58,7 +58,7 @@ for arg in "$@"; do
       echo "               success, leave the update in place (untested-but-built) on failure."
       echo "  --rollback   Skip updating; just restore the last pre-update commit recorded"
       echo "               by a previous run of this script."
-      echo "  --skip-instances  Back up only the database and settings â€” not instance files,"
+      echo "  --skip-instances  Back up only the database and settings — not instance files,"
       echo "               snapshots, Java runtimes or SteamCMD (much smaller and faster)."
       echo "  --no-backup  Don't back up server/data at all."
       exit 0
@@ -115,23 +115,33 @@ GIT_ROOT="$(git rev-parse --show-toplevel)"
 REMOTE="$(git remote | head -1)"
 [[ -n "$REMOTE" ]] || die "No git remote configured. Run 'git remote add origin <repo-url>' first."
 BRANCH="$(git rev-parse --abbrev-ref HEAD)"
-[[ "$BRANCH" == "HEAD" ]] && die "You're in a detached HEAD state â€” check out a branch first (e.g. 'git checkout main')."
+[[ "$BRANCH" == "HEAD" ]] && die "You're in a detached HEAD state — check out a branch first (e.g. 'git checkout main')."
 
-DATA_DIR="${MULTICRAFT_DATA_DIR:-$PROJECT_DIR/server/data}"
+DATA_DIR="${OUTPOST_DATA_DIR:-${MULTICRAFT_DATA_DIR:-$PROJECT_DIR/server/data}}"
+[[ "$DATA_DIR" == /* ]] || DATA_DIR="$PROJECT_DIR/server/$DATA_DIR"
 BACKUP_ROOT="$PROJECT_DIR/../outpost-update-backups"
 # Keep using the pre-rename folder if it exists, so earlier rollback points stay available.
 [[ -d "$PROJECT_DIR/../multicraft-update-backups" && ! -d "$BACKUP_ROOT" ]] && BACKUP_ROOT="$PROJECT_DIR/../multicraft-update-backups"
 STATE_FILE="$BACKUP_ROOT/last-update.json"
 
+# Older panels cannot reattach supervisors and could otherwise launch duplicates.
+check_supervisor_rollback() {
+  local target="$1"
+  if [[ -d "$DATA_DIR/instance-supervisors" ]] && find "$DATA_DIR/instance-supervisors" -name state.json -print -quit | grep -q .; then
+    git show "$target:server/src/services/processManager.ts" | grep restoreRunningInstances >/dev/null || die "Cannot roll back to a panel without supervisor support while instances are active. Stop instances explicitly first; running games have been left untouched."
+  fi
+}
+
 # ---------------------------------------------------------------------------
 # --rollback: restore the last recorded pre-update commit and stop
 # ---------------------------------------------------------------------------
 if [[ "$ROLLBACK_ONLY" == "1" ]]; then
-  [[ -f "$STATE_FILE" ]] || die "No previous update recorded ($STATE_FILE not found) â€” nothing to roll back to."
+  [[ -f "$STATE_FILE" ]] || die "No previous update recorded ($STATE_FILE not found) — nothing to roll back to."
   PREV_SHA="$(MC_STATE_FILE="$STATE_FILE" node -e 'console.log(JSON.parse(require("fs").readFileSync(process.env.MC_STATE_FILE,"utf8")).previousCommit)')"
   PREV_LABEL="$(MC_STATE_FILE="$STATE_FILE" node -e 'console.log(JSON.parse(require("fs").readFileSync(process.env.MC_STATE_FILE,"utf8")).previousLabel)')"
   info "Last recorded pre-update commit: $PREV_LABEL"
   confirm "Reset the code to that commit and rebuild?" y || die "Cancelled."
+  check_supervisor_rollback "$PREV_SHA"
   git reset --hard "$PREV_SHA"
   npm run setup
   npm run build
@@ -140,9 +150,9 @@ if [[ "$ROLLBACK_ONLY" == "1" ]]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Step 1 â€” local changes
+# Step 1 — local changes
 # ---------------------------------------------------------------------------
-heading "Step 1/6 â€” Checking for local changes"
+heading "Step 1/6 — Checking for local changes"
 
 STASHED=0
 if [[ -n "$(git status --porcelain)" ]]; then
@@ -153,7 +163,7 @@ if [[ -n "$(git status --porcelain)" ]]; then
     STASHED=1
     ok "Local changes stashed."
   else
-    die "Not updating with uncommitted changes present â€” commit, stash manually, or discard them first."
+    die "Not updating with uncommitted changes present — commit, stash manually, or discard them first."
   fi
 else
   ok "Working tree is clean."
@@ -164,9 +174,9 @@ PREV_LABEL="$(git log -1 --format='%h %s' HEAD)"
 ok "Current version: $PREV_LABEL"
 
 # ---------------------------------------------------------------------------
-# Step 2 â€” stop the running service, if we can find one
+# Step 2 — stop the running service, if we can find one
 # ---------------------------------------------------------------------------
-heading "Step 2/6 â€” Stopping the running instance"
+heading "Step 2/6 — Stopping the running instance"
 
 SYSTEMD_ACTIVE=0
 # The unit is outpost.service; installs from before the rename still have multicraft.service.
@@ -175,7 +185,7 @@ if command -v systemctl >/dev/null 2>&1 && ! systemctl is-active --quiet outpost
   SERVICE=multicraft
 fi
 if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet "$SERVICE" 2>/dev/null; then
-  info "Stopping ${SERVICE}.serviceâ€¦"
+  info "Stopping ${SERVICE}.service…"
   sudo systemctl stop "$SERVICE"
   SYSTEMD_ACTIVE=1
   ok "Service stopped."
@@ -186,9 +196,9 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Step 3 â€” back up data
+# Step 3 — back up data
 # ---------------------------------------------------------------------------
-heading "Step 3/6 â€” Backing up your data"
+heading "Step 3/6 — Backing up your data"
 
 mkdir -p "$BACKUP_ROOT"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
@@ -212,7 +222,8 @@ if [[ -d "$DATA_DIR" && "$BACKUP_MODE" == "none" ]]; then
   DATA_BACKUP=""
 elif [[ -d "$DATA_DIR" ]]; then
   # Scanner scratch files are ephemeral; retain quarantine .bin files and metadata.
-  EXCLUDES=("--exclude=$(basename "$DATA_DIR")/antivirus/clamav-*.tmp"
+  EXCLUDES=("--exclude=$(basename "$DATA_DIR")/instance-supervisors"
+    "--exclude=$(basename "$DATA_DIR")/antivirus/clamav-*.tmp"
     "--exclude=$(basename "$DATA_DIR")/antivirus/incoming-*")
   if [[ "$BACKUP_MODE" == "settings" ]]; then
     DATA_BACKUP="$BACKUP_ROOT/data-settings-$TIMESTAMP.tar.gz"
@@ -221,10 +232,17 @@ elif [[ -d "$DATA_DIR" ]]; then
   else
     info "Archiving $DATA_DIR -> $DATA_BACKUP"
   fi
-  tar -czf "$DATA_BACKUP" ${EXCLUDES[@]+"${EXCLUDES[@]}"} -C "$(dirname "$DATA_DIR")" "$(basename "$DATA_DIR")"
+  # Supervised games may change files while full backups are being read.
+  TAR_STATUS=0
+  tar -czf "$DATA_BACKUP" ${EXCLUDES[@]+"${EXCLUDES[@]}"} -C "$(dirname "$DATA_DIR")" "$(basename "$DATA_DIR")" || TAR_STATUS=$?
+  if [[ "$TAR_STATUS" == "1" && "$BACKUP_MODE" == "full" ]]; then
+    warn "Live instance files changed during backup. This is a best-effort copy, not a consistent world snapshot; use instance snapshots for recovery."
+  elif [[ "$TAR_STATUS" != "0" ]]; then
+    die "Data backup failed (tar exit $TAR_STATUS). Code has not been updated; the panel service remains stopped."
+  fi
   ok "Data backed up ($(du -h "$DATA_BACKUP" | cut -f1))"
 else
-  warn "No data directory found at $DATA_DIR yet (fresh install?) â€” nothing to back up."
+  warn "No data directory found at $DATA_DIR yet (fresh install?) — nothing to back up."
   DATA_BACKUP=""
 fi
 
@@ -237,14 +255,14 @@ fs.writeFileSync(process.env.MC_STATE_FILE, JSON.stringify({
   updatedAt: new Date().toISOString(),
 }, null, 2));
 '
-ok "Recorded rollback point ($STATE_FILE) â€” this update never runs without one on record."
+ok "Recorded rollback point ($STATE_FILE) — this update never runs without one on record."
 
 # ---------------------------------------------------------------------------
-# Step 4 â€” pull
+# Step 4 — pull
 # ---------------------------------------------------------------------------
-heading "Step 4/6 â€” Pulling the latest commits"
+heading "Step 4/6 — Pulling the latest commits"
 
-info "Fetching from ${REMOTE}â€¦"
+info "Fetching from ${REMOTE}…"
 git fetch "$REMOTE"
 
 if git pull --ff-only "$REMOTE" "$BRANCH"; then
@@ -258,41 +276,55 @@ if git pull --ff-only "$REMOTE" "$BRANCH"; then
     git log --oneline "$PREV_SHA..$NEW_SHA" | sed 's/^/  /'
   fi
 else
-  err "Fast-forward pull failed â€” your branch and $REMOTE/$BRANCH have diverged."
+  err "Fast-forward pull failed — your branch and $REMOTE/$BRANCH have diverged."
   err "This usually means local commits exist that were never pushed. Resolve manually:"
   err "  git log $REMOTE/$BRANCH..HEAD   # see what's only local"
   err "  git rebase $REMOTE/$BRANCH      # or merge, once you've decided how"
-  [[ "$STASHED" == "1" ]] && warn "Your stashed changes are still saved â€” recover with 'git stash pop'."
+  [[ "$STASHED" == "1" ]] && warn "Your stashed changes are still saved — recover with 'git stash pop'."
   die "Not proceeding with a partially-updated tree."
 fi
 
 if [[ "$STASHED" == "1" ]]; then
-  info "Restoring your stashed local changesâ€¦"
+  info "Restoring your stashed local changes…"
   if git stash pop; then
     ok "Local changes restored."
   else
-    err "Restoring the stash hit a conflict. It's still saved â€” resolve manually with 'git stash list' / 'git stash pop'."
+    err "Restoring the stash hit a conflict. It's still saved — resolve manually with 'git stash list' / 'git stash pop'."
   fi
 fi
 
 # ---------------------------------------------------------------------------
-# Step 5 â€” rebuild
+# Step 5 — rebuild
 # ---------------------------------------------------------------------------
-heading "Step 5/6 â€” Rebuilding"
+heading "Step 5/6 — Rebuilding"
 
 npm run setup
 npm run build
-[[ -f "$PROJECT_DIR/server/dist/index.js" ]] || die "Build finished but server/dist/index.js is missing â€” check the output above."
-[[ -f "$PROJECT_DIR/web/dist/index.html" ]] || die "Build finished but web/dist/index.html is missing â€” check the output above."
+[[ -f "$PROJECT_DIR/server/dist/index.js" ]] || die "Build finished but server/dist/index.js is missing — check the output above."
+[[ -f "$PROJECT_DIR/web/dist/index.html" ]] || die "Build finished but web/dist/index.html is missing — check the output above."
 ok "Build complete."
 
+# Signal Node directly; leave detached game supervisors alive during service restarts.
+if [[ "$SYSTEMD_ACTIVE" == "1" ]]; then
+  info "Configuring persistent instance supervision for ${SERVICE}.service"
+  sudo mkdir -p "/etc/systemd/system/${SERVICE}.service.d"
+  sudo tee "/etc/systemd/system/${SERVICE}.service.d/outpost-supervisors.conf" >/dev/null <<EOF
+[Service]
+ExecStart=
+ExecStart="$(command -v node)" "$PROJECT_DIR/server/dist/index.js"
+KillMode=process
+EOF
+  sudo systemctl daemon-reload
+fi
+
 # ---------------------------------------------------------------------------
-# Step 6 â€” test, then restart or roll back
+# Step 6 — test, then restart or roll back
 # ---------------------------------------------------------------------------
-heading "Step 6/6 â€” Test before going live?"
+heading "Step 6/6 — Test before going live?"
 
 rollback() {
-  err "Rolling back to ${PREV_LABEL}â€¦"
+  err "Rolling back to ${PREV_LABEL}…"
+  check_supervisor_rollback "$PREV_SHA"
   git reset --hard "$PREV_SHA"
   npm run setup
   npm run build
@@ -323,7 +355,7 @@ if confirm "Start the updated build once to verify it actually comes up before r
           confirm "Roll back to $PREV_LABEL?" y && rollback
         fi
       else
-        ok "Not restarting automatically â€” run 'sudo systemctl start "$SERVICE"' when ready."
+        ok "Not restarting automatically — run 'sudo systemctl start "$SERVICE"' when ready."
       fi
     else
       ok "Verified working. Start it however you normally do (npm start / pm2 restart outpost / etc)."
@@ -340,7 +372,7 @@ if confirm "Start the updated build once to verify it actually comes up before r
       [[ "$SYSTEMD_ACTIVE" == "1" ]] && { sudo systemctl start "$SERVICE"; ok "${SERVICE}.service restarted on the rolled-back version."; }
     else
       warn "Update left in place but UNVERIFIED. Roll back any time with: ./update.sh --rollback"
-      [[ "$SYSTEMD_ACTIVE" == "1" ]] && warn "${SERVICE}.service is still stopped â€” start it manually once you've sorted this out."
+      [[ "$SYSTEMD_ACTIVE" == "1" ]] && warn "${SERVICE}.service is still stopped — start it manually once you've sorted this out."
     fi
   fi
 else

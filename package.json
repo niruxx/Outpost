@@ -12,6 +12,7 @@
     "build": "npm run build --workspace=server && npm run build --workspace=web",
     "start": "npm run start --workspace=server",
     "setup": "npm install",
+    "test:instances": "npm run build --workspace=server && node server/test/persistent-instances.mjs",
     "test:release": "npm run build && node server/test/release-checks.mjs",
     "test:release:checks": "node server/test/release-checks.mjs",
     "test:fleet": "npm run build && node server/test/fleet-extensibility.mjs",
