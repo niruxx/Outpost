@@ -184,8 +184,27 @@ SERVICE=outpost
 if command -v systemctl >/dev/null 2>&1 && ! systemctl is-active --quiet outpost 2>/dev/null && systemctl is-active --quiet multicraft 2>/dev/null; then
   SERVICE=multicraft
 fi
+if command -v systemctl >/dev/null 2>&1 && [[ "$(systemctl show "$SERVICE" --property=ActiveState --value 2>/dev/null)" == "deactivating" ]]; then
+  die "${SERVICE}.service already has a stop in progress. Inspect systemctl status before retrying; no further signals were sent."
+fi
 if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet "$SERVICE" 2>/dev/null; then
   info "Stopping ${SERVICE}.service…"
+  # Apply lifecycle protection BEFORE the first stop, including on existing installs.
+  sudo mkdir -p "/etc/systemd/system/${SERVICE}.service.d"
+  sudo tee "/etc/systemd/system/${SERVICE}.service.d/outpost-supervisors.conf" >/dev/null <<EOF
+[Service]
+ExecStart=
+ExecStart="$(command -v node)" "$PROJECT_DIR/server/dist/index.js"
+ExecStop=
+KillMode=process
+TimeoutStopSec=15s
+EOF
+  sudo systemctl daemon-reload
+  [[ "$(systemctl show "$SERVICE" --property=KillMode --value)" == "process" ]] || die "Service stop protection did not apply; leaving the panel and instances untouched."
+  SERVICE_CGROUP="$(systemctl show "$SERVICE" --property=ControlGroup --value)"
+  # Starting the stop job suppresses automatic restarts before signalling old npm children.
+  sudo systemctl stop --no-block "$SERVICE"
+  sudo "$(command -v node)" "$PROJECT_DIR/scripts/stop-panel-for-update.mjs" "$PROJECT_DIR" "$SERVICE_CGROUP"
   sudo systemctl stop "$SERVICE"
   SYSTEMD_ACTIVE=1
   ok "Service stopped."
@@ -303,19 +322,6 @@ npm run build
 [[ -f "$PROJECT_DIR/server/dist/index.js" ]] || die "Build finished but server/dist/index.js is missing — check the output above."
 [[ -f "$PROJECT_DIR/web/dist/index.html" ]] || die "Build finished but web/dist/index.html is missing — check the output above."
 ok "Build complete."
-
-# Signal Node directly; leave detached game supervisors alive during service restarts.
-if [[ "$SYSTEMD_ACTIVE" == "1" ]]; then
-  info "Configuring persistent instance supervision for ${SERVICE}.service"
-  sudo mkdir -p "/etc/systemd/system/${SERVICE}.service.d"
-  sudo tee "/etc/systemd/system/${SERVICE}.service.d/outpost-supervisors.conf" >/dev/null <<EOF
-[Service]
-ExecStart=
-ExecStart="$(command -v node)" "$PROJECT_DIR/server/dist/index.js"
-KillMode=process
-EOF
-  sudo systemctl daemon-reload
-fi
 
 # ---------------------------------------------------------------------------
 # Step 6 — test, then restart or roll back

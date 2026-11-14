@@ -27,3 +27,5 @@ Rollback to a panel version without supervisor support is refused while supervis
 ## Verification
 
 Run `npm run test:instances`. The test launches a disposable game and restarts separate panel processes, checking graceful panel shutdown, forced panel termination, unchanged game PID and uptime, console reconnection, offline output, rejected unauthenticated connections, duplicate prevention, explicit game stop/restart, offline game exits and graceful-stop timeout enforcement. Existing game-customization and reliability-workflow tests cover startup commands and maintenance restart ordering. Native Linux systemd deployment should also be checked with `systemctl restart outpost` while observing a test instance's PID and console.
+
+The updater applies and verifies `KillMode=process` before its first service stop. On older npm-launched units it identifies the actual Node panel by both its executable/script and service cgroup, then signals only that panel after submitting the systemd stop job. This avoids waiting on supervisors or sending group-wide termination signals during migration. A stop already in progress is reported instead of submitting more signals.

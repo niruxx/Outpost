@@ -49,6 +49,10 @@ preflight "$TEMP/worktree" 'No git remote configured' 1
 stop_line="$(awk '/sudo systemctl stop/ { print NR; exit }' "$ROOT/dist/linux/update.sh")"
 backup_line="$(awk '/tar -czf/ { print NR; exit }' "$ROOT/dist/linux/update.sh")"
 [[ "$stop_line" -lt "$backup_line" ]]
+protection_line="$(awk '/KillMode=process/ { print NR; exit }' "$ROOT/dist/linux/update.sh")"
+reload_line="$(awk '/sudo systemctl daemon-reload/ { print NR; exit }' "$ROOT/dist/linux/update.sh")"
+[[ "$protection_line" -lt "$reload_line" && "$reload_line" -lt "$stop_line" ]]
+node "$ROOT/scripts/test-stop-panel-for-update.mjs"
 mkdir -p "$TEMP/data/antivirus/incoming-fixture"
 printf 'settings' > "$TEMP/data/outpost.db"
 printf 'quarantine' > "$TEMP/data/antivirus/retained.bin"

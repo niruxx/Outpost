@@ -555,6 +555,7 @@ WorkingDirectory=$PROJECT_DIR
 ExecStart="$NODE_PATH" "$PROJECT_DIR/server/dist/index.js"
 # Instance supervisors own game processes; stop only the panel during updates.
 KillMode=process
+TimeoutStopSec=15s
 Restart=on-failure
 User=$RUN_USER
 Group=$RUN_GROUP
