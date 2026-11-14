@@ -134,6 +134,12 @@ export function deleteQuarantine(id: string) {
   prep('DELETE FROM antivirus_quarantine WHERE id=?').run(id);
 }
 export const scanRows = (serverId?: string) => (serverId ? prep('SELECT * FROM antivirus_scans WHERE server_id=? ORDER BY started_at DESC LIMIT 100').all(serverId) : prep('SELECT * FROM antivirus_scans ORDER BY started_at DESC LIMIT 200').all()).map(r => ({ ...r, report: JSON.parse(r.report as string) }));
+/** Keep the triggering report available even after it falls outside scan history limits. */
+export function securityHoldRows(serverId?: string) {
+  const query = 'SELECT h.server_id, h.scan_id, h.at, s.report FROM antivirus_holds h LEFT JOIN antivirus_scans s ON s.id=h.scan_id';
+  const rows = serverId ? prep(query + ' WHERE h.server_id=?').all(serverId) : prep(query + ' ORDER BY h.at DESC').all();
+  return rows.map(row => ({ ...row, report: row.report ? JSON.parse(row.report as string) : null }));
+}
 export const securityHold = (serverId: string) => !!prep('SELECT 1 FROM antivirus_holds WHERE server_id=?').get(serverId);
 export function assertNoSecurityHold(serverId: string) { if (securityHold(serverId)) throw new HttpError(423, 'Antivirus security hold: resolve findings and complete a clean instance scan before starting'); }
 const active = new Map<string, AbortController>();

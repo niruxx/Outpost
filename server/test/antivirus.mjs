@@ -130,6 +130,11 @@ try {
   const scan = av.startInstanceScan('av-instance'); assert.throws(() => av.startInstanceScan('av-instance'), { status: 409 });
   await waitFor(() => av.scanRows('av-instance').find(s => s.id === scan.id)?.status === 'detected', 'scan detection');
   assert.equal(av.securityHold('av-instance'), true); assert.throws(() => av.assertNoSecurityHold('av-instance'), { status: 423 });
+  const hostHolds = (await (await request('/antivirus')).json()).holds;
+  const instanceHolds = (await (await request('/servers/av-instance/antivirus', 'GET', null, viewer)).json()).holds;
+  assert.equal(hostHolds[0].scan_id, scan.id);
+  assert.deepEqual(instanceHolds, hostHolds, 'assigned viewers can inspect the triggering hold report');
+  assert.ok(instanceHolds[0].report.findings.some(f => f.includes('finding.txt')));
   fs.unlinkSync(path.join(instanceDir('av-instance'), 'finding.txt'));
   await waitFor(() => { try { av.startInstanceScan('av-instance'); return true; } catch { return false; } }, 'clean scan enqueue');
   await waitFor(() => !av.securityHold('av-instance'), 'clean scan clears hold');
