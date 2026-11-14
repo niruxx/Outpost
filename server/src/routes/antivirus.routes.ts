@@ -28,13 +28,12 @@ antivirusRouter.get('/', (_req, res) => res.json({ disabled: antivirusDisabled()
 antivirusRouter.put('/exclusion/:serverId', (req, res, next) => { try { setInstanceExcluded(req.params.serverId, req.body?.excluded); logAudit(req.auth!.sub, req.auth!.username, 'security.antivirus.exclusion', req.params.serverId, JSON.stringify({ excluded: req.body.excluded })); res.json({ ok: true }); } catch (err) { next(err); } });
 antivirusRouter.post('/enable', asyncHandler(async (req, res) => { const config = await saveAntivirusConfig({ ...antivirusConfig(), enabled: true }); logAudit(req.auth!.sub, req.auth!.username, 'security.antivirus.enable'); res.json({ config }); }));
 antivirusRouter.post('/disable', (req, res) => { disableAntivirus(); logAudit(req.auth!.sub, req.auth!.username, 'security.antivirus.disable'); res.json({ ok: true }); });
-antivirusRouter.post('/allow/:serverId', (req, res, next) => { try { const item = allowFinding(req.params.serverId, req.body?.scanId, req.body?.index); logAudit(req.auth!.sub, req.auth!.username, 'security.antivirus.allow', req.params.serverId, item.path); const hold = securityHoldRows(req.params.serverId)[0];
+antivirusRouter.post('/allow/:serverId', (req, res, next) => { try { const item = allowFinding(req.params.serverId, req.body?.scanId, req.body?.index, req.body?.temporary ?? false); logAudit(req.auth!.sub, req.auth!.username, req.body?.temporary ? 'security.antivirus.skip-temporary' : 'security.antivirus.allow', req.params.serverId, item.path); const hold = securityHoldRows(req.params.serverId)[0];
   const needsScan = securityHold(req.params.serverId);
   let scanQueued = false;
   if (needsScan && hold?.report?.findings?.length) {
     // Retry an incomplete scan after all recorded findings have been reviewed.
-    const approved = allowedItems(req.params.serverId);
-    if (hold.report.findings.every((finding: string) => approved.some(row => row.path === finding.slice(0, finding.indexOf(': '))))) {
+    if (hold.unresolvedIndexes.length === 0) {
       try { startInstanceScan(req.params.serverId); scanQueued = true; } catch { /* Approval remains saved; the UI offers a manual scan retry. */ }
     }
   }

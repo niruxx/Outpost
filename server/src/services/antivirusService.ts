@@ -160,20 +160,32 @@ export const scanRows = (serverId?: string) => (serverId ? prep('SELECT * FROM a
 export function securityHoldRows(serverId?: string) {
   const query = 'SELECT h.server_id, h.scan_id, h.at, s.report FROM antivirus_holds h LEFT JOIN antivirus_scans s ON s.id=h.scan_id';
   const rows = serverId ? prep(query + ' WHERE h.server_id=?').all(serverId) : prep(query + ' ORDER BY h.at DESC').all();
-  return rows.map(row => ({ ...row, report: row.report ? JSON.parse(row.report as string) : null }));
+  return rows.map(row => {
+    const report = row.report ? JSON.parse(row.report as string) : null;
+    const findings: string[] = report?.findings ?? [];
+    const unresolvedIndexes = findings.flatMap((finding, index) => allowedFile(row.server_id as string, findingPath(finding)) ? [] : [index]);
+    const incomplete = !report?.incompleteResolved && !!report?.note?.includes('incomplete scan');
+    return { ...row, server_id: row.server_id as string, scan_id: row.scan_id as string, report, unresolvedIndexes, incomplete, blocking: incomplete || !findings.length || unresolvedIndexes.length > 0 };
+  });
 }
+// Session-only approvals disappear when the Outpost process restarts.
+const temporaryAllowed = new Map<string, { server_id: string; path: string; sha256: string; at: number; temporary: boolean }>();
 function fileHash(file: string) {
   const hash = crypto.createHash('sha256'), buffer = Buffer.alloc(1048576), fd = fs.openSync(file, 'r');
   try { let count: number; while ((count = fs.readSync(fd, buffer, 0, buffer.length, null))) hash.update(buffer.subarray(0, count)); return hash.digest('hex'); } finally { fs.closeSync(fd); }
 }
 function findingPath(finding: string) { return finding.slice(0, finding.indexOf(': ')); }
 function allowedFile(serverId: string, relative: string) {
-  const row = prep('SELECT sha256 FROM antivirus_allowed WHERE server_id=? AND path=?').get(serverId, relative);
+  const row = [...allowedItems(serverId)].reverse().find(item => item.path === relative);
   if (!row) return false;
   try { const file = regularPath(instanceDir(serverId), relative); return fs.statSync(file).isFile() && fileHash(file) === row.sha256; } catch { return false; }
 }
-export const allowedItems = (serverId?: string) => serverId ? prep('SELECT * FROM antivirus_allowed WHERE server_id=?').all(serverId) : prep('SELECT * FROM antivirus_allowed').all();
-export function allowFinding(serverId: string, scanId: unknown, index: unknown) {
+export const allowedItems = (serverId?: string): { server_id: string; path: string; sha256: string; at: number; temporary: boolean }[] => [
+  ...(serverId ? prep('SELECT * FROM antivirus_allowed WHERE server_id=?').all(serverId) : prep('SELECT * FROM antivirus_allowed').all()).map(row => ({ server_id: row.server_id as string, path: row.path as string, sha256: row.sha256 as string, at: row.at as number, temporary: false })),
+  ...[...temporaryAllowed.values()].filter(row => !serverId || row.server_id === serverId),
+];
+export function allowFinding(serverId: string, scanId: unknown, index: unknown, temporary: unknown = false) {
+  if (typeof temporary !== 'boolean') throw new HttpError(400, 'Temporary must be boolean');
   if (typeof scanId !== 'string' || !Number.isInteger(index) || (index as number) < 0) throw new HttpError(400, 'Select a detected file');
   const scan = prep('SELECT report FROM antivirus_scans WHERE id=? AND server_id=?').get(scanId, serverId);
   const finding = scan && JSON.parse(scan.report as string).findings?.[index as number];
@@ -181,11 +193,17 @@ export function allowFinding(serverId: string, scanId: unknown, index: unknown) 
   const relative = findingPath(finding);
   const file = regularPath(instanceDir(serverId), relative);
   if (!relative || path.isAbsolute(relative) || !fs.statSync(file).isFile()) throw new HttpError(400, 'Only an existing instance file can be allowed');
+  if (temporary) {
+    temporaryAllowed.set(`${serverId}/${relative}`, { server_id: serverId, path: relative, sha256: fileHash(file), at: Date.now(), temporary: true });
+    return { path: relative, temporary: true };
+  }
+  temporaryAllowed.delete(`${serverId}/${relative}`);
   prep('INSERT INTO antivirus_allowed(server_id,path,sha256,at) VALUES (?,?,?,?) ON CONFLICT(server_id,path) DO UPDATE SET sha256=excluded.sha256,at=excluded.at').run(serverId, relative, fileHash(file), Date.now());
   return { path: relative };
 }
 export function revokeAllowed(serverId: string, relative: unknown) {
   if (typeof relative !== 'string') throw new HttpError(400, 'Choose an allowed file');
+  temporaryAllowed.delete(`${serverId}/${relative}`);
   prep('DELETE FROM antivirus_allowed WHERE server_id=? AND path=?').run(serverId, relative);
 }
 export const antivirusDisabled = () => getSetting('antivirus.disabled') === 'true';
@@ -197,9 +215,7 @@ export function disableAntivirus() {
 }
 export const securityHold = (serverId: string) => {
   const hold = securityHoldRows(serverId)[0]; if (!hold) return false;
-  if (hold.report?.note?.includes('incomplete scan')) return true;
-  const findings = hold.report?.findings as string[] | undefined;
-  return !findings?.length || findings.some(f => !allowedFile(serverId, findingPath(f)));
+  return hold.blocking;
 };
 export function assertNoSecurityHold(serverId: string) { if (!antivirusDisabled() && !instanceExcluded(serverId) && securityHold(serverId)) throw new HttpError(423, 'Antivirus security hold: review findings or complete a clean instance scan before starting'); }
 const active = new Map<string, AbortController>();
@@ -225,7 +241,14 @@ export function startInstanceScan(serverId: string, source = 'manual') {
       recordEvent('security.scan.detected', { id: serverId, name: server.name }, `Malware or unscannable-content alert: ${report.findings.slice(0, 5).join('; ').slice(0, 1000)}. New starts blocked until a clean scan.`);
       if (antivirusConfig().stopOnDetection) { try { const { isRunning, stopServer } = await import('./processManager.js'); if (isRunning(serverId)) stopServer(serverId); } catch (err) { recordEvent('security.scan.failed', { id: serverId, name: server.name }, `Findings remain on security hold; stop request failed: ${err instanceof Error ? err.message : 'unknown error'}`); } }
       finishJob(job, new Error('Antivirus findings require review'));
-    } else { prep('DELETE FROM antivirus_holds WHERE server_id=?').run(serverId); finishJob(job); }
+    } else {
+      // A clean follow-up that skipped temporary approvals must not make them permanent.
+      const previousHold = securityHoldRows(serverId)[0];
+      if (previousHold && allowedItems(serverId).some(item => item.temporary)) {
+        prep('UPDATE antivirus_scans SET report=? WHERE id=?').run(JSON.stringify({ ...previousHold.report, incompleteResolved: true }), previousHold.scan_id);
+      } else prep('DELETE FROM antivirus_holds WHERE server_id=?').run(serverId);
+      finishJob(job);
+    }
   }).catch(err => {
     prep('UPDATE antivirus_scans SET status=?,report=?,finished_at=? WHERE id=?').run(controller.signal.aborted ? 'cancelled' : 'error', JSON.stringify({ error: err instanceof Error ? err.message : 'Scan failed' }), Date.now(), id);
     finishJob(job, err); recordEvent('security.scan.failed', { id: serverId, name: server.name }, err instanceof Error ? err.message : 'Scan failed');
