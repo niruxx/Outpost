@@ -60,6 +60,8 @@ The server must be running for API actions. Live API changes also require consol
 
 ## Verification and compatibility
 
+The [published game capability matrix](game-capability-matrix.md) records executed checks by game, fixture version/loader and host OS. Open **Compatibility** or an instance’s **Capabilities** tab for host restrictions, unverified versions, permission/state blockers and setup prerequisites. Unsupported game tabs show an explanation before loading their controls. A fixture or browser pass is not a live game-build certification.
+
 Run `npm run build` and `node server/test/game-controls.mjs`. The suite checks coverage against every built-in preset, native round trips, preserved fields, launch adapters, map uploads/removal protections, permissions, and recorded Satisfactory API responses. `OUTPOST_TEST_BROWSER_UI=1` adds browser coverage for all 22 new profiles; `OUTPOST_TEST_BROWSER` selects a Chromium-compatible executable.
 
 These checks use disposable fixtures rather than full game installations. A live compatibility pass is still needed for each installed game/version, particularly Workshop/DLC content and game-specific slot limits. Custom servers without a built-in game preset continue to use their launch and file controls.

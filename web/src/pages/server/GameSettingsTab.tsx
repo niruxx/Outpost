@@ -72,6 +72,8 @@ export function GameSettingsTab() {
     <div className="space-y-5">
       <ErrorText>{error}</ErrorText>
       <UploadTracker progress={progress} />
+      {!canEdit && <Notice tone="info">Game settings are read-only for this account. Saving changes requires settings permission.</Notice>}
+      {map?.upload && !can('files.write') && <Notice tone="info">Uploading or removing maps/worlds also requires files.write permission. Open Capabilities for all action requirements.</Notice>}
       {!stopped && <Notice tone="info">Stop the server to change startup settings, edit native configuration or upload maps/worlds. Live map changes remain available where supported.</Notice>}
       {server?.launch_config && <Notice tone="warning">Custom launch settings may override this page. Check Configuration → Launch if the server does not use the selected settings.</Notice>}
       <Card className="p-5">

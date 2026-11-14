@@ -1,0 +1,430 @@
+{
+  "schemaVersion": 1,
+  "publishedAt": "2026-11-14T15:11:25.650Z",
+  "runs": [
+    {
+      "id": "a83cec32-049a-417a-8a7b-35997082dd27:game-capabilities",
+      "at": "2026-11-14T15:11:25.650Z",
+      "hostOS": "win32",
+      "arch": "x64",
+      "node": "v24.19.0",
+      "sourceDigest": "8e7ed71cd0b569bab99eebd760e4456623ffdf7ba3f972c343e4bacfc27e3484",
+      "kind": "contract",
+      "suite": "server/test/game-capabilities.mjs",
+      "gameIds": [
+        "minecraft-java",
+        "minecraft-proxy",
+        "minecraft-bedrock",
+        "palworld",
+        "project_zomboid",
+        "valheim",
+        "terraria",
+        "cs2",
+        "csgo",
+        "css",
+        "cs16",
+        "cscz",
+        "tf2",
+        "quake3",
+        "quakelive",
+        "gmod",
+        "l4d2",
+        "hl2dm",
+        "dods",
+        "hldm",
+        "tfc",
+        "rust",
+        "ark",
+        "7dtd",
+        "satisfactory",
+        "unturned",
+        "arma3",
+        "bo3"
+      ],
+      "versions": {},
+      "scope": "Capability metadata, simulated OS restrictions, permission/state blockers, exact-version evidence isolation and API authorization. No game installation or boot.",
+      "status": "passed"
+    },
+    {
+      "id": "a83cec32-049a-417a-8a7b-35997082dd27:game-capabilities:browser",
+      "at": "2026-11-14T15:11:25.650Z",
+      "hostOS": "win32",
+      "arch": "x64",
+      "node": "v24.19.0",
+      "sourceDigest": "8e7ed71cd0b569bab99eebd760e4456623ffdf7ba3f972c343e4bacfc27e3484",
+      "kind": "browser",
+      "suite": "server/test/game-capabilities.mjs",
+      "gameIds": [
+        "minecraft-java",
+        "minecraft-proxy",
+        "css",
+        "quakelive"
+      ],
+      "versions": {},
+      "scope": "Chromium matrix filters, unavailable-tab guards, supported controls and mobile overflow checks. No game boot.",
+      "status": "passed"
+    },
+    {
+      "id": "a83cec32-049a-417a-8a7b-35997082dd27:game-controls",
+      "at": "2026-11-14T15:11:25.650Z",
+      "hostOS": "win32",
+      "arch": "x64",
+      "node": "v24.19.0",
+      "sourceDigest": "8e7ed71cd0b569bab99eebd760e4456623ffdf7ba3f972c343e4bacfc27e3484",
+      "kind": "fixture",
+      "suite": "server/test/game-controls.mjs",
+      "gameIds": [
+        "csgo",
+        "css",
+        "cs16",
+        "cscz",
+        "l4d2",
+        "hl2dm",
+        "dods",
+        "hldm",
+        "tfc",
+        "quake3",
+        "quakelive",
+        "palworld",
+        "project_zomboid",
+        "valheim",
+        "terraria",
+        "rust",
+        "ark",
+        "7dtd",
+        "unturned",
+        "arma3",
+        "bo3",
+        "satisfactory"
+      ],
+      "versions": {
+        "csgo": [
+          "vanilla@latest (synthetic channel label; no Steam build ID)"
+        ],
+        "css": [
+          "vanilla@latest (synthetic channel label; no Steam build ID)"
+        ],
+        "cs16": [
+          "vanilla@latest (synthetic channel label; no Steam build ID)"
+        ],
+        "cscz": [
+          "vanilla@latest (synthetic channel label; no Steam build ID)"
+        ],
+        "l4d2": [
+          "vanilla@latest (synthetic channel label; no Steam build ID)"
+        ],
+        "hl2dm": [
+          "vanilla@latest (synthetic channel label; no Steam build ID)"
+        ],
+        "dods": [
+          "vanilla@latest (synthetic channel label; no Steam build ID)"
+        ],
+        "hldm": [
+          "vanilla@latest (synthetic channel label; no Steam build ID)"
+        ],
+        "tfc": [
+          "vanilla@latest (synthetic channel label; no Steam build ID)"
+        ],
+        "quake3": [
+          "vanilla@latest (synthetic channel label; no Steam build ID)"
+        ],
+        "quakelive": [
+          "vanilla@latest (synthetic channel label; no Steam build ID)"
+        ],
+        "palworld": [
+          "vanilla@latest (synthetic channel label; no Steam build ID)"
+        ],
+        "project_zomboid": [
+          "vanilla@latest (synthetic channel label; no Steam build ID)"
+        ],
+        "valheim": [
+          "vanilla@latest (synthetic channel label; no Steam build ID)"
+        ],
+        "terraria": [
+          "vanilla@latest (synthetic channel label; no Steam build ID)"
+        ],
+        "rust": [
+          "vanilla@latest (synthetic channel label; no Steam build ID)"
+        ],
+        "ark": [
+          "vanilla@latest (synthetic channel label; no Steam build ID)"
+        ],
+        "7dtd": [
+          "vanilla@latest (synthetic channel label; no Steam build ID)"
+        ],
+        "unturned": [
+          "vanilla@latest (synthetic channel label; no Steam build ID)"
+        ],
+        "arma3": [
+          "vanilla@latest (synthetic channel label; no Steam build ID)"
+        ],
+        "bo3": [
+          "vanilla@latest (synthetic channel label; no Steam build ID)"
+        ],
+        "satisfactory": [
+          "vanilla@latest (synthetic channel label; no Steam build ID)"
+        ]
+      },
+      "scope": "Native configuration round trips and launch arguments for every listed profile; representative map/world import and Satisfactory API fixtures. No live server or installed Steam build.",
+      "status": "passed"
+    },
+    {
+      "id": "a83cec32-049a-417a-8a7b-35997082dd27:game-controls:browser",
+      "at": "2026-11-14T15:11:25.650Z",
+      "hostOS": "win32",
+      "arch": "x64",
+      "node": "v24.19.0",
+      "sourceDigest": "8e7ed71cd0b569bab99eebd760e4456623ffdf7ba3f972c343e4bacfc27e3484",
+      "kind": "browser",
+      "suite": "server/test/game-controls.mjs",
+      "gameIds": [
+        "csgo",
+        "css",
+        "cs16",
+        "cscz",
+        "l4d2",
+        "hl2dm",
+        "dods",
+        "hldm",
+        "tfc",
+        "quake3",
+        "quakelive",
+        "palworld",
+        "project_zomboid",
+        "valheim",
+        "terraria",
+        "rust",
+        "ark",
+        "7dtd",
+        "unturned",
+        "arma3",
+        "bo3",
+        "satisfactory"
+      ],
+      "versions": {
+        "csgo": [
+          "vanilla@latest (synthetic channel label; no Steam build ID)"
+        ],
+        "css": [
+          "vanilla@latest (synthetic channel label; no Steam build ID)"
+        ],
+        "cs16": [
+          "vanilla@latest (synthetic channel label; no Steam build ID)"
+        ],
+        "cscz": [
+          "vanilla@latest (synthetic channel label; no Steam build ID)"
+        ],
+        "l4d2": [
+          "vanilla@latest (synthetic channel label; no Steam build ID)"
+        ],
+        "hl2dm": [
+          "vanilla@latest (synthetic channel label; no Steam build ID)"
+        ],
+        "dods": [
+          "vanilla@latest (synthetic channel label; no Steam build ID)"
+        ],
+        "hldm": [
+          "vanilla@latest (synthetic channel label; no Steam build ID)"
+        ],
+        "tfc": [
+          "vanilla@latest (synthetic channel label; no Steam build ID)"
+        ],
+        "quake3": [
+          "vanilla@latest (synthetic channel label; no Steam build ID)"
+        ],
+        "quakelive": [
+          "vanilla@latest (synthetic channel label; no Steam build ID)"
+        ],
+        "palworld": [
+          "vanilla@latest (synthetic channel label; no Steam build ID)"
+        ],
+        "project_zomboid": [
+          "vanilla@latest (synthetic channel label; no Steam build ID)"
+        ],
+        "valheim": [
+          "vanilla@latest (synthetic channel label; no Steam build ID)"
+        ],
+        "terraria": [
+          "vanilla@latest (synthetic channel label; no Steam build ID)"
+        ],
+        "rust": [
+          "vanilla@latest (synthetic channel label; no Steam build ID)"
+        ],
+        "ark": [
+          "vanilla@latest (synthetic channel label; no Steam build ID)"
+        ],
+        "7dtd": [
+          "vanilla@latest (synthetic channel label; no Steam build ID)"
+        ],
+        "unturned": [
+          "vanilla@latest (synthetic channel label; no Steam build ID)"
+        ],
+        "arma3": [
+          "vanilla@latest (synthetic channel label; no Steam build ID)"
+        ],
+        "bo3": [
+          "vanilla@latest (synthetic channel label; no Steam build ID)"
+        ],
+        "satisfactory": [
+          "vanilla@latest (synthetic channel label; no Steam build ID)"
+        ]
+      },
+      "scope": "Chromium navigation and supported game controls; unavailable host tabs are checked as blocked. No live game validation.",
+      "status": "passed"
+    },
+    {
+      "id": "a83cec32-049a-417a-8a7b-35997082dd27:game-customization",
+      "at": "2026-11-14T15:11:25.650Z",
+      "hostOS": "win32",
+      "arch": "x64",
+      "node": "v24.19.0",
+      "sourceDigest": "8e7ed71cd0b569bab99eebd760e4456623ffdf7ba3f972c343e4bacfc27e3484",
+      "kind": "fixture",
+      "suite": "server/test/game-customization.mjs",
+      "gameIds": [
+        "minecraft-java",
+        "minecraft-bedrock",
+        "minecraft-proxy",
+        "tf2"
+      ],
+      "versions": {
+        "minecraft-java": [
+          "vanilla@1.21.11"
+        ],
+        "minecraft-bedrock": [
+          "vanilla@1.21.100"
+        ],
+        "minecraft-proxy": [
+          "velocity@3.4.0"
+        ],
+        "tf2": [
+          "vanilla@latest (synthetic channel label; no Steam build ID)"
+        ]
+      },
+      "scope": "TF2 configuration/uploads and Minecraft gamerule generation, edition naming, proxy exclusions and permissions. Bedrock command dispatch uses a fake process; no game boot.",
+      "status": "passed"
+    },
+    {
+      "id": "a83cec32-049a-417a-8a7b-35997082dd27:game-customization:browser",
+      "at": "2026-11-14T15:11:25.650Z",
+      "hostOS": "win32",
+      "arch": "x64",
+      "node": "v24.19.0",
+      "sourceDigest": "8e7ed71cd0b569bab99eebd760e4456623ffdf7ba3f972c343e4bacfc27e3484",
+      "kind": "browser",
+      "suite": "server/test/game-customization.mjs",
+      "gameIds": [
+        "minecraft-java",
+        "minecraft-bedrock",
+        "tf2"
+      ],
+      "versions": {
+        "minecraft-java": [
+          "vanilla@1.21.11"
+        ],
+        "minecraft-bedrock": [
+          "vanilla@1.21.100"
+        ],
+        "minecraft-proxy": [
+          "velocity@3.4.0"
+        ],
+        "tf2": [
+          "vanilla@latest (synthetic channel label; no Steam build ID)"
+        ]
+      },
+      "scope": "Chromium navigation and supported game controls; unavailable host tabs are checked as blocked. No live game validation.",
+      "status": "passed"
+    },
+    {
+      "id": "a83cec32-049a-417a-8a7b-35997082dd27:world-health",
+      "at": "2026-11-14T15:11:25.650Z",
+      "hostOS": "win32",
+      "arch": "x64",
+      "node": "v24.19.0",
+      "sourceDigest": "8e7ed71cd0b569bab99eebd760e4456623ffdf7ba3f972c343e4bacfc27e3484",
+      "kind": "fixture",
+      "suite": "server/test/world-health.mjs",
+      "gameIds": [
+        "minecraft-java",
+        "terraria"
+      ],
+      "versions": {
+        "minecraft-java": [
+          "vanilla@1.21.1"
+        ],
+        "terraria": [
+          "synthetic WLD envelope; no Terraria build asserted"
+        ]
+      },
+      "scope": "Synthetic region/NBT and Terraria file-envelope scans, safe-repair safeguards and fixtures. Minecraft version is the fixture record label, not a certified live data-version/build.",
+      "status": "passed"
+    },
+    {
+      "id": "a83cec32-049a-417a-8a7b-35997082dd27:world-health:browser",
+      "at": "2026-11-14T15:11:25.650Z",
+      "hostOS": "win32",
+      "arch": "x64",
+      "node": "v24.19.0",
+      "sourceDigest": "8e7ed71cd0b569bab99eebd760e4456623ffdf7ba3f972c343e4bacfc27e3484",
+      "kind": "browser",
+      "suite": "server/test/world-health.mjs",
+      "gameIds": [
+        "minecraft-java"
+      ],
+      "versions": {
+        "minecraft-java": [
+          "vanilla@1.21.1"
+        ],
+        "terraria": [
+          "synthetic WLD envelope; no Terraria build asserted"
+        ]
+      },
+      "scope": "Chromium navigation and supported game controls; unavailable host tabs are checked as blocked. No live game validation.",
+      "status": "passed"
+    },
+    {
+      "id": "a83cec32-049a-417a-8a7b-35997082dd27:operations",
+      "at": "2026-11-14T15:11:25.650Z",
+      "hostOS": "win32",
+      "arch": "x64",
+      "node": "v24.19.0",
+      "sourceDigest": "8e7ed71cd0b569bab99eebd760e4456623ffdf7ba3f972c343e4bacfc27e3484",
+      "kind": "fixture",
+      "suite": "server/test/operations.mjs",
+      "gameIds": [
+        "cs2"
+      ],
+      "versions": {
+        "cs2": [
+          "steam@latest (synthetic channel label; no Steam build ID)"
+        ]
+      },
+      "scope": "CS2 match validation, players, demos and permissions through simulated RCON, with fixture downloads. No installed game build.",
+      "status": "passed"
+    },
+    {
+      "id": "a83cec32-049a-417a-8a7b-35997082dd27:game-reliability-workflows",
+      "at": "2026-11-14T15:11:25.650Z",
+      "hostOS": "win32",
+      "arch": "x64",
+      "node": "v24.19.0",
+      "sourceDigest": "8e7ed71cd0b569bab99eebd760e4456623ffdf7ba3f972c343e4bacfc27e3484",
+      "kind": "fixture",
+      "suite": "server/test/game-reliability-workflows.mjs",
+      "gameIds": [
+        "minecraft-java",
+        "tf2"
+      ],
+      "versions": {
+        "minecraft-java": [
+          "paper@1.21.1"
+        ],
+        "tf2": [
+          "synthetic workflow fixture; no TF2 build asserted"
+        ]
+      },
+      "scope": "Minecraft protocol, spark-command observations, backups, staging, moderation and TF2 tournament/FastDL workflow fixtures. No game installation or runtime certification.",
+      "status": "passed"
+    }
+  ]
+}

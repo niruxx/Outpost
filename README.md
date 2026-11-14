@@ -946,4 +946,6 @@ Optional [ClamAV malware protection](docs/antivirus.md) adds upload-time scannin
 
 [Fleet, integrations and extensibility](docs/fleet-integrations.md) covers reviewed SSH host enrollment, capacity reservations, verified fenced recovery, WHMCS billing lifecycle integration, the versioned extension SDK and signed community catalogs. These controls are under Configuration → Operations; deployment prerequisites and recovery limits are documented in the guide.
 
+[Game compatibility matrix](docs/game-capability-matrix.md) publishes recorded checks by game, fixture version/loader and host OS. The panel’s Compatibility page and per-instance Capabilities tab explain unavailable controls and setup requirements. Fixture/browser coverage is kept separate from live game-build certification.
+
 Run `npm run test:release` before release to check repeated navigation, reconnects, slow/failing networks, large upload recovery and background-job failures. See [release resilience checks](docs/release-checks.md) for browser setup, CI and diagnostic artifacts.

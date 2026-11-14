@@ -70,5 +70,5 @@ See [fleet operations, deployment prerequisites and v1 recovery limits](docs/fle
 ## Compatibility and release quality
 
 - [ ] Validate the new game settings and map/world controls against disposable live installations of every supported game, rather than relying only on fixtures and browser tests.
-- [ ] Publish a tested capability matrix by game, server version and host OS; make unavailable actions and prerequisites clear in the UI.
+- [x] Publish a tested capability matrix by game, server version and host OS; make unavailable actions and prerequisites clear in the UI. See the [recorded fixture/browser matrix](docs/game-capability-matrix.md), the Compatibility page and each instance’s Capabilities tab. Unverified versions/OS combinations and live certification are kept explicit.
 - [x] Add release checks for repeated tab navigation, reconnects, slow networks, large uploads and failed background jobs. See [release resilience checks](docs/release-checks.md).

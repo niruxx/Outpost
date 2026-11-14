@@ -142,6 +142,9 @@ try {
   await processManager.stopServer('bedrock');
   await until(() => !processManager.isRunning('bedrock'));
   if (process.env.OUTPOST_TEST_BROWSER_UI === '1') {
+    const {instanceCapabilitiesRouter}=await import('../dist/routes/gameCapabilities.routes.js');
+    app.use('/api/servers/:serverId/capabilities',instanceCapabilitiesRouter);
+    const {workspaceRouter}=await import('../dist/routes/workspace.routes.js');app.use('/api/workspace',workspaceRouter);
     const { runBrowser } = await import('./browserHarness.mjs');
     app.get('/api/auth/status', (_q, r) => r.json({ setupRequired: false }));
     app.get('/api/auth/me', (_q, r) => r.json({ user: { id: admin.id, username: admin.username, role: 'admin', theme: null } }));
@@ -153,12 +156,12 @@ try {
       await navigate('/instances/tf/tf2'); await text('Maps & rotation'); await text('Mods & SourceMod plugins');
       assert.equal(await evaluate("[...document.querySelectorAll('a')].some(a => a.textContent.trim() === 'TF2')"), true);
       await evaluate("[...document.querySelectorAll('button')].find(b => b.textContent.startsWith('Competitive')).click()");
-      await click('Save settings'); await text('Saved — applies on next start');
+      await click('Save settings'); await text('Review configuration changes'); await click('Apply reviewed changes'); await text('Saved — applies on next start');
       assert.equal(tf2.tf2SettingsOf(getServer('tf')).maxPlayers, 12);
       assert.equal(tf2.tf2SettingsOf(getServer('tf')).cvars.tf_weapon_criticals, '0');
       await navigate('/instances/java/gamerules'); await text('Gamerule presets');
       await evaluate("[...document.querySelectorAll('button')].find(b => b.textContent.startsWith('Building')).click()");
-      await click('Save gamerules'); await text('gamerule keep_inventory true');
+      await click('Save gamerules'); await text('Review configuration changes'); await click('Apply reviewed changes'); await text('gamerule keep_inventory true');
       assert.equal(rules.gamerulesOf(getServer('java')).autoApply, true);
       assert.equal(rules.gamerulesOf(getServer('java')).rules.doMobSpawning, false);
       await navigate('/instances/bedrock/gamerules'); await text('gamerule keepinventory true');

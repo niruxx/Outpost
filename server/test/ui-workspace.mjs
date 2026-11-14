@@ -115,6 +115,8 @@ try {
   assert.equal(remoteActions, 1); assert.ok((await json(admin, '/bulk')).runs.find(r => r.id === fleetBatch.id).results.every(r => r.state === 'completed'));
   assert.equal((await fetch(origin + '/api/node-link/workspace/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ serverId: 'first', action: 'stop' }) })).status, 401);
   if (process.env.OUTPOST_TEST_BROWSER_UI === '1') {
+    const {instanceCapabilitiesRouter}=await import('../dist/routes/gameCapabilities.routes.js');
+    app.use('/api/servers/:serverId/capabilities',instanceCapabilitiesRouter);
     const { runBrowser } = await import('./browserHarness.mjs');
     app.get('/api/servers', (_q, r) => r.json({ servers: listServers(), metrics: {} }));
     app.get('/api/users', (_q, r) => r.json({ users: users.listUsers() }));

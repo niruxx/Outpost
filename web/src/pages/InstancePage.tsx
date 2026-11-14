@@ -6,6 +6,7 @@ import { Tf2Tab } from './server/Tf2Tab.js';
 import { WorldHealthTab } from './server/WorldHealthTab.js';
 import { GamerulesTab } from './server/GamerulesTab.js';
 import { GameSettingsTab } from './server/GameSettingsTab.js';
+import { CapabilitiesTab, CapabilityGate } from './server/CapabilitiesTab.js';
 import { setVisibleInterval } from '../lib/perf.js';
 import { Link, Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import { motion, LayoutGroup } from 'framer-motion';
@@ -92,6 +93,7 @@ function InstanceNav({ server, onNavigate }: { server: ServerRecord; onNavigate:
       <NavSectionLabel>Overview</NavSectionLabel>
       <NavItem to="status" icon="status" label="Status" onClick={onNavigate} />
       <NavItem to="console" icon="console" label="Console" onClick={onNavigate} />
+      <NavItem to="capabilities" icon="checklist" label="Capabilities" onClick={onNavigate} />
       <NavItem to="files" icon="folder" label="File Management" onClick={onNavigate} />
 
       {game && <NavSectionLabel>{gameLabel(kind)}</NavSectionLabel>}
@@ -444,11 +446,12 @@ function InstancePageInner() {
               <Route path="reliability" element={<ReliabilityTab />} />
               <Route path="backups" element={<BackupsTab />} />
             <Route path="tasks" element={<TasksTab />} />
-            <Route path="workshop" element={<WorkshopTab />} />
-            <Route path="cs2" element={<Cs2Tab />} />
-            <Route path="tf2" element={<Tf2Tab />} />
-            <Route path="game-settings" element={<GameSettingsTab />} />
-            {world && <Route path="gamerules" element={<GamerulesTab />} />}
+            <Route path="capabilities" element={<CapabilitiesTab />} />
+            <Route path="workshop" element={<CapabilityGate feature="workshop"><WorkshopTab /></CapabilityGate>} />
+            <Route path="cs2" element={<CapabilityGate gameId="cs2"><Cs2Tab /></CapabilityGate>} />
+            <Route path="tf2" element={<CapabilityGate gameId="tf2"><Tf2Tab /></CapabilityGate>} />
+            <Route path="game-settings" element={<CapabilityGate feature="settings"><GameSettingsTab /></CapabilityGate>} />
+            <Route path="gamerules" element={<CapabilityGate feature="gamerules"><GamerulesTab /></CapabilityGate>} />
             <Route path="wine" element={<WineTab />} />
             <Route path="configuration" element={<SettingsTab />} />
             <Route path="files" element={<FilesTab />} />
@@ -458,10 +461,10 @@ function InstancePageInner() {
             {world && <Route path="operator" element={<OperatorTab />} />}
             {world && <Route path="whitelist" element={<WhitelistTab />} />}
             {world && <Route path="maps" element={<MapsTab />} />}
-            <Route path="world-health" element={<WorldHealthTab />} />
+            <Route path="world-health" element={<CapabilityGate feature="worldHealth"><WorldHealthTab /></CapabilityGate>} />
             {world && <Route path="rewind" element={<RewindTab />} />}
             {proxy && <Route path="network" element={<ProxyTab />} />}
-            {isGmodServer(server) && <Route path="gmod" element={<GmodTab />} />}
+            <Route path="gmod" element={<CapabilityGate gameId="gmod"><GmodTab /></CapabilityGate>} />
             <Route path="update" element={<UpdateTab />} />
             <Route path="upnp" element={<UpnpTab />} />
             <Route path="activity" element={<ActivityTab />} />

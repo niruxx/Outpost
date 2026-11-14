@@ -1,5 +1,6 @@
 import {fleetAdvancedRouter,enrollmentPublicRouter,recoveryDownloadRouter,billingInboundRouter,extensionUserRouter} from './routes/fleetAdvanced.routes.js';
 import {reloadExtensionAdapters} from './services/extensionService.js';
+import {gameCapabilityCatalogRouter,instanceCapabilitiesRouter} from './routes/gameCapabilities.routes.js';
 import {expireBillingServices} from './services/billingService.js';
 import {recoverEnrollmentJobs} from './services/hostEnrollmentService.js';
 import {recoverFleetRecoveryJobs} from './services/fleetRecoveryService.js';
@@ -157,6 +158,8 @@ app.use('/api/servers/:serverId/query', browserStatsRouter);
 app.use('/api/servers/:serverId/console-logs', consoleLogsRouter);
 app.use('/api/console-logs', consoleLogSettingsRouter);
 app.use('/api/templates', templatesRouter);
+app.use('/api/game-capabilities', gameCapabilityCatalogRouter);
+app.use('/api/servers/:serverId/capabilities', instanceCapabilitiesRouter);
 app.use('/api/servers/:serverId/template', instanceTemplateRouter);
 app.use('/api/servers/:serverId/status-page', statusPageSettingsRouter);
 app.use('/api/sftp', sftpRouter);

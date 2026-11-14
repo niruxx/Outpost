@@ -140,6 +140,7 @@ export function CommandPalette() {
       [true, 'Instances', 'instances', '/', 'home dashboard servers'],
       [true, 'Dashboard', 'grid', '/dashboard', 'widgets customize health players backups'],
       [true, 'Extensions', 'plugin', '/extensions', 'plugin SDK custom pages'],
+      [true, 'Game compatibility', 'checklist', '/compatibility', 'capabilities version OS prerequisites tested matrix'],
       [true, 'Job center', 'clock', '/jobs', 'progress installs updates imports transfers failures logs'],
       [admin, 'Fleet bulk actions', 'checklist', '/configuration/operations?section=bulk', 'batch hosts retry configuration import preview'],
       [admin, 'Permissions inspector', 'shieldCheck', '/configuration/operations?section=permissions', 'user access allowed blocked why'],

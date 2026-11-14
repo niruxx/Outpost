@@ -12,6 +12,7 @@ import { createRequestId } from '../lib/requestId.js';
 import { useConfirm } from '../components/ConfirmDialog.js';
 import { FleetBulkPanel, PermissionsInspector } from './WorkspacePanels.js';
 import { AntivirusPanel } from '../components/AntivirusPanel.js';
+import { CapabilityMatrixPanel } from './CompatibilityPage.js';
 import { FleetCapacityPanel, HostEnrollmentPanel, FleetRecoveryPanel, BillingPanel, ExtensionAdminPanel, CommunityCatalogPanel } from './FleetAdvancedPanels.js';
 const message = (e: unknown) => e instanceof Error ? e.message : 'Request failed';
 interface Policy { enabled: boolean; reserveMemoryMb: number; maxInstances: number; tags: string[] }
@@ -23,6 +24,7 @@ export function OperationsPage() {
   const sections: Section[] = [
     ...(admin ? [
       { id: 'fleet', label: 'Host fleet', icon: 'node', description: 'Registered Outpost hosts and how instances are placed on them.', content: <FleetPanel /> },
+      { id: 'compatibility', label: 'Game compatibility', icon: 'checklist', description: 'Game, version and host OS capabilities with recorded test evidence.', content: <CapabilityMatrixPanel /> },
       { id: 'enrollment', label: 'Host enrollment', icon: 'node', description: 'Review and install a linked Linux host over pinned SSH.', content: <HostEnrollmentPanel /> },
       { id: 'capacity', label: 'Capacity & placement', icon: 'port', description: 'Explain placement and reserve memory, CPU, disk and port bundles.', content: <FleetCapacityPanel /> },
       { id: 'recovery', label: 'Fleet recovery', icon: 'backup', description: 'Prepare verified standbys and review a fenced host evacuation.', content: <FleetRecoveryPanel /> },

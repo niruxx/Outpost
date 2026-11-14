@@ -1,4 +1,5 @@
 import { ExtensionsPage } from './pages/ExtensionsPage.js';
+import { CompatibilityPage } from './pages/CompatibilityPage.js';
 import { GlobalActivityBar } from './components/GlobalActivityBar.js';
 import { CommandPalette } from './components/CommandPalette.js';
 import { KeyboardShortcuts } from './components/KeyboardShortcuts.js';
@@ -105,6 +106,7 @@ function AppRoutes() {
       <Route path="/servers/:serverId/*" element={<LegacyServerRedirect />} />
       <Route path="/dashboard" element={<RequireAuth><DashboardPage /></RequireAuth>} />
       <Route path="/extensions" element={<RequireAuth><ExtensionsPage /></RequireAuth>} />
+      <Route path="/compatibility" element={<RequireAuth><CompatibilityPage /></RequireAuth>} />
       <Route path="/extensions/:extensionId/:pageId" element={<RequireAuth><ExtensionsPage /></RequireAuth>} />
       <Route path="/jobs" element={<RequireAuth><JobsPage /></RequireAuth>} />
       <Route path="/operations" element={<Navigate to="/configuration/operations" replace />} />

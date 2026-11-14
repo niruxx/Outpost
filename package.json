@@ -14,7 +14,9 @@
     "setup": "npm install",
     "test:release": "npm run build && node server/test/release-checks.mjs",
     "test:release:checks": "node server/test/release-checks.mjs",
-    "test:fleet": "npm run build && node server/test/fleet-extensibility.mjs"
+    "test:fleet": "npm run build && node server/test/fleet-extensibility.mjs",
+    "test:capabilities": "npm run build && node server/test/publish-game-capabilities.mjs --browser",
+    "capabilities:publish": "npm run build && node server/test/publish-game-capabilities.mjs --browser --publish"
   },
   "devDependencies": {
     "concurrently": "^9.1.0"

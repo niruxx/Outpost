@@ -88,6 +88,7 @@ function useDestinations(): Destination[] {
     { to: '/', end: true, label: 'Instances', icon: 'instances', group: 'workspace', tone: 'blue' },
     { to: '/dashboard', label: 'Dashboard', icon: 'grid', group: 'workspace', tone: 'teal' },
     { to: '/extensions', label: 'Extensions', icon: 'plugin', group: 'workspace', tone: 'green' },
+    { to: '/compatibility', label: 'Compatibility', icon: 'checklist', group: 'workspace', tone: 'green' },
     { to: '/jobs', label: 'Job center', icon: 'clock', group: 'workspace', tone: 'yellow' },
     { to: '/files', label: 'File Management', icon: 'folder', group: 'workspace', tone: 'yellow' },
     { to: '/docker', label: 'Docker', icon: 'container', group: 'workspace', tone: 'teal' },

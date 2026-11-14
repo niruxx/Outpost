@@ -166,6 +166,9 @@ try {
   const form = new FormData(); form.append('file', new Blob(['VBSP']), 'api.bsp');
   assert.equal((await fetch(origin + '/api/servers/css/game-controls/maps/upload', { method: 'POST', headers: { Authorization: `Bearer ${token(admin)}` }, body: form })).status, 200);
   if (process.env.OUTPOST_TEST_BROWSER_UI === '1') {
+    const {instanceCapabilitiesRouter}=await import('../dist/routes/gameCapabilities.routes.js');
+    app.use('/api/servers/:serverId/capabilities',instanceCapabilitiesRouter);
+    const {workspaceRouter}=await import('../dist/routes/workspace.routes.js');app.use('/api/workspace',workspaceRouter);
     const { runBrowser } = await import('./browserHarness.mjs');
     app.get('/api/auth/status', (_q, r) => r.json({ setupRequired: false }));
     app.get('/api/auth/me', (_q, r) => r.json({ user: { id: admin.id, username: admin.username, role: 'admin', theme: null } }));
@@ -174,10 +177,11 @@ try {
     app.use('/api', (_q, r) => r.status(503).json({ error: 'Outside fixture scope' }));
     app.use(express.static(path.resolve('web/dist'))); app.get('*', (_q, r) => r.sendFile(path.resolve('web/dist/index.html')));
     await runBrowser(origin, async ({ navigate, text, click, evaluate, until }) => {
-      for (const profile of GAME_PROFILES) { await navigate(`/instances/${profile.id}/game-settings`); await text(`${profile.label} settings`); await text('Save game settings'); }
+      const {instanceCapabilities}=await import('../dist/services/gameCapabilityService.js');
+      for (const profile of GAME_PROFILES) { await navigate(`/instances/${profile.id}/game-settings`); if(instanceCapabilities(getServer(profile.id),[],true).host.support==='unavailable'){await text('Action unavailable');}else{await text(`${profile.label} settings`); await text('Save game settings');} }
       await navigate('/instances/css/game-settings'); await text('Counter-Strike: Source settings');
       await until(() => evaluate("[...document.querySelectorAll('input')].some(i=>i.value==='Native css')"), 'native field value appears');
-      await click('Save game settings'); await text('Game settings saved');
+      await click('Save game settings'); await text('Review configuration changes'); await click('Apply reviewed changes'); await text('Game settings saved');
       await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Edit').click()");
       await until(() => evaluate("!!document.querySelector('textarea[aria-label=\"Native configuration content\"]')"), 'native configuration editor opens');
       assert.equal(await evaluate("document.querySelector('textarea[aria-label=\"Native configuration content\"]').value.includes('UnknownNative')"), true);

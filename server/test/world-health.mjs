@@ -78,6 +78,8 @@ try {
   const lock = service.startWorldHealth('java-world'); assert.throws(() => service.assertWorldHealthIdle('java-world'), { status: 409 }); service.cancelWorldHealth('java-world'); await waitFor(() => service.worldHealthReport('java-world').status !== 'scanning');
   assert.ok(listBackups('java-world').length >= 2);
   if (process.env.OUTPOST_TEST_BROWSER_UI === '1') {
+    const {instanceCapabilitiesRouter}=await import('../dist/routes/gameCapabilities.routes.js');
+    app.use('/api/servers/:serverId/capabilities',instanceCapabilitiesRouter);
     fs.writeFileSync(regionFile, region().subarray(0, 12287)); await scan('java-world');
     const { runBrowser } = await import('./browserHarness.mjs');
     app.get('/api/servers', (_q, r) => r.json({ servers: db.prepare('SELECT * FROM servers').all(), metrics: {} })); app.get('/api/servers/:serverId', (q, r) => r.json({ server: db.prepare('SELECT * FROM servers WHERE id=?').get(q.params.serverId), permissions: [...users.SERVER_PERMISSIONS], running: false, runtime: null })); app.use('/api', (_q, r) => r.status(503).json({ error: 'Outside fixture scope' })); app.use(express.static(path.resolve('web/dist'))); app.get('*', (_q, r) => r.sendFile(path.resolve('web/dist/index.html')));
