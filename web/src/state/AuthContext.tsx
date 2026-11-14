@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useState, type React
 import { setVisibleInterval } from '../lib/perf.js';
 import { api, getToken, setToken } from '../api/client.js';
 import { applyAssignedTheme } from '../lib/theme.js';
+import { applyAccountWallpaper } from '../lib/wallpaper.js';
 import type { EffectiveCreation, PublicUser, Role } from '../api/types.js';
 import { resetAdminMode } from './adminMode.js';
 
@@ -49,6 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         try {
           const res = await api.get<{ user: PublicUser; creation: EffectiveCreation }>('/auth/me');
           applyAssignedTheme(res.user.theme);
+          applyAccountWallpaper(res.user.id, res.user.wallpaper_preferences);
           setUser(res.user);
           setCreation(res.creation ?? null);
         } catch {
@@ -101,6 +103,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(res.token);
     // An admin can give an account a theme; it applies once per assignment (the user can switch after).
     applyAssignedTheme(res.user.theme);
+    applyAccountWallpaper(res.user.id, res.user.wallpaper_preferences);
     setUser(res.user);
     return 'ok' as const;
   }, []);
@@ -112,6 +115,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
     setToken(token);
     setUser(user);
+    applyAccountWallpaper(user.id, user.wallpaper_preferences);
     setSetupRequired(false);
   }, []);
 

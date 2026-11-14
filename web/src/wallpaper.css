@@ -1,0 +1,51 @@
+/* Account-selected scenes use theme colors and animate transforms/opacity only. */
+:root { --scene-speed: 1; --scene-strength: .7; }
+[data-wallpaper-speed='slow'] { --scene-speed: 1.7; }
+[data-wallpaper-speed='fast'] { --scene-speed: .65; }
+[data-wallpaper-intensity='subtle'] { --scene-strength: .4; }
+[data-wallpaper-intensity='bold'] { --scene-strength: 1; }
+html[data-wallpaper-style]:not([data-wallpaper-style='theme']) .ui-main { background: rgb(var(--surface-sheet, var(--surface-900)) / .78); }
+html[data-wallpaper-style]:not([data-wallpaper-style='theme']) .ui-sheet { background: transparent; }
+.ui-wallpaper > .wallpaper-scene { display: block; position: absolute; inset: 0; opacity: var(--scene-strength); }
+.wallpaper-scene { position: absolute; inset: 0; overflow: hidden; pointer-events: none; user-select: none; contain: paint; }
+.wallpaper-scene > * { position: absolute; display: none; }
+.scene-particle { left: var(--x); top: var(--y); animation-delay: calc(var(--duration) * var(--scene-speed) * var(--phase) * -1); }
+.wallpaper-preview .wallpaper-scene { --scene-speed: 1; --scene-strength: 1; }
+.wallpaper-preview .wallpaper-scene * { animation-play-state: paused; }
+.wallpaper-option:hover .wallpaper-preview .wallpaper-scene *, .wallpaper-option:focus-within .wallpaper-preview .wallpaper-scene * { animation-play-state: running; }
+
+/* Aurora: two broad light curtains. */
+[data-style='aurora'] .scene-orb { display: block; width: 150%; height: 150%; border-radius: 50%; animation: scene-aurora calc(38s * var(--scene-speed)) ease-in-out infinite alternate; }
+[data-style='aurora'] .scene-orb-a { left: -50%; top: -55%; background: radial-gradient(ellipse at 60% 60%, rgb(var(--accent-400) / .6), transparent 60%); }
+[data-style='aurora'] .scene-orb-b { right: -50%; bottom: -65%; background: radial-gradient(ellipse at 40% 40%, rgb(var(--tertiary-400, var(--accent-400)) / .6), transparent 60%); animation-direction: alternate-reverse; animation-duration: calc(49s * var(--scene-speed)); }
+@keyframes scene-aurora { from { transform: translate3d(-6%, -4%, 0) rotate(-14deg) scale(.9); } to { transform: translate3d(10%, 12%, 0) rotate(18deg) scale(1.15); } }
+
+/* Starfield: points drift and brighten softly, without flashing. */
+[data-style='starfield'] .scene-particle { display: block; width: 3px; height: 3px; border-radius: 50%; background: rgb(var(--ink-100)); box-shadow: 0 0 8px rgb(var(--accent-400) / .6); animation: scene-stars calc(var(--duration) * var(--scene-speed)) ease-in-out infinite; animation-delay: calc(var(--duration) * var(--phase) * -1); }
+[data-style='starfield'] .scene-particle:nth-child(3n) { width: 2px; height: 2px; }
+@keyframes scene-stars { 0%, 100% { opacity: .25; transform: translate3d(0, 0, 0); } 50% { opacity: .95; transform: translate3d(18px, -24px, 0); } }
+
+/* Bubbles: rings with fixed highlights rise through the viewport. */
+[data-style='bubbles'] .scene-particle { display: block; width: var(--size); height: var(--size); border-radius: 50%; border: 1px solid rgb(var(--accent-400) / .6); background: radial-gradient(circle at 30% 25%, rgb(var(--ink-100) / .35), transparent 42%), rgb(var(--accent-400) / .07); animation: scene-bubbles calc(var(--duration) * var(--scene-speed)) linear infinite; animation-delay: calc(var(--duration) * var(--scene-speed) * var(--phase) * -1); }
+@keyframes scene-bubbles { 0% { opacity: 0; transform: translate3d(-15px, 100vh, 0); } 12%, 85% { opacity: .8; } 100% { opacity: 0; transform: translate3d(35px, -100vh, 0); } }
+
+/* Fireflies: warm motes follow slow curved paths. */
+[data-style='fireflies'] .scene-particle { display: block; width: 4px; height: 4px; border-radius: 50%; background: #e9eaa2; box-shadow: 0 0 12px 3px rgb(181 232 155 / .5); animation: scene-fireflies calc(var(--duration) * var(--scene-speed)) ease-in-out infinite; animation-delay: calc(var(--duration) * var(--scene-speed) * var(--phase) * -1); }
+@keyframes scene-fireflies { 0%, 100% { transform: translate3d(-20px, 10px, 0); opacity: .2; } 30% { transform: translate3d(40px, -30px, 0); opacity: .85; } 65% { transform: translate3d(10px, 40px, 0); opacity: .45; } }
+
+/* Rain: a small, bounded set of diagonal trails. */
+[data-style='rain'] .scene-particle { display: block; width: 1px; height: calc(var(--size) * 1.5); background: linear-gradient(transparent, rgb(var(--accent-400) / .8)); animation: scene-rain calc(4s * var(--scene-speed)) linear infinite; animation-delay: calc(4s * var(--scene-speed) * var(--phase) * -1); }
+@keyframes scene-rain { from { transform: translate3d(15vw, -100vh, 0) rotate(16deg); opacity: .15; } to { transform: translate3d(-15vw, 100vh, 0) rotate(16deg); opacity: .65; } }
+
+/* Waves: overlapping arcs with different phases. */
+[data-style='waves'] .scene-wave { display: block; width: 160%; height: 120%; left: -30%; bottom: -90%; border-radius: 42%; border: 2px solid rgb(var(--accent-400) / .4); background: linear-gradient(150deg, rgb(var(--accent-400) / .2), rgb(var(--tertiary-400, var(--accent-400)) / .12)); animation: scene-waves calc(27s * var(--scene-speed)) ease-in-out infinite alternate; }
+[data-style='waves'] .scene-wave-1 { bottom: -75%; animation-delay: -9s; opacity: .6; }
+[data-style='waves'] .scene-wave-2 { bottom: -60%; animation-direction: alternate-reverse; opacity: .3; }
+@keyframes scene-waves { from { transform: translate3d(-6%, 8%, 0) rotate(-9deg); } to { transform: translate3d(6%, -8%, 0) rotate(11deg); } }
+
+/* Reduced motion is authoritative, including previews and explicit "full effects". */
+[data-wallpaper='static'] .wallpaper-scene *, [data-effects='reduced'] .wallpaper-scene * { animation: none !important; will-change: auto !important; }
+[data-wallpaper-hidden='true'] .wallpaper-scene * { animation-play-state: paused !important; }
+@media (prefers-reduced-motion: reduce) {
+  .wallpaper-scene * { animation: none !important; will-change: auto !important; }
+}

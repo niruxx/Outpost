@@ -863,6 +863,7 @@ Nodes on older versions can still transfer instances to and from upgraded ones.
 - [x] 🧱 Host firewall (UFW / firewalld) with per-user access
 - [x] 🔫 Counter-Strike, TF2, Quake and more one-click game servers
 - [x] 🎨 Themes (XP, Vista/7, Frutiger Aero, Minecraft) with animated wallpapers
+- [x] Per-user background animations: Aurora, Starfield, Bubbles, Fireflies, Rain and Waves, with speed/intensity controls and reduced-motion support. See [Appearance](docs/appearance.md).
 - [x] 🧩 CurseForge search for Bedrock add-ons and Java plugins
 - [x] 🔫 Call of Duty: Black Ops III server (Wine on Linux) with Workshop maps & mods
 - [x] 🍷 Per-instance Wine settings and dependencies (winetricks, installers)

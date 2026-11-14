@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { saveUserWallpaper } from '../services/appearanceService.js';
 import { asyncHandler, HttpError } from '../utils/asyncHandler.js';
 import { requireAuth } from '../auth/middleware.js';
 import { createToken } from '../auth/tokens.js';
@@ -16,6 +17,12 @@ import {
 } from '../services/twoFactorService.js';
 
 export const authRouter = Router();
+
+authRouter.put('/appearance', requireAuth, asyncHandler(async (req, res) => {
+  if (!getUserById(req.auth!.sub)) throw new HttpError(401, 'Session no longer valid');
+  const wallpaper = saveUserWallpaper(req.auth!.sub, req.body?.wallpaper);
+  res.json({ wallpaper });
+}));
 
 authRouter.get(
   '/status',

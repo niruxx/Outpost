@@ -31,6 +31,9 @@ export function runMigrations(db: DatabaseSync): void {
   addFirewallColumn(db);
   addSteamPresetColumn(db);
   addUserThemeColumn(db);
+  if (!db.prepare("SELECT 1 FROM pragma_table_info('users') WHERE name = 'wallpaper_preferences'").get()) {
+    db.exec('ALTER TABLE users ADD COLUMN wallpaper_preferences TEXT');
+  }
   addWorkshopColumn(db);
   addAuditClientColumns(db);
   if (!db.prepare("SELECT 1 FROM pragma_table_info('audit_log') WHERE name = 'file_change'").get()) {

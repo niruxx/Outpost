@@ -84,7 +84,7 @@ heading "Outpost updater"
 command -v git >/dev/null 2>&1 || die "git is required."
 command -v npm >/dev/null 2>&1 || die "npm is required."
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 if [[ -f "$SCRIPT_DIR/package.json" ]] && grep -qE '"name": *"(outpost|multicraft)"' "$SCRIPT_DIR/package.json" 2>/dev/null; then
   PROJECT_DIR="$SCRIPT_DIR"
 else
@@ -92,7 +92,26 @@ else
 fi
 cd "$PROJECT_DIR"
 
-git rev-parse --is-inside-work-tree >/dev/null 2>&1 || die "This doesn't look like a git checkout — can't pull updates into it."
+# A git worktree uses a .git file rather than a directory. Refuse archives/copies
+# even if they happen to be inside some unrelated parent repository.
+[[ -e "$PROJECT_DIR/.git" ]] || die "Git metadata is missing at $PROJECT_DIR/.git. This folder is a source archive/copy, not an updateable checkout. Keep your existing data; use a git clone to update."
+if ! GIT_CHECK_ERROR="$(git rev-parse --is-inside-work-tree 2>&1)"; then
+  if [[ "$GIT_CHECK_ERROR" == *"dubious ownership"* || "$GIT_CHECK_ERROR" == *"unsafe repository"* ]]; then
+    # Running this checkout's updater already authorizes its code. Trust only
+    # this physical path, for these commands; never add a global wildcard.
+    warn "Git rejected this checkout's ownership (common with sudo). Trusting $PROJECT_DIR for this updater run only."
+    git() { command git -c "safe.directory=$PROJECT_DIR" "$@"; }
+    if ! GIT_CHECK_ERROR="$(git rev-parse --is-inside-work-tree 2>&1)"; then
+      err "$GIT_CHECK_ERROR"
+      die "Git still cannot read $PROJECT_DIR. Check .git permissions and ownership."
+    fi
+  else
+    err "$GIT_CHECK_ERROR"
+    die "Git cannot read this checkout at $PROJECT_DIR. Check the Git error above before updating."
+  fi
+fi
+GIT_ROOT="$(git rev-parse --show-toplevel)"
+[[ "$(cd "$GIT_ROOT" && pwd -P)" == "$PROJECT_DIR" ]] || die "Git resolved a different checkout ($GIT_ROOT). Refusing to update a parent repository."
 REMOTE="$(git remote | head -1)"
 [[ -n "$REMOTE" ]] || die "No git remote configured. Run 'git remote add origin <repo-url>' first."
 BRANCH="$(git rev-parse --abbrev-ref HEAD)"

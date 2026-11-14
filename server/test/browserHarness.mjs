@@ -22,7 +22,9 @@ export async function runBrowser(origin, test) {
     const text = label => until(() => evaluate(`document.body?.innerText.includes(${JSON.stringify(label)})`), `text: ${label}`);
     const click = label => evaluate(`[...document.querySelectorAll('button,a')].find(e => e.textContent.trim() === ${JSON.stringify(label)}).click()`);
     await cdp('Runtime.enable'); await cdp('Page.enable'); await cdp('Page.addScriptToEvaluateOnNewDocument', { source: "localStorage.setItem('outpost_token', 'browser-fixture')" });
-    await test({ evaluate, navigate, text, click, until });
+    const emulateReducedMotion = reduced => cdp('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: reduced ? 'reduce' : 'no-preference' }] });
+    const captureScreenshot = async file => fs.writeFile(file, Buffer.from((await cdp('Page.captureScreenshot', { format: 'png' })).data, 'base64'));
+    await test({ evaluate, navigate, text, click, until, emulateReducedMotion, captureScreenshot });
     assert.deepEqual(exceptions, []);
   } catch (error) { console.error({ page: await evaluate?.('document.body?.innerText'), exceptions }); throw error; }
   finally { socket?.close(); browser.kill(); await delay(500); await fs.rm(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); }

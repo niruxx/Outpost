@@ -23,11 +23,12 @@ import { TwoFactorCard } from '../components/TwoFactorCard.js';
 import { NotificationsCard } from '../components/NotificationsCard.js';
 import { CurseForgeCard } from '../components/CurseForgeCard.js';
 import { UserThemesPanel } from '../components/UserThemesPanel.js';
+import { WallpaperPicker } from '../components/WallpaperPicker.js';
 import { AuditRetentionCard } from '../components/AuditRetentionCard.js';
 import { api, ApiError } from '../api/client.js';
 import type { NodeInfo, PanelNode, SandboxStatus, SystemInfo, WineStatus } from '../api/types.js';
 import { useAuth } from '../state/AuthContext.js';
-import { THEMES, saveColorMode, saveTheme, saveWallpaper, storedColorMode, storedTheme, storedWallpaper, type ColorMode, type ThemeOption } from '../lib/theme.js';
+import { THEMES, saveColorMode, saveTheme, storedColorMode, storedTheme, type ColorMode, type ThemeOption } from '../lib/theme.js';
 
 function formatUptime(sec: number): string {
   const d = Math.floor(sec / 86400);
@@ -110,7 +111,6 @@ function ThemePreview({ theme }: { theme: ThemeOption }) {
 function AppearanceCard({ isAdmin }: { isAdmin: boolean }) {
   const [current, setCurrent] = useState(storedTheme);
   const [mode, setMode] = useState<ColorMode>(storedColorMode);
-  const [animated, setAnimated] = useState(() => storedWallpaper() === 'animated');
   const effects = useEffectsMode();
   function choose(id: ThemeOption['id']) {
     saveTheme(id);
@@ -120,7 +120,7 @@ function AppearanceCard({ isAdmin }: { isAdmin: boolean }) {
     <Card className="p-5">
       <CardTitle action={<LanguageSelect className="!w-auto !py-1 text-xs" />}>Appearance</CardTitle>
       <p className="mb-4 text-sm text-ink-400">
-        Changes the look of the whole panel for you. Saved in this browser{isAdmin ? '.' : ' — an admin can also give your account a theme.'}
+        Theme and color mode are saved in this browser{isAdmin ? '.' : ' — an admin can also give your account a theme.'} Background animation preferences below are saved to your account.
       </p>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" role="radiogroup" aria-label="Theme">
         {THEMES.map((t) => {
@@ -165,20 +165,7 @@ function AppearanceCard({ isAdmin }: { isAdmin: boolean }) {
           </div>
         </div>
       )}
-      <label className="mt-4 flex items-center gap-3 rounded-2xl bg-surface-900 p-3 text-sm text-ink-200">
-        <input
-          type="checkbox"
-          checked={animated}
-          onChange={(e) => {
-            setAnimated(e.target.checked);
-            saveWallpaper(e.target.checked ? 'animated' : 'static');
-          }}
-        />
-        <span>
-          <span className="font-medium">Animated wallpaper</span>
-          <span className="block text-xs text-ink-400">Each theme has its own background. Turn this off for a still picture (it’s also still when your device asks for reduced motion).</span>
-        </span>
-      </label>
+      <WallpaperPicker />
       <label className="mt-3 flex cursor-pointer items-start gap-3 text-sm text-ink-200">
         <input type="checkbox" className="mt-1" checked={effects === 'reduced'} onChange={(e) => saveEffects(e.target.checked ? 'reduced' : 'full')} />
         <span>

@@ -115,6 +115,8 @@ sudo systemctl restart outpost
 journalctl -u outpost -f
 ```
 
+If the Linux updater reports that the folder is not a Git checkout, check `git status` in the install directory to see Git’s actual error. Older updater versions hid ownership and permission errors behind that message. Current versions handle Git’s `dubious ownership` error with an exact-path exception scoped to the updater process, including when invoked through `sudo`; they do not change global Git configuration. A source ZIP or copied directory without `.git` cannot be updated with `git pull`. Keep its data intact and use a Git clone instead; do not run `git init` or delete the install to bypass the check.
+
 For manual/pm2 deployments use the process manager you selected, such as `pm2 restart outpost`, or `npm start` from the checkout. Linux retains distro-specific dependencies, container/Wine options and richer backup/rollback/uninstall options; see each command's `--help`. Temperature collection uses Linux hwmon/thermal sysfs.
 
 ## Windows (per-user scheduled task)

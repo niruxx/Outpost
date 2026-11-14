@@ -1,4 +1,13 @@
-import type { CSSProperties } from 'react';
+import { useEffect, type CSSProperties } from 'react';
+import { useWallpaperPreferences, type WallpaperStyle } from '../lib/wallpaper.js';
+
+export function WallpaperScene({ style, preview = false }: { style: Exclude<WallpaperStyle, 'theme'>; preview?: boolean }) {
+  return <div className="wallpaper-scene" data-style={style} data-preview={preview || undefined} aria-hidden="true">
+    <div className="scene-orb scene-orb-a" /><div className="scene-orb scene-orb-b" />
+    {[0, 1, 2].map((i) => <div key={`wave-${i}`} className={`scene-wave scene-wave-${i}`} />)}
+    {Array.from({ length: 16 }, (_, i) => <span key={i} className="scene-particle" style={{ '--x': `${(i * 37 + 5) % 100}%`, '--y': `${(i * 61 + 9) % 100}%`, '--size': `${12 + (i * 13) % 55}px`, '--duration': `${18 + (i * 7) % 29}s`, '--phase': (i * 0.17) % 1 } as CSSProperties} />)}
+  </div>;
+}
 
 /**
  * The theme's background wallpaper. One set of plain layers — each theme's CSS (index.css,
@@ -19,6 +28,13 @@ const PARTICLES: { x: string; y: string; s: string; d: string; phase: number }[]
 ];
 
 export function Wallpaper() {
+  const preferences = useWallpaperPreferences();
+  useEffect(() => {
+    const update = () => { document.documentElement.dataset.wallpaperHidden = String(document.hidden); };
+    update(); document.addEventListener('visibilitychange', update);
+    return () => document.removeEventListener('visibilitychange', update);
+  }, []);
+  if (preferences.style !== 'theme') return <div className="ui-wallpaper" aria-hidden="true"><WallpaperScene style={preferences.style} /></div>;
   return (
     <div className="ui-wallpaper" aria-hidden="true">
       <div className="wp-sky" />

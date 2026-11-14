@@ -51,7 +51,8 @@ CREATE TABLE IF NOT EXISTS users (
   totp_recovery TEXT, -- JSON array of SHA-256 hashes of unused recovery codes
   firewall TEXT NOT NULL DEFAULT 'none', -- host firewall access: none | view | instances | manage (admins: always manage)
   storage TEXT NOT NULL DEFAULT '[]', -- JSON host storage permissions; admins have all by default
-  theme TEXT -- UI theme applied when this user signs in (an admin's choice); NULL = whatever their browser last used
+  theme TEXT, -- UI theme applied when this user signs in (an admin's choice); NULL = whatever their browser last used
+  wallpaper_preferences TEXT -- Per-account wallpaper style, motion, speed and intensity
 );
 
 -- Non-admin users can be restricted to specific servers. Admins always see everything.
