@@ -16,7 +16,7 @@ import AdmZip from 'adm-zip';
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'outpost-antivirus-'));
 process.env.OUTPOST_DATA_DIR = temp;
 const originalSpawn = childProcess.spawn;
-let mode = 'normal', calls = 0, killed = 0;
+let mode = 'normal', calls = 0, killed = 0, lastScanArgs = [];
 function containsFixture(target) {
   if (!fs.existsSync(target)) return false;
   const stat = fs.lstatSync(target); if (stat.isSymbolicLink()) return false;
@@ -41,6 +41,7 @@ childProcess.spawn = (exe, args, options) => {
     if (mode === 'hang') return;
     if (mode === 'error') { child.stderr.write('ERROR: scanner unavailable'); close(2); return; }
     if (mode === 'warning') { child.stderr.write('WARNING: unreadable file'); close(0); return; }
+    lastScanArgs = args;
     const target = args.at(-1);
     if (containsFixture(target)) { child.stdout.write(`${findingPath(target)}: Fixture.Signature FOUND\n`); close(1); return; }
     close(0);
@@ -80,6 +81,21 @@ try {
   const config = { enabled: true, executable: 'clamscan', updater: 'freshclam', database: '', stopOnDetection: false };
   mode = 'missing'; assert.equal((await request('/antivirus/config', 'PUT', config)).status, 503); assert.equal(av.protectionEnabled(), false);
   mode = 'normal'; assert.equal((await request('/antivirus/config', 'PUT', config)).status, 200);
+  assert.equal(av.antivirusConfig().maxFileSizeMiB, 1024, 'old settings retain default limits');
+  for (const limits of [{ maxFileSizeMiB: 0 }, { maxFileSizeMiB: 2048 }, { maxFileSizeMiB: 1.5 }, { maxFileSizeMiB: '1536' }, { maxScanSizeMiB: 512 }, { maxScanSizeMiB: 65537 }]) {
+    assert.equal((await request('/antivirus/config', 'PUT', { ...config, ...limits })).status, 400);
+  }
+  assert.equal((await request('/antivirus/config', 'PUT', { ...config, maxFileSizeMiB: 1536, maxScanSizeMiB: 4096 })).status, 200);
+  assert.equal(av.antivirusMaxFileBytes(), 1536 * 1048576);
+  await av.scanUploadBuffers([{ name: 'limits.txt', buffer: Buffer.from('clean') }], 'av-instance');
+  assert.ok(lastScanArgs.includes('--max-filesize=1536M'));
+  assert.ok(lastScanArgs.includes('--max-scansize=4096M'));
+  assert.equal((await request('/antivirus/config', 'PUT', { ...config, maxFileSizeMiB: 1, maxScanSizeMiB: 2 })).status, 200);
+  await assert.rejects(av.scanUploadBuffers([{ name: 'too-large', buffer: Buffer.alloc(1048577) }], 'av-instance'), { status: 413 });
+  const oversized = new FormData(); oversized.append('files', new Blob([Buffer.alloc(1048577)]), 'too-large.bin');
+  assert.ok((await request('/servers/av-instance/files/upload', 'POST', oversized)).status >= 400, 'multipart parser enforces configured limit');
+  assert.equal((await request('/antivirus/config', 'PUT', config)).status, 200);
+
   assert.equal((await request('/antivirus/config', 'PUT', { ...config, executable: 'clamscan --remove' })).status, 400);
   // Resumable upload and recycle restoration must use the same fail-closed scanner gate.
   const staged = async (content, name) => {
@@ -130,11 +146,43 @@ try {
   const scan = av.startInstanceScan('av-instance'); assert.throws(() => av.startInstanceScan('av-instance'), { status: 409 });
   await waitFor(() => av.scanRows('av-instance').find(s => s.id === scan.id)?.status === 'detected', 'scan detection');
   assert.equal(av.securityHold('av-instance'), true); assert.throws(() => av.assertNoSecurityHold('av-instance'), { status: 423 });
+  assert.equal((await request('/antivirus/allow/av-instance', 'POST', { scanId: scan.id, index: 0 }, viewer)).status, 403);
+  assert.equal((await request('/antivirus/allow/av-instance', 'POST', { scanId: scan.id, index: 99 })).status, 400);
+  assert.equal((await request('/antivirus/allow/av-instance', 'POST', { scanId: scan.id, index: 0 })).status, 200);
+  assert.equal(av.securityHold('av-instance'), false, 'reviewing every finding releases the hold');
+  await av.scanUploadBuffers([{ name: 'finding.txt', buffer: Buffer.from('OUTPOST_TEST_THREAT') }], 'av-instance');
+  fs.appendFileSync(path.join(instanceDir('av-instance'), 'finding.txt'), 'changed');
+  assert.equal(av.securityHold('av-instance'), true, 'changed contents invalidate approval');
+  assert.equal((await request('/antivirus/allow/av-instance', 'DELETE', { path: 'finding.txt' })).status, 200);
+  assert.equal((await request('/antivirus/disable', 'POST', null, viewer)).status, 403);
+  assert.equal((await request('/antivirus/disable', 'POST')).status, 200);
+  assert.doesNotThrow(() => av.assertNoSecurityHold('av-instance'));
+  assert.equal(av.antivirusDisabled(), true);
+  assert.equal(av.antivirusConfig().enabled, false);
+  assert.equal((await request('/antivirus/config', 'PUT', config)).status, 200);
+  assert.throws(() => av.assertNoSecurityHold('av-instance'), { status: 423 }, 're-enabling restores unresolved holds');
   const hostHolds = (await (await request('/antivirus')).json()).holds;
   const instanceHolds = (await (await request('/servers/av-instance/antivirus', 'GET', null, viewer)).json()).holds;
   assert.equal(hostHolds[0].scan_id, scan.id);
   assert.deepEqual(instanceHolds, hostHolds, 'assigned viewers can inspect the triggering hold report');
   assert.ok(instanceHolds[0].report.findings.some(f => f.includes('finding.txt')));
+  assert.equal((await request('/antivirus/exclusion/av-instance', 'PUT', { excluded: true }, viewer)).status, 403);
+  assert.equal((await request('/antivirus/exclusion/av-instance', 'PUT', { excluded: 'yes' })).status, 400);
+  assert.equal((await request('/antivirus/exclusion/missing', 'PUT', { excluded: true })).status, 404);
+  assert.equal((await request('/antivirus/exclusion/av-instance', 'PUT', { excluded: true })).status, 200);
+  assert.equal(av.protectionEnabled('av-instance'), false);
+  assert.equal(av.protectionEnabled(), true, 'host protection remains enabled');
+  assert.doesNotThrow(() => av.assertNoSecurityHold('av-instance'));
+  assert.equal(av.securityHold('av-instance'), true, 'exclusion preserves the hold');
+  await av.scanUploadBuffers([{ name: 'excluded.jar', buffer: Buffer.from('OUTPOST_TEST_THREAT') }], 'av-instance');
+  assert.throws(() => av.startInstanceScan('av-instance'), { status: 409 });
+  av.stopAntivirus(); av.initAntivirus();
+  assert.equal(av.instanceExcluded('av-instance'), true, 'exclusion persists across initialization');
+  const excludedState = await (await request('/servers/av-instance/antivirus', 'GET', null, viewer)).json();
+  assert.equal(excludedState.excluded, true);
+  assert.equal(excludedState.protectedUploads, false);
+  assert.equal((await request('/antivirus/exclusion/av-instance', 'PUT', { excluded: false })).status, 200);
+  assert.throws(() => av.assertNoSecurityHold('av-instance'), { status: 423 }, 'removing exclusion restores hold');
   fs.unlinkSync(path.join(instanceDir('av-instance'), 'finding.txt'));
   await waitFor(() => { try { av.startInstanceScan('av-instance'); return true; } catch { return false; } }, 'clean scan enqueue');
   await waitFor(() => !av.securityHold('av-instance'), 'clean scan clears hold');

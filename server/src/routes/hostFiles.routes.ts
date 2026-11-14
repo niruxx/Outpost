@@ -1,5 +1,5 @@
 import { scanIncomingUploads } from './antivirus.routes.js';
-import { scanUploadBuffers } from '../services/antivirusService.js';
+import { antivirusMaxFileBytes, scanUploadBuffers } from '../services/antivirusService.js';
 import { Router, type Request } from 'express';
 import multer from 'multer';
 import path from 'node:path';
@@ -42,7 +42,7 @@ const audit = (req: Request, action: string, target: string, detail?: string) =>
   logAudit(req.auth!.sub, req.auth!.username, action, undefined, JSON.stringify({ path: target, mode: mode(req), ...(detail ? { detail } : {}) }));
 const queryPath = (req: Request) => (typeof req.query.path === 'string' ? req.query.path : '');
 
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 1024 * 1024 * 1024 } });
+const uploadFiles: import('express').RequestHandler = (req, res, next) => multer({ storage: multer.memoryStorage(), limits: { fileSize: antivirusMaxFileBytes() } }).array('files')(req, res, next);
 
 hostFilesRouter.get('/', (req, res) => {
   res.set('Cache-Control', 'no-store').json(hostFilesStatus(token(req)));
@@ -162,7 +162,7 @@ hostFilesRouter.get(
 
 hostFilesRouter.post(
   '/upload',
-  upload.array('files'), scanIncomingUploads,
+  uploadFiles, scanIncomingUploads,
   asyncHandler(async (req, res) => {
     const dir = typeof req.body?.path === 'string' ? req.body.path : '';
     const targetDir = normalizeHostPath(dir);

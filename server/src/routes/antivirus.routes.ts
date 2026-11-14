@@ -5,14 +5,14 @@ import { asyncHandler, HttpError } from '../utils/asyncHandler.js';
 import { getUserById, logAudit } from '../services/userService.js';
 import { getServer } from '../services/serverService.js';
 import { realtimeAntivirusStatus } from '../services/antivirusService.js';
-import { antivirusConfig, antivirusHealth, antivirusSchedules, saveAntivirusConfig, updateAntivirusSignatures, quarantineRows, deleteQuarantine, scanRows, securityHoldRows, securityHold, startInstanceScan, cancelInstanceScan, saveAntivirusSchedule, scanUploadBuffers, protectionEnabled } from '../services/antivirusService.js';
+import { allowedItems, allowFinding, revokeAllowed, disableAntivirus, antivirusDisabled, antivirusMaxFileBytes, antivirusExclusions, instanceExcluded, setInstanceExcluded, antivirusConfig, antivirusHealth, antivirusSchedules, saveAntivirusConfig, updateAntivirusSignatures, quarantineRows, deleteQuarantine, scanRows, securityHoldRows, securityHold, startInstanceScan, cancelInstanceScan, saveAntivirusSchedule, scanUploadBuffers, protectionEnabled } from '../services/antivirusService.js';
 
 /** Place after multer, before a handler can extract or publish any uploaded file. */
 export const scanIncomingUploads: RequestHandler = asyncHandler(async (req, _res, next) => {
-  if (!protectionEnabled()) return next();
+  if (!protectionEnabled(req.params.serverId)) return next();
   const files = [ ...(req.file ? [req.file] : []), ...(Array.isArray(req.files) ? req.files : Object.values(req.files ?? {}).flat()) ];
   try { const payload = files.map(file => {
-    if (file.size > 1024 ** 3) throw new HttpError(413, 'Protected uploads must be under 1 GiB');
+    if (file.size > antivirusMaxFileBytes()) throw new HttpError(413, 'Protected upload exceeds the configured antivirus file size limit');
     return { name: file.originalname, buffer: file.buffer ?? fs.readFileSync(file.path) };
   });
   await scanUploadBuffers(payload, req.params.serverId && getServer(req.params.serverId) ? req.params.serverId : null);
@@ -24,7 +24,11 @@ const currentAccount: RequestHandler = (req, _res, next) => {
   const user = getUserById(req.auth!.sub); if (!user) return next(new HttpError(401, 'Current account required')); req.auth!.role = user.role; next();
 };
 antivirusRouter.use(requireAuth, currentAccount, requireRole('admin'));
-antivirusRouter.get('/', (_req, res) => res.json({ config: antivirusConfig(), realtime: realtimeAntivirusStatus(), scans: scanRows(), holds: securityHoldRows(), quarantine: quarantineRows(), schedules: antivirusSchedules(), timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }));
+antivirusRouter.get('/', (_req, res) => res.json({ disabled: antivirusDisabled(), allowed: allowedItems(), excludedInstances: antivirusExclusions(), config: antivirusConfig(), realtime: realtimeAntivirusStatus(), scans: scanRows(), holds: securityHoldRows(), quarantine: quarantineRows(), schedules: antivirusSchedules(), timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }));
+antivirusRouter.put('/exclusion/:serverId', (req, res, next) => { try { setInstanceExcluded(req.params.serverId, req.body?.excluded); logAudit(req.auth!.sub, req.auth!.username, 'security.antivirus.exclusion', req.params.serverId, JSON.stringify({ excluded: req.body.excluded })); res.json({ ok: true }); } catch (err) { next(err); } });
+antivirusRouter.post('/disable', (req, res) => { disableAntivirus(); logAudit(req.auth!.sub, req.auth!.username, 'security.antivirus.disable'); res.json({ ok: true }); });
+antivirusRouter.post('/allow/:serverId', (req, res, next) => { try { const item = allowFinding(req.params.serverId, req.body?.scanId, req.body?.index); logAudit(req.auth!.sub, req.auth!.username, 'security.antivirus.allow', req.params.serverId, item.path); res.json(item); } catch (err) { next(err); } });
+antivirusRouter.delete('/allow/:serverId', (req, res, next) => { try { revokeAllowed(req.params.serverId, req.body?.path); logAudit(req.auth!.sub, req.auth!.username, 'security.antivirus.revoke', req.params.serverId, req.body?.path); res.json({ ok: true }); } catch (err) { next(err); } });
 antivirusRouter.get('/health', asyncHandler(async (_req, res) => res.json(await antivirusHealth())));
 antivirusRouter.put('/config', asyncHandler(async (req, res) => { const config = await saveAntivirusConfig(req.body); logAudit(req.auth!.sub, req.auth!.username, 'security.antivirus.configure'); res.json({ config }); }));
 antivirusRouter.post('/signatures', asyncHandler(async (req, res) => { const output = await updateAntivirusSignatures(); logAudit(req.auth!.sub, req.auth!.username, 'security.antivirus.signatures'); res.json(output); }));
@@ -34,4 +38,4 @@ antivirusRouter.post('/cancel/:serverId', (req, res) => { cancelInstanceScan(req
 antivirusRouter.put('/schedule/:serverId', (req, res, next) => { try { saveAntivirusSchedule(req.params.serverId, req.body?.expression, req.body?.enabled); logAudit(req.auth!.sub, req.auth!.username, 'security.antivirus.schedule', req.params.serverId); res.json({ ok: true }); } catch (err) { next(err); } });
 export const instanceAntivirusRouter = Router({ mergeParams: true });
 instanceAntivirusRouter.use(requireAuth, currentAccount, requireServerAccess());
-instanceAntivirusRouter.get('/', (req: Request, res) => res.json({ protectedUploads: protectionEnabled(), realtimeEnabled: antivirusConfig().enabled && antivirusConfig().realtime, hold: securityHold(req.params.serverId), holds: securityHoldRows(req.params.serverId), scans: scanRows(req.params.serverId), schedule: antivirusSchedules().find(s => s.server_id === req.params.serverId) ?? null, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }));
+instanceAntivirusRouter.get('/', (req: Request, res) => res.json({ disabled: antivirusDisabled(), allowed: allowedItems(req.params.serverId), excluded: instanceExcluded(req.params.serverId), protectedUploads: protectionEnabled(req.params.serverId), realtimeEnabled: protectionEnabled(req.params.serverId) && antivirusConfig().realtime, hold: securityHold(req.params.serverId), holds: securityHoldRows(req.params.serverId), scans: scanRows(req.params.serverId), schedule: antivirusSchedules().find(s => s.server_id === req.params.serverId) ?? null, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }));

@@ -1,5 +1,5 @@
 import fs from 'node:fs';
-import { protectionEnabled, stageFile, discardStage, scanUploadBuffers } from './antivirusService.js';
+import { antivirusMaxFileBytes, protectionEnabled, stageFile, discardStage, scanUploadBuffers } from './antivirusService.js';
 import { assertDiskRoom } from './limitsService.js';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -272,7 +272,7 @@ function serveSftp(sftp: SFTPWrapper, login: NonNullable<ReturnType<typeof resol
         if (fs.existsSync(r.abs) && (!fs.lstatSync(r.abs).isFile() || fs.lstatSync(r.abs).isSymbolicLink())) throw new Error('Protected uploads require regular files');
         stage = stageFile(Buffer.alloc(0));
         if (!(flags & OPEN.TRUNC) && fs.existsSync(r.abs)) {
-          if (fs.statSync(r.abs).size > 1024 ** 3) throw new Error('Protected SFTP uploads must be under 1 GiB');
+          if (fs.statSync(r.abs).size > antivirusMaxFileBytes()) throw new Error('Protected SFTP upload exceeds the configured antivirus file size limit');
           fs.copyFileSync(r.abs, stage.file);
         }
         const fd = fs.openSync(stage.file, flags & OPEN.APPEND ? 'a+' : 'r+');
@@ -294,7 +294,7 @@ function serveSftp(sftp: SFTPWrapper, login: NonNullable<ReturnType<typeof resol
     if (denyWrite(reqid)) return;
     if (h.closing) return sftp.status(reqid, STATUS.FAILURE, 'Handle is closing');
     if (protectionEnabled() && !h.stage) return sftp.status(reqid, STATUS.FAILURE, 'Upload protection changed; reopen this upload');
-    if (h.stage && (!Number.isSafeInteger(offset) || offset < 0 || offset + data.length > 1024 ** 3 || (h.append && (h.protectedSize ?? 0) + data.length > 1024 ** 3))) { h.failed = true; return sftp.status(reqid, STATUS.FAILURE, 'Protected upload limit is 1 GiB'); }
+    if (h.stage && (!Number.isSafeInteger(offset) || offset < 0 || offset + data.length > antivirusMaxFileBytes() || (h.append && (h.protectedSize ?? 0) + data.length > antivirusMaxFileBytes()))) { h.failed = true; return sftp.status(reqid, STATUS.FAILURE, 'Protected upload exceeds the configured antivirus file size limit'); }
     if (h.append) h.protectedSize = (h.protectedSize ?? 0) + data.length;
     h.pending = (h.pending ?? 0) + 1;
     fs.write(h.fd, data, 0, data.length, offset, (e) => {
@@ -317,7 +317,7 @@ function serveSftp(sftp: SFTPWrapper, login: NonNullable<ReturnType<typeof resol
         await new Promise<void>((resolve, reject) => fs.close(h.fd, err => err ? reject(err) : resolve())).catch(err => { discardStage(h.stage!.dir); throw err; });
         try {
           if (!protectionEnabled()) throw new Error('Upload protection changed; reopen this upload');
-          if (h.failed || fs.statSync(h.stage!.file).size > 1024 ** 3) throw new Error('Upload had failed writes or exceeded the protected size limit');
+          if (h.failed || fs.statSync(h.stage!.file).size > antivirusMaxFileBytes()) throw new Error('Upload had failed writes or exceeded the protected size limit');
           const buffer = fs.readFileSync(h.stage!.file);
           await scanUploadBuffers([{ name: h.rel, buffer }], login.server.id);
           const current = resolve(h.rel); if (!current || current.abs !== h.abs) throw new Error('Upload destination changed');

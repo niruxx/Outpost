@@ -11,10 +11,20 @@ import { getServer, listServers } from './serverService.js';
 import { beginJob, finishJob, progressJob } from './jobService.js';
 import { recordEvent } from './eventLogService.js';
 
-export interface AntivirusConfig { enabled: boolean; executable: string; updater: string; database: string; stopOnDetection: boolean; realtime: boolean }
-const DEFAULT: AntivirusConfig = { enabled: false, executable: 'clamscan', updater: 'freshclam', database: '', stopOnDetection: false, realtime: false };
+export interface AntivirusConfig { enabled: boolean; executable: string; updater: string; database: string; stopOnDetection: boolean; realtime: boolean; maxFileSizeMiB: number; maxScanSizeMiB: number }
+const DEFAULT: AntivirusConfig = { enabled: false, executable: 'clamscan', updater: 'freshclam', database: '', stopOnDetection: false, realtime: false, maxFileSizeMiB: 1024, maxScanSizeMiB: 2048 };
 export function antivirusConfig(): AntivirusConfig { try { return { ...DEFAULT, ...JSON.parse(getSetting('antivirus') ?? '{}') }; } catch { return { ...DEFAULT }; } }
-export const protectionEnabled = () => antivirusConfig().enabled;
+export const antivirusMaxFileBytes = () => antivirusConfig().maxFileSizeMiB * 1048576;
+export const instanceExcluded = (serverId: string) => !!prep('SELECT 1 FROM antivirus_exclusions WHERE server_id=?').get(serverId);
+export const antivirusExclusions = () => prep('SELECT server_id FROM antivirus_exclusions').all().map(row => row.server_id as string);
+export const protectionEnabled = (serverId?: string | null) => antivirusConfig().enabled && (!serverId || !instanceExcluded(serverId));
+export function setInstanceExcluded(serverId: string, excluded: unknown) {
+  if (!getServer(serverId)) throw new HttpError(404, 'Instance not found');
+  if (typeof excluded !== 'boolean') throw new HttpError(400, 'Excluded must be boolean');
+  if (excluded) { prep('INSERT OR IGNORE INTO antivirus_exclusions(server_id) VALUES (?)').run(serverId); cancelInstanceScan(serverId); }
+  else prep('DELETE FROM antivirus_exclusions WHERE server_id=?').run(serverId);
+  configureRealtime();
+}
 export function validateAntivirusConfig(input: unknown): AntivirusConfig {
   const v = input as AntivirusConfig;
   if (!v || typeof v.enabled !== 'boolean' || typeof v.stopOnDetection !== 'boolean') throw new HttpError(400, 'Choose upload protection and detection response');
@@ -22,7 +32,11 @@ export function validateAntivirusConfig(input: unknown): AntivirusConfig {
   if ((v.executable !== 'clamscan' && !path.isAbsolute(v.executable)) || (v.updater !== 'freshclam' && !path.isAbsolute(v.updater)) || (v.database && !path.isAbsolute(v.database))) throw new HttpError(400, 'Use default command names or absolute paths, without arguments');
   if (v.realtime !== undefined && typeof v.realtime !== 'boolean') throw new HttpError(400, 'Live monitoring must be boolean');
   if (v.realtime && !v.enabled) throw new HttpError(400, 'Enable upload protection before enabling live mod monitoring');
-  return { enabled: v.enabled, executable: v.executable.trim(), updater: v.updater.trim(), database: v.database.trim(), stopOnDetection: v.stopOnDetection, realtime: v.realtime ?? false };
+  const maxFileSizeMiB = v.maxFileSizeMiB ?? DEFAULT.maxFileSizeMiB;
+  const maxScanSizeMiB = v.maxScanSizeMiB ?? DEFAULT.maxScanSizeMiB;
+  if (!Number.isInteger(maxFileSizeMiB) || maxFileSizeMiB < 1 || maxFileSizeMiB > 2047) throw new HttpError(400, 'Maximum file size must be a whole number from 1 to 2047 MiB');
+  if (!Number.isInteger(maxScanSizeMiB) || maxScanSizeMiB < maxFileSizeMiB || maxScanSizeMiB > 65536) throw new HttpError(400, 'Expanded scan size must be at least the file size limit and at most 65536 MiB');
+  return { maxFileSizeMiB, maxScanSizeMiB, enabled: v.enabled, executable: v.executable.trim(), updater: v.updater.trim(), database: v.database.trim(), stopOnDetection: v.stopOnDetection, realtime: v.realtime ?? false };
 }
 const privateRoot = () => { const dir = path.join(DATA_DIR, 'antivirus'); fs.mkdirSync(dir, { recursive: true, mode: 0o700 }); if (fs.lstatSync(dir).isSymbolicLink()) throw new HttpError(503, 'Antivirus storage cannot be a symbolic link'); fs.chmodSync(dir, 0o700); return fs.realpathSync(dir); };
 export function stageFile(buffer: Buffer) {
@@ -56,8 +70,13 @@ export function scanVerdict(result: CommandResult) {
   if (result.code !== 0 || /\b(?:ERROR|WARNING):|\bERROR\s*$/im.test(result.output) || findings.length) throw new HttpError(503, `Scan could not confirm safety: ${result.output.slice(-1500) || `exit ${result.code}`}`);
   return { status: 'clean' as const, findings: [] as string[], incomplete: false };
 }
+function approvedScanArgs(target: string) {
+  const server = listServers().find(s => instanceDir(s.id) === target);
+  if (!server) return [];
+  return allowedItems(server.id).filter(row => allowedFile(server.id, row.path as string)).map(row => '--exclude=^' + path.join(target, row.path as string).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$');
+}
 function scanArgs(config: AntivirusConfig, target: string, recursive: boolean) {
-  return ['--stdout', '--no-summary', '--infected', `--tempdir=${privateRoot()}`, '--scan-archive=yes', '--alert-encrypted=yes', '--alert-exceeds-max=yes', '--fail-if-cvd-older-than=7', '--max-filesize=1024M', '--max-scansize=2048M', '--max-recursion=30', '--max-files=10000', '--follow-dir-symlinks=0', '--follow-file-symlinks=0', ...(config.database ? [`--database=${config.database}`] : []), ...(recursive ? ['--recursive'] : []), target];
+  return ['--stdout', '--no-summary', '--infected', `--tempdir=${privateRoot()}`, '--scan-archive=yes', '--alert-encrypted=yes', '--alert-exceeds-max=yes', '--fail-if-cvd-older-than=7', `--max-filesize=${config.maxFileSizeMiB}M`, `--max-scansize=${config.maxScanSizeMiB}M`, '--max-recursion=30', '--max-files=10000', '--follow-dir-symlinks=0', '--follow-file-symlinks=0', ...(config.database ? [`--database=${config.database}`] : []), ...(recursive ? ['--recursive'] : []), ...approvedScanArgs(target), target];
 }
 let pending = 0, tail = Promise.resolve();
 async function queued<T>(fn: () => Promise<T>): Promise<T> {
@@ -81,7 +100,7 @@ export async function saveAntivirusConfig(input: unknown) {
   const config = validateAntivirusConfig(input), previous = antivirusConfig();
   const needsCheck = config.enabled && (!previous.enabled || (config.realtime && !previous.realtime) || ['executable', 'updater', 'database'].some(k => config[k as keyof AntivirusConfig] !== previous[k as keyof AntivirusConfig]));
   if (needsCheck) { const health = await antivirusHealth(config); if (!health.ready) throw new HttpError(503, health.error!); }
-  setSetting('antivirus', JSON.stringify(config)); configureRealtime(); return config;
+  setSetting('antivirus', JSON.stringify(config)); if (config.enabled) setSetting('antivirus.disabled', 'false'); configureRealtime(); return config;
 }
 function retainBlocked(buffer: Buffer, name: string, serverId: string | null, signature: string) {
   const id = crypto.randomUUID(), root = privateRoot();
@@ -92,11 +111,14 @@ function retainBlocked(buffer: Buffer, name: string, serverId: string | null, si
   return id;
 }
 export async function scanUploadBuffers(files: { buffer: Buffer; name: string }[], serverId: string | null = null) {
-  if (!protectionEnabled() || !files.length) return;
+  if (!protectionEnabled(serverId) || !files.length) return;
   await queued(async () => {
     const config = antivirusConfig();
     // Never release an earlier file in a multipart batch before the entire batch passes.
     for (const file of files) {
+      if (file.buffer.length > config.maxFileSizeMiB * 1048576) throw new HttpError(413, `Protected upload exceeds the configured ${config.maxFileSizeMiB} MiB file limit`);
+      const digest = crypto.createHash('sha256').update(file.buffer).digest('hex');
+      if (serverId && allowedItems(serverId).some(row => row.sha256 === digest)) continue;
       const stage = stageFile(file.buffer);
       try {
         const result = scanVerdict(await command(config.executable, scanArgs(config, stage.file, false), 600000));
@@ -116,12 +138,12 @@ export async function scanIngestedPath(target: string, recursive = false) {
 }
 export async function downloadScannedMod(url: string, target: string, serverId: string | null = null) {
   const { downloadFile } = await import('../utils/download.js');
-  if (!protectionEnabled()) return downloadFile(url, target);
+  if (!protectionEnabled(serverId)) return downloadFile(url, target);
   const stage = stageFile(Buffer.alloc(0));
   const temp = `${target}.av-${crypto.randomUUID()}.tmp`;
   try {
     await downloadFile(url, stage.file);
-    if (fs.statSync(stage.file).size > 1024 ** 3) throw new HttpError(413, 'Protected mod download exceeds 1 GiB');
+    if (fs.statSync(stage.file).size > antivirusMaxFileBytes()) throw new HttpError(413, 'Protected mod download exceeds the configured antivirus file size limit');
     await scanUploadBuffers([{ name: path.basename(target), buffer: fs.readFileSync(stage.file) }], serverId);
     await fs.promises.copyFile(stage.file, temp, fs.constants.COPYFILE_EXCL); fs.renameSync(temp, target);
   } finally { if (fs.existsSync(temp)) fs.unlinkSync(temp); discardStage(stage.dir); }
@@ -140,10 +162,50 @@ export function securityHoldRows(serverId?: string) {
   const rows = serverId ? prep(query + ' WHERE h.server_id=?').all(serverId) : prep(query + ' ORDER BY h.at DESC').all();
   return rows.map(row => ({ ...row, report: row.report ? JSON.parse(row.report as string) : null }));
 }
-export const securityHold = (serverId: string) => !!prep('SELECT 1 FROM antivirus_holds WHERE server_id=?').get(serverId);
-export function assertNoSecurityHold(serverId: string) { if (securityHold(serverId)) throw new HttpError(423, 'Antivirus security hold: resolve findings and complete a clean instance scan before starting'); }
+function fileHash(file: string) {
+  const hash = crypto.createHash('sha256'), buffer = Buffer.alloc(1048576), fd = fs.openSync(file, 'r');
+  try { let count: number; while ((count = fs.readSync(fd, buffer, 0, buffer.length, null))) hash.update(buffer.subarray(0, count)); return hash.digest('hex'); } finally { fs.closeSync(fd); }
+}
+function findingPath(finding: string) { return finding.slice(0, finding.indexOf(': ')); }
+function allowedFile(serverId: string, relative: string) {
+  const row = prep('SELECT sha256 FROM antivirus_allowed WHERE server_id=? AND path=?').get(serverId, relative);
+  if (!row) return false;
+  try { const file = regularPath(instanceDir(serverId), relative); return fs.statSync(file).isFile() && fileHash(file) === row.sha256; } catch { return false; }
+}
+export const allowedItems = (serverId?: string) => serverId ? prep('SELECT * FROM antivirus_allowed WHERE server_id=?').all(serverId) : prep('SELECT * FROM antivirus_allowed').all();
+export function allowFinding(serverId: string, scanId: unknown, index: unknown) {
+  if (typeof scanId !== 'string' || !Number.isInteger(index) || (index as number) < 0) throw new HttpError(400, 'Select a detected file');
+  const scan = prep('SELECT report FROM antivirus_scans WHERE id=? AND server_id=?').get(scanId, serverId);
+  const finding = scan && JSON.parse(scan.report as string).findings?.[index as number];
+  if (typeof finding !== 'string' || !finding.includes(': ')) throw new HttpError(400, 'Finding is unavailable');
+  const relative = findingPath(finding);
+  const file = regularPath(instanceDir(serverId), relative);
+  if (!relative || path.isAbsolute(relative) || !fs.statSync(file).isFile()) throw new HttpError(400, 'Only an existing instance file can be allowed');
+  prep('INSERT INTO antivirus_allowed(server_id,path,sha256,at) VALUES (?,?,?,?) ON CONFLICT(server_id,path) DO UPDATE SET sha256=excluded.sha256,at=excluded.at').run(serverId, relative, fileHash(file), Date.now());
+  return { path: relative };
+}
+export function revokeAllowed(serverId: string, relative: unknown) {
+  if (typeof relative !== 'string') throw new HttpError(400, 'Choose an allowed file');
+  prep('DELETE FROM antivirus_allowed WHERE server_id=? AND path=?').run(serverId, relative);
+}
+export const antivirusDisabled = () => getSetting('antivirus.disabled') === 'true';
+export function disableAntivirus() {
+  setSetting('antivirus', JSON.stringify({ ...antivirusConfig(), enabled: false, realtime: false }));
+  setSetting('antivirus.disabled', 'true');
+  for (const controller of active.values()) controller.abort();
+  configureRealtime();
+}
+export const securityHold = (serverId: string) => {
+  const hold = securityHoldRows(serverId)[0]; if (!hold) return false;
+  if (hold.report?.note?.includes('incomplete scan')) return true;
+  const findings = hold.report?.findings as string[] | undefined;
+  return !findings?.length || findings.some(f => !allowedFile(serverId, findingPath(f)));
+};
+export function assertNoSecurityHold(serverId: string) { if (!antivirusDisabled() && !instanceExcluded(serverId) && securityHold(serverId)) throw new HttpError(423, 'Antivirus security hold: review findings or complete a clean instance scan before starting'); }
 const active = new Map<string, AbortController>();
 export function startInstanceScan(serverId: string, source = 'manual') {
+  if (antivirusDisabled()) throw new HttpError(409, 'Antivirus is disabled; enable it before scanning');
+  if (instanceExcluded(serverId)) throw new HttpError(409, 'Instance is excluded from antivirus; remove the exclusion before scanning');
   const server = getServer(serverId); if (!server) throw new HttpError(404, 'Instance not found');
   if (active.has(serverId)) throw new HttpError(409, 'An instance scan is already queued or running');
   if (pending >= 8) throw new HttpError(503, 'Antivirus queue is full');
@@ -151,10 +213,11 @@ export function startInstanceScan(serverId: string, source = 'manual') {
   prep('INSERT INTO antivirus_scans(id,server_id,source,status,started_at) VALUES (?,?,?,?,?)').run(id, serverId, source, 'queued', Date.now());
   const job = beginJob('antivirus', serverId, 'Queued for malware scan');
   void queued(async () => {
-    if (controller.signal.aborted) throw new Error('Scan cancelled');
+    if (controller.signal.aborted || instanceExcluded(serverId)) throw new Error('Scan cancelled');
     const root = instanceDir(serverId); if (!fs.existsSync(root) || fs.lstatSync(root).isSymbolicLink() || safeJoinReal(root, '') !== fs.realpathSync(root)) throw new Error('Instance scan root is unavailable or unsafe');
     prep("UPDATE antivirus_scans SET status='running' WHERE id=?").run(id); progressJob(job, 'Scanning instance files and supported archives', null);
     const result = scanVerdict(await command(antivirusConfig().executable, scanArgs(antivirusConfig(), root, true), 1800000, controller.signal));
+    if (controller.signal.aborted || instanceExcluded(serverId)) throw new Error('Scan cancelled');
     const report = { findings: result.findings.map(f => f.replaceAll(root + path.sep, '').replaceAll(root + '/', '')), note: (result.incomplete ? 'Scanner also reported an incomplete scan. ' : '') + 'Non-destructive live filesystem scan. Symlinks are not followed. Files changing during scanning are not a consistent snapshot.' };
     prep('UPDATE antivirus_scans SET status=?,report=?,finished_at=? WHERE id=?').run(result.status, JSON.stringify(report), Date.now(), id);
     if (result.status === 'detected') {
@@ -174,7 +237,7 @@ const schedules = new Map<string, ScheduledTask>();
 export function antivirusSchedules() { return prep('SELECT * FROM antivirus_schedules').all() as unknown as { server_id: string; expression: string; enabled: number }[]; }
 function register(serverId: string, expression: string, enabled: boolean) {
   schedules.get(serverId)?.stop(); schedules.delete(serverId);
-  if (enabled) schedules.set(serverId, cron.schedule(expression, () => { try { startInstanceScan(serverId, 'scheduled'); } catch (err) { recordEvent('security.scan.failed', { id: serverId, name: getServer(serverId)?.name ?? serverId }, err instanceof Error ? err.message : 'Scheduled scan failed'); } }));
+  if (enabled) schedules.set(serverId, cron.schedule(expression, () => { if (instanceExcluded(serverId) || antivirusDisabled()) return; try { startInstanceScan(serverId, 'scheduled'); } catch (err) { recordEvent('security.scan.failed', { id: serverId, name: getServer(serverId)?.name ?? serverId }, err instanceof Error ? err.message : 'Scheduled scan failed'); } }));
 }
 export function saveAntivirusSchedule(serverId: string, expression: unknown, enabled: unknown) {
   if (!getServer(serverId)) throw new HttpError(404, 'Instance not found');
@@ -228,6 +291,7 @@ async function modInventory(generation: number) {
   const files: ModFile[] = [], directories = new Set<string>(); let entries = 0;
   const { getAddonSupport } = await import('./pluginService.js');
   for (const server of listServers()) {
+    if (instanceExcluded(server.id)) continue;
     if (generation !== liveGeneration) break;
     const root = instanceDir(server.id); if (!fs.existsSync(root) || fs.lstatSync(root).isSymbolicLink()) continue;
     directories.add(root); const support = getAddonSupport(server);
@@ -247,6 +311,7 @@ async function modInventory(generation: number) {
         else if (entry.isFile()) {
           if (++entries > 30000) throw new Error('Live mod inventory limit exceeded');
           let file: string, stat: fs.Stats; try { file = regularPath(root, rel); stat = await fs.promises.stat(file); } catch (err) { if ((err as NodeJS.ErrnoException).code === 'ENOENT') continue; throw err; }
+          if (allowedFile(server.id, rel)) continue;
           files.push({ serverId: server.id, relative: rel, file, fingerprint: fingerprint(stat), size: stat.size });
         }
       }
@@ -256,7 +321,7 @@ async function modInventory(generation: number) {
   return { files, directories };
 }
 async function scanLiveBatch(serverId: string, files: ModFile[], generation: number) {
-  const server = getServer(serverId); if (!server) return;
+  const server = getServer(serverId); if (!server || instanceExcluded(serverId)) return;
   const stage = stageFile(Buffer.alloc(0)); fs.unlinkSync(stage.file);
   const snapshots: { file: ModFile; name: string }[] = [];
   const id = crypto.randomUUID(), controller = new AbortController(); liveAbort = controller;
@@ -267,7 +332,7 @@ async function scanLiveBatch(serverId: string, files: ModFile[], generation: num
       if (generation !== liveGeneration) throw new Error('Live monitoring stopped');
       let source: string, before: fs.Stats; try { source = regularPath(instanceDir(serverId), file.relative); before = fs.statSync(source); } catch (err) { if ((err as NodeJS.ErrnoException).code === 'ENOENT') continue; throw err; }
       if (!before.isFile() || fingerprint(before) !== file.fingerprint) continue;
-      if (before.size > 1024 ** 3) throw new Error(`Live mod scan cannot inspect files above 1 GiB: ${file.relative}`);
+      if (before.size > antivirusMaxFileBytes()) throw new Error(`Live mod scan exceeds the configured antivirus file size limit: ${file.relative}`);
       if (snapshots.length && snapshots.reduce((sum, s) => sum + s.file.size, 0) + before.size > 128 * 1048576) break;
       const name = `mod-${snapshots.length}`;
       try { await fs.promises.copyFile(source, path.join(stage.dir, name), fs.constants.COPYFILE_EXCL); if (fingerprint(fs.statSync(source)) !== file.fingerprint) { fs.unlinkSync(path.join(stage.dir, name)); continue; } }

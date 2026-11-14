@@ -1,7 +1,7 @@
 import { fileWorkspaceRouter, authorizeFiles } from './fileWorkspace.routes.js';
 import { recycle, revision } from '../services/fileWorkspaceService.js';
 import { scanIncomingUploads } from './antivirus.routes.js';
-import { scanUploadBuffers } from '../services/antivirusService.js';
+import { antivirusMaxFileBytes, scanUploadBuffers } from '../services/antivirusService.js';
 import { Router, type Request } from 'express';
 import { assertDiskRoom } from '../services/limitsService.js';
 import multer from 'multer';
@@ -40,7 +40,7 @@ function instancePath(serverId: string, relative: string): string | null {
   }
 }
 
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 1024 * 1024 * 1024 } });
+const uploadFiles: import('express').RequestHandler = (req, res, next) => multer({ storage: multer.memoryStorage(), limits: { fileSize: antivirusMaxFileBytes() } }).array('files')(req, res, next);
 
 filesRouter.get(
   '/list',
@@ -143,7 +143,7 @@ filesRouter.get(
 filesRouter.post(
   '/upload',
   (req, _res, next) => { try { requirePermission(req, 'files.write'); assertDiskRoom(req.params.serverId, 'write'); next(); } catch (err) { next(err); } },
-  upload.array('files'), scanIncomingUploads,
+  uploadFiles, scanIncomingUploads,
   asyncHandler(async (req, res) => {
     requirePermission(req, 'files.write');
     assertDiskRoom(req.params.serverId, 'write');
