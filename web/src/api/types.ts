@@ -139,6 +139,7 @@ export interface AutoRestartState {
 }
 
 export interface ServerRecord {
+  banner?: BannerArtwork | null;
   id: string;
   name: string;
   backup_directory: string | null;
@@ -175,6 +176,15 @@ export interface ServerRecord {
   suspended_reason: string | null;
   suspended_at: string | null;
   suspended_by: string | null;
+}
+
+export interface BannerArtwork {
+  version: string;
+  mime: 'image/png' | 'image/jpeg' | 'image/webp';
+  width: number;
+  height: number;
+  positionX: number;
+  positionY: number;
 }
 
 export interface SystemSettings {

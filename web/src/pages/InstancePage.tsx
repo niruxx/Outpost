@@ -4,7 +4,7 @@ import { Tf2Tab } from './server/Tf2Tab.js';
 import { GamerulesTab } from './server/GamerulesTab.js';
 import { GameSettingsTab } from './server/GameSettingsTab.js';
 import { setVisibleInterval } from '../lib/perf.js';
-import { Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom';
+import { Link, Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import { motion, LayoutGroup } from 'framer-motion';
 import { Layout, NavItem, NavSectionLabel, useRail } from '../components/Layout.js';
 import { t } from '../i18n/index.js';
@@ -267,6 +267,7 @@ function HeaderPin({ serverId }: { serverId: string }) {
 }
 
 function InstanceTopBar({ server, compact }: { server: ServerRecord; compact: boolean }) {
+  const { can } = useServerDetail();
   const kind = gameKindOf(server);
   const endpoint = useEndpoint(server.id, server.server_port);
   const publicAddress = usePublicAddress();
@@ -286,7 +287,8 @@ function InstanceTopBar({ server, compact }: { server: ServerRecord; compact: bo
         animate={{ opacity: 1 }}
         transition={{ duration: 0.5 }}
       >
-        <GameBanner kind={kind} seed={server.id} />
+        <GameBanner kind={kind} seed={server.id} serverId={server.id} artwork={server.banner} />
+        {can('settings') && <Link to={`/instances/${server.id}/configuration?section=artwork`} className="state-layer absolute right-3 top-3 rounded-full bg-surface-950/80 px-3 py-1.5 text-xs font-medium text-ink-100 ring-1 ring-surface-600">Customize banner</Link>}
       </motion.div>
       {/* Only the tile overlaps the banner; the name and lifecycle buttons stay below it however
           they wrap, so they never sit on top of the art. */}

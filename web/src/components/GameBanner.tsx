@@ -1,5 +1,7 @@
 import { memo, useId, type ReactNode } from 'react';
 import { kindAccent, kindAppId, kindTileColors, type GameKind } from './GameArt.js';
+import type { BannerArtwork } from '../api/types.js';
+import { BannerImage } from './BannerImage.js';
 
 /**
  * Wide illustrated banners per game/app family — original, procedurally drawn scenes (voxel
@@ -390,7 +392,7 @@ function SteamScene({ accent, bg, u }: Omit<SceneProps, 'rand'>) {
  * The banner fills its (relatively positioned) parent. `fade` blends the bottom into the card
  * so content can sit on the card below the art.
  */
-export const GameBanner = memo(function GameBanner({ kind, seed, className = '', fade = true }: { kind: GameKind; seed?: string; className?: string; fade?: boolean }) {
+export const GameBanner = memo(function GameBanner({ kind, seed, className = '', fade = true, serverId, artwork, previewUrl, positionX = 50, positionY = 50 }: { kind: GameKind; seed?: string; className?: string; fade?: boolean; serverId?: string; artwork?: BannerArtwork | null; previewUrl?: string | null; positionX?: number; positionY?: number }) {
   const scene = sceneOf(kind);
   const accent = kindAccent(kind);
   const bg = kindTileColors(kind);
@@ -419,6 +421,7 @@ export const GameBanner = memo(function GameBanner({ kind, seed, className = '',
       <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio={GROUNDED.has(scene) ? 'xMidYMax slice' : 'xMidYMid slice'} className="h-full w-full">
         {body}
       </svg>
+      {previewUrl ? <img src={previewUrl} alt="" draggable={false} className="absolute inset-0 h-full w-full object-cover" style={{ objectPosition: `${positionX}% ${positionY}%` }} /> : serverId && artwork ? <BannerImage serverId={serverId} artwork={artwork} /> : null}
       {fade && <div className="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-surface-850 via-surface-850/40 to-transparent" />}
     </div>
   );

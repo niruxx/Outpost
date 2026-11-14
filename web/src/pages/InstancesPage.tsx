@@ -321,7 +321,7 @@ function BoxCard(props: RowProps) {
     <Card {...contextMenu} hover className={`group/card relative flex h-full flex-col overflow-hidden ${selectedRing(props)}`}>
       <StretchedLink {...props} />
         <div className="relative flex h-28 items-center justify-center bg-surface-900">
-          <GameBanner kind={kind} seed={server.id} fade={false} />
+          <GameBanner kind={kind} seed={server.id} serverId={server.id} artwork={server.banner} fade={false} />
           <div className="absolute left-2 top-2">
             {props.selecting ? <span className="m-1 block"><SelectMark selected={props.selected} /></span> : <PinButton {...props} />}
           </div>

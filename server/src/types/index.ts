@@ -104,6 +104,8 @@ export type ServerStatus =
 export type RestartPolicy = 'never' | 'on-crash' | 'always';
 
 export interface ServerRecord {
+  /** Derived from the instance's .outpost/banner.json; follows file backups and transfers. */
+  banner?: BannerArtwork | null;
   id: string;
   name: string;
   backup_directory: string | null;
@@ -161,6 +163,15 @@ export interface ServerRecord {
   suspended_reason: string | null;
   suspended_at: string | null;
   suspended_by: string | null;
+}
+
+export interface BannerArtwork {
+  version: string;
+  mime: 'image/png' | 'image/jpeg' | 'image/webp';
+  width: number;
+  height: number;
+  positionX: number;
+  positionY: number;
 }
 
 export interface BackupSchedule {

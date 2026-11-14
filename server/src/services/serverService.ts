@@ -1,6 +1,7 @@
 import { backupDir, rewindDir } from './backupStorageService.js';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
+import { readBannerArtwork } from './bannerService.js';
 import { prep } from '../db/db.js';
 import { instanceDir } from '../utils/paths.js';
 import type { Loader, Platform, RestartPolicy, ServerRecord, ServerStatus } from '../types/index.js';
@@ -78,11 +79,12 @@ export function duplicateServerRecord(source: ServerRecord, input: { name: strin
 }
 
 export function getServer(id: string): ServerRecord | undefined {
-  return prep('SELECT * FROM servers WHERE id = ?').get(id) as ServerRecord | undefined;
+  const server = prep('SELECT * FROM servers WHERE id = ?').get(id) as ServerRecord | undefined;
+  return server ? { ...server, banner: readBannerArtwork(id) } : undefined;
 }
 
 export function listServers(): ServerRecord[] {
-  return prep('SELECT * FROM servers ORDER BY created_at ASC').all() as unknown as ServerRecord[];
+  return (prep('SELECT * FROM servers ORDER BY created_at ASC').all() as unknown as ServerRecord[]).map((s) => ({ ...s, banner: readBannerArtwork(s.id) }));
 }
 
 export function setServerStatus(id: string, status: ServerStatus) {

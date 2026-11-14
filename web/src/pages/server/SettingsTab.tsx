@@ -1,4 +1,5 @@
 import { SteamAccountSelect } from '../../components/SteamAccountSelect.js';
+import { BannerArtworkCard } from './BannerArtworkCard.js';
 import { useEffect, useState } from 'react';
 import { DatabasesCard } from './DatabasesCard.js';
 import { BackupStorageCard } from './BackupStorageCard.js';
@@ -270,6 +271,13 @@ export function SettingsTab() {
       icon: 'configuration',
       description: 'Name, port, memory, launch arguments and automatic restarts.',
       content: general,
+    },
+    {
+      id: 'artwork',
+      label: 'Artwork',
+      icon: 'eye',
+      description: 'Custom banner artwork and crop position for this instance.',
+      content: <BannerArtworkCard />,
     },
     {
       id: 'game',

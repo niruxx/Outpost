@@ -1,5 +1,15 @@
 # Appearance and backgrounds
 
+## Instance banner artwork
+
+Open an instance's **Configuration → Artwork**, or select **Customize banner** in its header. Upload PNG, JPEG or still WebP artwork, preview the header and card crops, and adjust horizontal and vertical focus before saving. **Restore default** removes the custom artwork.
+
+Images can be up to 8 MB and 16 megapixels, with dimensions from 32×16 to 8192×8192. A wide image around 1200×300 is recommended. Custom banners appear in the instance header and the instance list's banner cards, and apply to everyone with access to that instance. Editing requires configuration permission; viewing requires instance access.
+
+Artwork is stored in the instance's `.outpost` folder and travels with full file backups and transfers. Missing or unreadable images fall back to the default illustration. Verify with `node server/test/banner-artwork.mjs` after building the server.
+
+## Account backgrounds
+
 Open **Configuration → Appearance → Background animation** to choose a background independently of your theme.
 
 Six custom styles are available:
