@@ -46,6 +46,8 @@ jobs:
         env:
           OUTPOST_TEST_BROWSER_UI: '1'
         run: node server/test/installed-addons.mjs
+      - name: Check instance headers and console player panels
+        run: node server/test/instance-ui.mjs
       - name: Preserve reports and screenshots
         if: always()
         uses: actions/upload-artifact@v7
@@ -56,5 +58,6 @@ jobs:
             artifacts/fleet-integrations/
             artifacts/game-capabilities/
             artifacts/installed-addons/
+            artifacts/instance-ui/
           retention-days: 14
           if-no-files-found: warn

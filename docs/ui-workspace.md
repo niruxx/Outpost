@@ -10,6 +10,12 @@ On **Instances**, expand **Saved views, sorting, groups and columns**. Filter by
 
 The instance list is local to the host in the URL; host grouping labels that host. Fleet operations across linked hosts are in **Configuration → Operations → Fleet bulk actions**.
 
+## Instance overview and console
+
+The status overview includes instance ownership, edition/version, process ID, uptime, creation date and automatic startup/restart settings, with shortcuts to files, backups, schedules, activity, capabilities and permitted configuration. The console shows the same details beside its output on wide screens, with the information panels below the console on smaller screens.
+
+**Connected players** uses the Minecraft Java/Bedrock roster or supported Steam server queries, refreshes every ten seconds while visible, and links to the player management page. Minecraft operator/whitelist flags and Steam ping/score/session details appear when available. A failed refresh labels the last successful snapshot; an unavailable query is never presented as an empty server. Stopped instances and instance types without a roster show their availability clearly. The panel is informational; player actions remain on the existing permission-checked player page.
+
 ## Persistent job center
 
 **Job center** records new installs (including container image pulls), updates, full backups, inbound instance imports and outbound transfers. It stores stage history, percentages when the operation supplies them, timestamps and outcomes in SQLite. Indeterminate operations display an indeterminate progress indicator. Records survive reloads and panel restarts; unconfirmed operations are marked interrupted, never automatically replayed. The API returns the newest 300 records before applying instance visibility, and startup retains the newest 2,000 completed/interrupted records. Old activity is not backfilled.

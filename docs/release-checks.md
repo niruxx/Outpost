@@ -46,6 +46,8 @@ Each run replaces its own known artifact filenames so stale failure files are no
 
 ## Continuous integration
 
+`npm run test:instance-ui` builds the web app and checks the instance header, status details and console player sidebar against disposable HTTP/WebSocket fixtures. It checks the banner button's visible bounds and hit target across six themes and 320/390/768/1280px widths, desktop/mobile sidebar placement, Java/Bedrock/Steam rosters, failed and empty queries, stopped/unsupported instances, read-only access and late responses after switching instances. Screenshots and failure diagnostics are written to `artifacts/instance-ui/`. CI runs this check after the shared build. These fixtures verify panel behavior without requiring live game servers.
+
 The [release-checks workflow](../.github/workflows/release-checks.yml) runs on pull requests, main/master pushes, version tags and manual dispatch. It builds and tests on Ubuntu 24.04 and Windows Server 2022 using Node 22, and preserves reports/screenshots for 14 days even when checks fail. Browser versions are recorded because runner images update over time.
 
 To require these checks before merging, add both `Browser resilience` matrix jobs to the repository's branch rules. Adding the workflow does not change branch protection or publish a release automatically.

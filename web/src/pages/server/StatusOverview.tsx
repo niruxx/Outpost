@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../../api/client.js';
-import { isMinecraftPlatform, isProxyLoader, type PlayerInfo } from '../../api/types.js';
 import { setVisibleInterval } from '../../lib/perf.js';
 import { t } from '../../i18n/index.js';
 import { Card, CardTitle, Skeleton } from '../../components/ui.js';
@@ -10,6 +9,8 @@ import { EventItem, type EventPage, type PanelEvent } from '../../components/Eve
 import type { LogLine } from '../../hooks/useConsoleSocket.js';
 import { useServerDetail } from './ServerContext.js';
 import { lineColor } from './ConsoleTab.js';
+import { ConnectedPlayersCard } from './ConnectedPlayersCard.js';
+import { InstanceDetailsCard } from './InstanceDetailsCard.js';
 
 // Strips terminal color/cursor escape codes for the plain-text preview.
 // eslint-disable-next-line no-control-regex
@@ -44,58 +45,6 @@ function ConsolePreview({ lines, connected }: { lines: LogLine[]; connected: boo
           ))
         )}
       </div>
-    </Card>
-  );
-}
-
-/** Who's online right now (Minecraft rosters; Steam games have the server-browser card). */
-function OnlinePlayers({ serverId, running }: { serverId: string; running: boolean }) {
-  const [players, setPlayers] = useState<PlayerInfo[] | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    const load = () =>
-      api
-        .get<{ players: PlayerInfo[] }>(`/servers/${serverId}/players`)
-        .then((r) => !cancelled && setPlayers(r.players))
-        .catch(() => !cancelled && setPlayers([]));
-    load();
-    const stop = setVisibleInterval(load, 15_000);
-    return () => {
-      cancelled = true;
-      stop();
-    };
-  }, [serverId]);
-  const online = (players ?? []).filter((p) => p.online);
-  return (
-    <Card className="p-5">
-      <CardTitle action={<Link to="../players" className="text-xs font-medium text-accent-400 hover:underline">{t('All players')}</Link>}>
-        Online now
-      </CardTitle>
-      {players === null ? (
-        <Skeleton className="h-8 w-2/3" />
-      ) : !running ? (
-        <p className="text-sm text-ink-400">{t('Start the server to see who’s playing.')}</p>
-      ) : online.length === 0 ? (
-        <p className="text-sm text-ink-400">{t('Nobody is online.')}</p>
-      ) : (
-        <>
-          <p className="mb-3 text-2xl font-normal text-ink-50">
-            {online.length} <span className="text-sm text-ink-400">{online.length === 1 ? t('player') : t('players')}</span>
-          </p>
-          <ul className="flex flex-wrap gap-1.5">
-            {online.slice(0, 24).map((p) => (
-              <li key={p.name} className="inline-flex items-center gap-1.5 rounded-full bg-surface-900 py-1 pl-1 pr-2.5 text-xs text-ink-200">
-                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-accent-container text-[10px] font-semibold text-accent-on-container">
-                  {p.name.slice(0, 1).toUpperCase()}
-                </span>
-                {p.name}
-                {p.op && <Icon name="shield" className="h-3 w-3 text-yellow-400" />}
-              </li>
-            ))}
-            {online.length > 24 && <li className="px-2 py-1 text-xs text-ink-400">+{online.length - 24}</li>}
-          </ul>
-        </>
-      )}
     </Card>
   );
 }
@@ -137,18 +86,19 @@ function RecentActivity({ serverId }: { serverId: string }) {
 }
 
 export function StatusOverview({ lines, connected }: { lines: LogLine[]; connected: boolean }) {
-  const { serverId, server, running } = useServerDetail();
+  const { serverId, server } = useServerDetail();
   if (!server) return null;
-  // Proxies have no world or roster of their own.
-  const roster = isMinecraftPlatform(server.platform) && !isProxyLoader(server.loader);
   return (
-    <div className="grid gap-4 lg:grid-cols-3">
-      <div className="min-w-0 lg:col-span-2">
-        <ConsolePreview lines={lines} connected={connected} />
-      </div>
-      <div className="flex min-w-0 flex-col gap-4">
-        {roster && <OnlinePlayers serverId={serverId} running={running} />}
-        <RecentActivity serverId={serverId} />
+    <div className="space-y-4">
+      <InstanceDetailsCard />
+      <div className="grid gap-4 lg:grid-cols-3">
+        <div className="min-w-0 lg:col-span-2">
+          <ConsolePreview lines={lines} connected={connected} />
+        </div>
+        <div className="flex min-w-0 flex-col gap-4">
+          <ConnectedPlayersCard />
+          <RecentActivity serverId={serverId} />
+        </div>
       </div>
     </div>
   );

@@ -297,7 +297,9 @@ function InstanceTopBar({ server, compact }: { server: ServerRecord; compact: bo
         transition={{ duration: 0.5 }}
       >
         <GameBanner kind={kind} seed={server.id} serverId={server.id} artwork={server.banner} />
-        {can('settings') && <Link to={`/instances/${server.id}/configuration?section=artwork`} className="state-layer absolute right-3 top-3 rounded-full bg-surface-950/80 px-3 py-1.5 text-xs font-medium text-ink-100 ring-1 ring-surface-600">Customize banner</Link>}
+        {can('settings') && <div className="absolute inset-x-3 top-3 z-10 flex justify-end">
+          <Link to={`/instances/${server.id}/configuration?section=artwork`} className="state-layer inline-flex min-h-9 max-w-full items-center justify-center rounded-full bg-surface-950/90 px-3 py-1.5 text-xs font-medium text-ink-100 ring-1 ring-surface-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-400">Customize banner</Link>
+        </div>}
       </motion.div>
       {/* Only the tile overlaps the banner; the name and lifecycle buttons stay below it however
           they wrap, so they never sit on top of the art. */}

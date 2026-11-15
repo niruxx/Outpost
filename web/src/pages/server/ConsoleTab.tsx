@@ -6,6 +6,8 @@ import { useConsoleSocket } from '../../hooks/useConsoleSocket.js';
 import { api } from '../../api/client.js';
 import { Button, Card, Input, Spinner } from '../../components/ui.js';
 import { ConsoleHistory } from './ConsoleHistory.js';
+import { ConnectedPlayersCard } from './ConnectedPlayersCard.js';
+import { InstanceDetailsCard } from './InstanceDetailsCard.js';
 
 // Terminal palette: status hues follow the MD3 scheme; plain output stays a neutral light gray.
 /** Console line colors — fixed light-on-dark, since the terminal stays dark in every theme. */
@@ -117,7 +119,8 @@ export function ConsoleTab() {
   const isRunningLike = status === 'running' || status === 'starting';
 
   return (
-    <div className="flex h-full min-h-[420px] flex-col gap-3">
+    <div className="grid min-h-[420px] gap-4 xl:h-full xl:min-h-0 xl:grid-cols-[minmax(0,1fr)_19rem]" data-console-layout>
+      <div className="flex h-[65vh] min-h-[420px] min-w-0 flex-col gap-3 xl:h-full xl:min-h-0" data-console-main>
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex w-full items-center justify-end gap-4 text-xs text-ink-400">
           {canWrite && (
@@ -204,6 +207,12 @@ export function ConsoleTab() {
           </Button>
         </form>
       )}
+      <p className="text-xs text-ink-500">{canWrite ? 'Use ↑ / ↓ for command history. Output follows new lines until you scroll up.' : 'Console is read-only for this account. Output follows new lines until you scroll up.'}</p>
+      </div>
+      <aside aria-label="Console information" className="min-w-0 space-y-4 xl:min-h-0 xl:overflow-y-auto xl:pr-1">
+        <ConnectedPlayersCard />
+        <InstanceDetailsCard compact />
+      </aside>
     </div>
   );
 }
