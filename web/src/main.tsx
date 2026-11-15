@@ -7,6 +7,15 @@ import './index.css';
 import './wallpaper.css';
 import { applyWallpaperPreferences, storedWallpaperPreferences } from './lib/wallpaper.js';
 
+// Font CDN failures must not prevent the local panel from rendering. The stylesheet starts
+// with non-screen media and is applied when ready; all themes have local font fallbacks.
+const optionalFonts = document.querySelector<HTMLLinkElement>('link[data-optional-fonts]');
+if (optionalFonts) {
+  const applyFonts = () => { optionalFonts.media = 'all'; };
+  if (optionalFonts.sheet) applyFonts();
+  else optionalFonts.addEventListener('load', applyFonts, { once: true });
+}
+
 // Before the first render, so the page never flashes the default theme.
 applyTheme(storedTheme());
 applyWallpaper(storedWallpaper());

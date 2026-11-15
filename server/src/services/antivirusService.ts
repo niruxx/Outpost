@@ -9,6 +9,7 @@ import { HttpError } from '../utils/asyncHandler.js';
 import { getSetting, setSetting } from './systemSettingsService.js';
 import { getServer, listServers } from './serverService.js';
 import { beginJob, finishJob, progressJob } from './jobService.js';
+import { requestContext } from '../utils/requestContext.js';
 import { recordEvent } from './eventLogService.js';
 
 export interface AntivirusConfig { enabled: boolean; executable: string; updater: string; database: string; stopOnDetection: boolean; realtime: boolean; maxFileSizeMiB: number; maxScanSizeMiB: number }
@@ -112,10 +113,13 @@ function retainBlocked(buffer: Buffer, name: string, serverId: string | null, si
 }
 export async function scanUploadBuffers(files: { buffer: Buffer; name: string }[], serverId: string | null = null) {
   if (!protectionEnabled(serverId) || !files.length) return;
+  const job = beginJob('antivirus-upload', serverId ?? requestContext()?.serverId ?? null, 'Queued for upload antivirus check');
+  try {
   await queued(async () => {
     const config = antivirusConfig();
     // Never release an earlier file in a multipart batch before the entire batch passes.
     for (const file of files) {
+      progressJob(job, `Antivirus: checking ${file.name.slice(0, 160)}`, null);
       if (file.buffer.length > config.maxFileSizeMiB * 1048576) throw new HttpError(413, `Protected upload exceeds the configured ${config.maxFileSizeMiB} MiB file limit`);
       const digest = crypto.createHash('sha256').update(file.buffer).digest('hex');
       if (serverId && allowedItems(serverId).some(row => row.sha256 === digest)) continue;
@@ -131,10 +135,16 @@ export async function scanUploadBuffers(files: { buffer: Buffer; name: string }[
       } finally { discardStage(stage.dir); }
     }
   });
+  finishJob(job);
+  } catch (error) { finishJob(job, error); throw error; }
 }
 export async function scanIngestedPath(target: string, recursive = false) {
   if (!protectionEnabled()) return;
-  await queued(async () => { const config = antivirusConfig(); const result = scanVerdict(await command(config.executable, scanArgs(config, target, recursive), 1800000)); if (result.status !== 'clean') throw new HttpError(422, 'Antivirus blocked imported content: ' + result.findings.slice(0, 5).map(f => f.replace(target, 'import')).join('; ')); });
+  const job = beginJob('antivirus-upload', requestContext()?.serverId ?? null, 'Queued for imported-content antivirus check');
+  try {
+    await queued(async () => { progressJob(job, 'Antivirus: checking imported files and archives', null); const config = antivirusConfig(); const result = scanVerdict(await command(config.executable, scanArgs(config, target, recursive), 1800000)); if (result.status !== 'clean') throw new HttpError(422, 'Antivirus blocked imported content: ' + result.findings.slice(0, 5).map(f => f.replace(target, 'import')).join('; ')); });
+    finishJob(job);
+  } catch (error) { finishJob(job, error); throw error; }
 }
 export async function downloadScannedMod(url: string, target: string, serverId: string | null = null) {
   const { downloadFile } = await import('../utils/download.js');

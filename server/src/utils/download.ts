@@ -2,6 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
+import { beginJob, finishJob, progressJob } from '../services/jobService.js';
+import { requestContext } from './requestContext.js';
 
 /** Verbose, line-by-line log callback — mirrors what `npm install --verbose` prints. */
 export type LogFn = (line: string) => void;
@@ -56,7 +58,15 @@ function translateAbortError(err: unknown, url: string): Error {
 }
 
 /** Streams a URL to disk, logging periodic byte-progress lines the same way a verbose installer would. */
-export async function downloadFile(
+export async function downloadFile(url: string, destination: string, onProgress?: (pct: number) => void, onLog?: LogFn): Promise<void> {
+  const job = beginJob('content-download', requestContext()?.serverId ?? null, `Downloading ${path.basename(destination)}`);
+  let last = 0;
+  try {
+    await downloadFileUntracked(url, destination, pct => { onProgress?.(pct); if (Date.now() - last >= 250) { last = Date.now(); progressJob(job, `Downloading ${path.basename(destination)}`, Math.min(99, pct)); } }, onLog);
+    finishJob(job);
+  } catch (error) { finishJob(job, error); throw error; }
+}
+async function downloadFileUntracked(
   url: string,
   destination: string,
   onProgress?: (pct: number) => void,

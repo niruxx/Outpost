@@ -9,6 +9,7 @@ import { isRunning, sendCommand } from './processManager.js';
 import { appendLine, onLine } from './consoleLogService.js';
 import { readServerProperties } from './propertiesService.js';
 import { isMinecraftPlatform, type ServerRecord } from '../types/index.js';
+import { beginJob, finishJob, progressJob } from './jobService.js';
 
 /**
  * World Rewind — restore points for Minecraft worlds.
@@ -199,6 +200,11 @@ const busy = new Set<string>();
  * only — a manual one is always kept).
  */
 export async function createPoint(server: ServerRecord, reason: RestorePoint['reason']): Promise<RestorePoint | null> {
+  const job = beginJob('snapshot', server.id, 'Preparing world restore point');
+  try { const result = await createPointTracked(server, reason, job); finishJob(job); return result; }
+  catch (error) { finishJob(job, error); throw error; }
+}
+async function createPointTracked(server: ServerRecord, reason: RestorePoint['reason'], job: string): Promise<RestorePoint | null> {
   const release = acquireBackupStorage(server.id);
   try {
     requireMinecraft(server);
@@ -213,10 +219,13 @@ export async function createPoint(server: ServerRecord, reason: RestorePoint['re
     let lengths: Map<string, number> | null = null;
     busy.add(server.id);
     try {
+      progressJob(job, 'Flushing world data before snapshot', null);
       lengths = await quiesce(server);
+      progressJob(job, 'Copying world files into restore point', null);
       const files: Manifest['files'] = {};
       let newBytes = 0;
       let totalBytes = 0;
+      let copiedCount = 0;
       let changed = !prev || prev.worlds.join() !== worlds.join();
       for (const world of worlds) {
         const rels: string[] = [];
@@ -248,6 +257,7 @@ export async function createPoint(server: ServerRecord, reason: RestorePoint['re
           }
           totalBytes += size;
           files[rel] = { size, mtimeMs: st.mtimeMs };
+          if (++copiedCount % 128 === 0) progressJob(job, `Saving snapshot: ${copiedCount} files copied`, null);
         }
       }
       if (prev && Object.keys(prev.files).length !== Object.keys(files).length) changed = true;
@@ -290,6 +300,11 @@ export function deletePoint(server: ServerRecord, pointId: string) {
 // ---------------------------------------------------------------------------
 
 export async function restorePoint(server: ServerRecord, pointId: string, only?: string[]): Promise<{ restored: string[]; safetyPoint: string | null }> {
+  const job = beginJob('snapshot-restore', server.id, 'Preparing world restore');
+  try { const result = await restorePointTracked(server, pointId, only); finishJob(job); return result; }
+  catch (error) { finishJob(job, error); throw error; }
+}
+async function restorePointTracked(server: ServerRecord, pointId: string, only?: string[]): Promise<{ restored: string[]; safetyPoint: string | null }> {
   const release = acquireBackupStorage(server.id);
   try {
     requireMinecraft(server);

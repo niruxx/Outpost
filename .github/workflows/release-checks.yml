@@ -48,6 +48,14 @@ jobs:
         run: node server/test/installed-addons.mjs
       - name: Check instance headers and console player panels
         run: node server/test/instance-ui.mjs
+      - name: Check shared UI and navigation state
+        run: node server/test/ui-consistency.mjs
+      - name: Check delayed instance and socket responses
+        run: node server/test/ui-state.mjs
+      - name: Check responsive page controls
+        run: node server/test/page-layout-review.mjs
+      - name: Check operation queue and antivirus progress
+        run: node server/test/operation-queue.mjs
       - name: Preserve reports and screenshots
         if: always()
         uses: actions/upload-artifact@v7
@@ -59,5 +67,8 @@ jobs:
             artifacts/game-capabilities/
             artifacts/installed-addons/
             artifacts/instance-ui/
+            artifacts/ui-consistency/
+            artifacts/page-layout-review/
+            artifacts/operation-queue/
           retention-days: 14
           if-no-files-found: warn

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { wsUrl } from '../api/client.js';
 import type { ProcessStats, ServerStatus } from '../api/types.js';
 
@@ -41,78 +41,63 @@ const MAX_LINES = 4000;
 const MAX_STATS_SAMPLES = 150; // ~10 minutes at the 4s server-side poll interval
 let counter = 0;
 
-export function useConsoleSocket(serverId: string | undefined): ConsoleState {
-  const [lines, setLines] = useState<LogLine[]>([]);
-  const [status, setStatus] = useState<ServerStatus | null>(null);
-  const [stats, setStats] = useState<Stats>(EMPTY_STATS);
-  const [statsHistory, setStatsHistory] = useState<StatsSample[]>([]);
-  const [connected, setConnected] = useState(false);
-  const [installProgress, setInstallProgress] = useState<{ pct: number; message: string } | null>(null);
-  const socketRef = useRef<WebSocket | null>(null);
+const emptyConsole = (): ConsoleState => ({ lines: [], status: null, stats: { ...EMPTY_STATS }, statsHistory: [], connected: false, installProgress: null });
 
+export function useConsoleSocket(serverId: string | undefined): ConsoleState {
+  const [snapshot, setSnapshot] = useState<ConsoleState & { serverId?: string }>(() => ({ ...emptyConsole(), serverId }));
   useEffect(() => {
+    setSnapshot({ ...emptyConsole(), serverId });
     if (!serverId) return;
     let cancelled = false;
-    let retryTimer: ReturnType<typeof setTimeout>;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
     let flushTimer: ReturnType<typeof setTimeout> | undefined;
+    let currentSocket: WebSocket | null = null;
     const pending: LogLine[] = [];
-
+    function clearPending() { clearTimeout(flushTimer); flushTimer = undefined; pending.length = 0; }
     function connect() {
+      if (cancelled) return;
       const ws = new WebSocket(wsUrl(`/ws/console/${serverId}`));
-      socketRef.current = ws;
-
-      ws.onopen = () => setConnected(true);
+      currentSocket = ws;
+      const current = () => !cancelled && currentSocket === ws;
+      ws.onopen = () => { if (current()) setSnapshot(old => ({ ...old, connected: true })); };
       ws.onclose = () => {
-        setConnected(false);
-        if (!cancelled) retryTimer = setTimeout(connect, 2000);
+        if (!current()) return;
+        setSnapshot(old => ({ ...old, connected: false }));
+        retryTimer = setTimeout(connect, 2000);
       };
-      ws.onerror = () => ws.close();
-      ws.onmessage = (event) => {
-        const msg = JSON.parse(event.data);
+      ws.onerror = () => { if (current()) ws.close(); };
+      ws.onmessage = event => {
+        if (!current()) return;
+        let msg;
+        try { msg = JSON.parse(event.data); } catch { return; }
+        if (!msg || typeof msg !== 'object') return;
         if (msg.type === 'hello') {
-          setStatus(msg.status);
-          if (msg.runtime?.stats) setStats({ ...EMPTY_STATS, ...msg.runtime.stats });
-          setLines(
-            (msg.history as string[]).map((line) => ({ id: counter++, stream: 'stdout' as const, line, at: Date.now() }))
-          );
-        } else if (msg.type === 'log') {
-          // A busy server prints dozens of lines a second; render them in batches.
+          // Reconnect history supersedes any buffered lines from the disconnected socket.
+          clearPending();
+          setSnapshot(old => ({ ...old, status: msg.status,
+            stats: { ...EMPTY_STATS, ...msg.runtime?.stats }, installProgress: null,
+            lines: (Array.isArray(msg.history) ? msg.history : []).filter((line: unknown): line is string => typeof line === 'string').slice(-MAX_LINES).map((line: string) => ({ id: counter++, stream: 'stdout' as const, line, at: Date.now() })) }));
+        } else if (msg.type === 'log' && typeof msg.line === 'string') {
           pending.push({ id: counter++, stream: msg.stream, line: msg.line, at: msg.at });
-          if (!flushTimer) {
-            flushTimer = setTimeout(() => {
-              flushTimer = undefined;
-              const batch = pending.splice(0);
-              setLines((prev) => {
-                const next = prev.concat(batch);
-                return next.length > MAX_LINES ? next.slice(next.length - MAX_LINES) : next;
-              });
-            }, 200);
-          }
+          if (!flushTimer) flushTimer = setTimeout(() => {
+            flushTimer = undefined;
+            if (!current()) { pending.length = 0; return; }
+            const batch = pending.splice(0);
+            setSnapshot(old => ({ ...old, lines: old.lines.concat(batch).slice(-MAX_LINES) }));
+          }, 200);
         } else if (msg.type === 'status') {
-          setStatus(msg.status);
-          if (msg.status !== 'installing') setInstallProgress(null);
+          setSnapshot(old => ({ ...old, status: msg.status, installProgress: ['installing', 'updating'].includes(msg.status) ? old.installProgress : null }));
         } else if (msg.type === 'stats') {
           const { type: _type, ...rest } = msg;
           const sample: Stats = { ...EMPTY_STATS, ...rest };
-          setStats(sample);
-          setStatsHistory((prev) => {
-            const next = [...prev, { ...sample, t: Date.now() }];
-            return next.length > MAX_STATS_SAMPLES ? next.slice(next.length - MAX_STATS_SAMPLES) : next;
-          });
-        } else if (msg.type === 'install_progress') {
-          setInstallProgress({ pct: msg.pct, message: msg.message });
+          setSnapshot(old => ({ ...old, stats: sample, statsHistory: [...old.statsHistory, { ...sample, t: Date.now() }].slice(-MAX_STATS_SAMPLES) }));
+        } else if (msg.type === 'install_progress' && typeof msg.pct === 'number' && typeof msg.message === 'string') {
+          setSnapshot(old => ({ ...old, installProgress: { pct: Math.max(0, Math.min(100, msg.pct)), message: msg.message } }));
         }
       };
     }
-
     connect();
-    return () => {
-      cancelled = true;
-      clearTimeout(flushTimer);
-      clearTimeout(retryTimer);
-      socketRef.current?.close();
-    };
+    return () => { cancelled = true; clearPending(); clearTimeout(retryTimer); currentSocket?.close(); };
   }, [serverId]);
-
-  return { lines, status, stats, statsHistory, connected, installProgress };
+  return snapshot.serverId === serverId ? snapshot : emptyConsole();
 }

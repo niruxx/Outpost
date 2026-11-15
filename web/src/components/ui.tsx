@@ -13,18 +13,19 @@ export function Notice({ tone = 'info', children }: { tone?: 'info' | 'warning' 
     warning: 'bg-yellow-500/15 text-yellow-400',
     error: 'bg-error-container text-error-on-container',
   };
-  return <div className={`rounded-2xl px-4 py-3 text-sm leading-relaxed ${tones[tone]}`}>{children}</div>;
+  return <div className={`min-w-0 break-words rounded-2xl px-4 py-3 text-sm leading-relaxed ${tones[tone]}`}>{children}</div>;
 }
 
 /** MD3 buttons: filled (primary), tonal (default), error-tonal (danger), text (ghost), outlined. */
 export function Button({
   variant = 'default',
+  type = 'button',
   className = '',
   children,
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'default' | 'primary' | 'danger' | 'ghost' | 'outlined' }) {
   const base =
-    'state-layer inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-medium tracking-[0.01em] transition-[background-color,box-shadow,transform] duration-150 enabled:active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-[0.38] select-none';
+    'state-layer inline-flex shrink-0 items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-medium tracking-[0.01em] transition-[background-color,box-shadow,transform] duration-150 enabled:active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-[0.38] select-none';
   const variants: Record<string, string> = {
     default: 'bg-secondary-container text-secondary-on-container',
     primary: 'bg-accent-400 text-accent-on hover:shadow-flat',
@@ -33,14 +34,14 @@ export function Button({
     outlined: 'border border-surface-500 bg-transparent text-accent-400',
   };
   return (
-    <button className={`ui-btn ui-btn-${variant} ${base} ${variants[variant]} ${className}`} {...props}>
+    <button type={type} className={`ui-btn ui-btn-${variant} ${base} ${variants[variant]} ${className}`} {...props}>
       {tc(children)}
     </button>
   );
 }
 
 const FIELD_BASE =
-  'ui-input w-full rounded-lg border border-surface-500 bg-transparent px-3 py-2 text-sm text-ink-100 outline-none transition-colors duration-150 hover:border-ink-300 focus:border-accent-400 focus:ring-1 focus:ring-accent-400 disabled:opacity-[0.38]';
+  'ui-input min-w-0 w-full rounded-lg border border-surface-500 bg-transparent px-3 py-2 text-sm text-ink-100 outline-none transition-colors duration-150 hover:border-ink-300 focus:border-accent-400 focus:ring-1 focus:ring-accent-400 disabled:opacity-[0.38]';
 
 /** MD3 outlined text field. */
 export function Input(props: InputHTMLAttributes<HTMLInputElement>) {
@@ -67,7 +68,7 @@ export function Card({
   return (
     <div
       {...rest}
-      className={`ui-card rounded-3xl ${glass ? 'bg-surface-850' : 'bg-surface-900'} ${
+      className={`ui-card min-w-0 rounded-3xl ${glass ? 'bg-surface-850' : 'bg-surface-900'} ${
         hover ? 'transition-[background-color,transform,box-shadow] duration-200 ease-out hover:-translate-y-0.5 hover:bg-surface-800 hover:shadow-card' : ''
       } ${className}`}
     >
@@ -79,8 +80,8 @@ export function Card({
 /** Section heading used at the top of cards. */
 export function CardTitle({ children, action }: { children: ReactNode; action?: ReactNode }) {
   return (
-    <div className="mb-4 flex items-center justify-between gap-3">
-      <h2 className="ui-card-title text-base font-medium text-ink-100">{tc(children)}</h2>
+    <div className="ui-card-heading mb-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+      <h2 className="ui-card-title min-w-0 break-words text-base font-medium text-ink-100">{tc(children)}</h2>
       {action}
     </div>
   );
@@ -113,7 +114,7 @@ export function Badge({
     blue: 'bg-sky-400',
   };
   return (
-    <span className={`ui-badge inline-flex items-center gap-1.5 rounded-lg px-2 py-0.5 text-xs font-medium transition-colors duration-300 ${BADGE_TONES[tone]}`}>
+    <span className={`ui-badge inline-flex max-w-full items-center gap-1.5 break-words rounded-lg px-2 py-0.5 text-xs font-medium transition-colors duration-300 ${BADGE_TONES[tone]}`}>
       {pulse && (
         <span className="relative flex h-1.5 w-1.5">
           <span className={`absolute inline-flex h-full w-full animate-ping-slow rounded-full ${dotColor[tone]}`} />
@@ -127,7 +128,7 @@ export function Badge({
 
 export function Spinner({ className = 'h-4 w-4' }: { className?: string }) {
   return (
-    <svg className={`animate-spin text-current ${className}`} viewBox="0 0 24 24" fill="none">
+    <svg aria-hidden="true" className={`animate-spin text-current ${className}`} viewBox="0 0 24 24" fill="none">
       <circle className="opacity-20" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
       <path className="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
     </svg>
@@ -172,22 +173,22 @@ export function Modal({
         >
           <motion.div
             ref={ref} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}
-            className={`ui-modal flex max-h-[85vh] w-full ${MODAL_SIZE[size]} flex-col rounded-4xl bg-surface-800 shadow-card`}
+            className={`ui-modal flex max-h-[calc(100dvh-2rem)] min-w-0 w-full ${MODAL_SIZE[size]} flex-col overflow-hidden rounded-4xl bg-surface-800 shadow-card sm:max-h-[85dvh]`}
             initial={{ opacity: 0, scale: 0.95, y: 12 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96, y: 8 }}
             transition={springy}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="ui-modal-header flex shrink-0 items-center justify-between px-6 pb-2 pt-6">
-              <h3 id={titleId} className="ui-modal-title text-xl font-normal text-ink-50">{t(title)}</h3>
-              <button onClick={onClose} aria-label="Close" className="ui-modal-close state-layer rounded-full p-2 text-ink-300">
+            <div className="ui-modal-header flex shrink-0 items-center justify-between gap-3 px-4 pb-2 pt-4 sm:px-6 sm:pt-6">
+              <h3 id={titleId} className="ui-modal-title min-w-0 break-words text-xl font-normal text-ink-50">{t(title)}</h3>
+              <button type="button" onClick={onClose} aria-label="Close" className="ui-modal-close state-layer flex h-10 w-10 shrink-0 items-center justify-center rounded-full p-2 text-ink-300">
                 <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                   <path d="M18 6L6 18M6 6l12 12" />
                 </svg>
               </button>
             </div>
-            <div className="ui-modal-body overflow-y-auto px-6 pb-6 pt-2">{children}</div>
+            <div className="ui-modal-body min-h-0 min-w-0 overflow-y-auto px-4 pb-4 pt-2 sm:px-6 sm:pb-6">{children}</div>
           </motion.div>
         </motion.div>
       )}
@@ -197,7 +198,7 @@ export function Modal({
 
 export function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <label className="block space-y-1">
+    <label className="block min-w-0 space-y-1">
       <span className="text-xs font-medium text-ink-300">{t(label)}</span>
       {children}
     </label>
@@ -212,7 +213,7 @@ export function ErrorText({ children }: { children: ReactNode }) {
           initial={{ opacity: 0, height: 0 }}
           animate={{ opacity: 1, height: 'auto' }}
           exit={{ opacity: 0, height: 0 }}
-          className="overflow-hidden rounded-xl bg-error-container px-3 py-2 text-sm text-error-on-container"
+          role="alert" className="min-w-0 break-words overflow-hidden rounded-xl bg-error-container px-3 py-2 text-sm text-error-on-container"
         >
           {children}
         </motion.p>

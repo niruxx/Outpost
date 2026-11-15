@@ -1,6 +1,7 @@
 import { ExtensionsPage } from './pages/ExtensionsPage.js';
 import { CompatibilityPage } from './pages/CompatibilityPage.js';
 import { GlobalActivityBar } from './components/GlobalActivityBar.js';
+import { OperationQueue } from './components/OperationQueue.js';
 import { CommandPalette } from './components/CommandPalette.js';
 import { KeyboardShortcuts } from './components/KeyboardShortcuts.js';
 import { UnsavedChangesGuard } from './lib/unsaved.js';
@@ -199,6 +200,7 @@ export default function App() {
           <ConfirmProvider>
             <ContextMenuProvider>
               <GlobalActivityBar />
+              <OperationQueue />
               <ActivityTracker />
               <AppRoutes />
               <CommandPalette />

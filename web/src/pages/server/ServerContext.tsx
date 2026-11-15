@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { setVisibleInterval } from '../../lib/perf.js';
 import { useParams } from 'react-router-dom';
 import { api, ApiError } from '../../api/client.js';
@@ -35,62 +35,57 @@ export function ServerDetailProvider({ children, serverId: explicitId }: { child
   const params = useParams<{ serverId: string }>();
   const serverId = explicitId ?? params.serverId;
   const { user } = useAuth();
-  const [server, setServer] = useState<ServerRecord | null>(null);
-  const [runtime, setRuntime] = useState<RuntimeInfo | null>(null);
-  const [running, setRunning] = useState(false);
-  const [configAccess, setConfigAccess] = useState<Record<string, boolean>>({});
-  const [permissions, setPermissions] = useState<ServerPermission[]>([]);
-  const [autoRestart, setAutoRestart] = useState<AutoRestartState | null>(null);
-  const [owner, setOwner] = useState<{ id: string; username: string } | null>(null);
-  const [suspendedMessage, setSuspendedMessage] = useState<string | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  interface DetailSnapshot {
+    serverId: string | undefined; server: ServerRecord | null; runtime: RuntimeInfo | null;
+    running: boolean; configAccess: Record<string, boolean>; permissions: ServerPermission[];
+    autoRestart: AutoRestartState | null; owner: { id: string; username: string } | null;
+    suspendedMessage: string | null; loadError: string | null;
+  }
+  const empty = { server: null, runtime: null, running: false, configAccess: {}, permissions: [], autoRestart: null, owner: null, suspendedMessage: null, loadError: null };
+  const [snapshot, setSnapshot] = useState<DetailSnapshot>({ ...empty, serverId });
+  const activeId = useRef(serverId), mounted = useRef(false), serial = useRef(0), pending = useRef<number | null>(null);
+  activeId.current = serverId;
 
-  async function refresh() {
-    if (!serverId) return;
+  const refresh = useCallback(async () => {
+    if (!serverId || !mounted.current || activeId.current !== serverId) return;
+    const sequence = ++serial.current; pending.current = sequence;
+    const current = () => mounted.current && activeId.current === serverId && sequence === serial.current;
     try {
       const res = await api.get<{
-        server: ServerRecord;
-        runtime: RuntimeInfo | null;
-        running: boolean;
-        configAccess?: Record<string, boolean>;
-        permissions: ServerPermission[];
-        autoRestart?: AutoRestartState;
-        owner?: { id: string; username: string } | null;
-      }>(
-        `/servers/${serverId}`
-      );
-      setServer(res.server);
-      setConfigAccess(res.configAccess ?? {});
-      setPermissions(res.permissions ?? []);
-      setAutoRestart(res.autoRestart ?? null);
-      setOwner(res.owner ?? null);
-      setRuntime(res.runtime);
-      setRunning(res.running);
-      setSuspendedMessage(null);
-      setLoadError(null);
+        server: ServerRecord; runtime: RuntimeInfo | null; running: boolean;
+        configAccess?: Record<string, boolean>; permissions: ServerPermission[];
+        autoRestart?: AutoRestartState; owner?: { id: string; username: string } | null;
+      }>(`/servers/${serverId}`);
+      if (!current()) return;
+      if (res.server.id !== serverId) throw new Error('The instance response did not match the requested instance');
+      setSnapshot({ serverId, server: res.server, runtime: res.runtime, running: res.running,
+        configAccess: res.configAccess ?? {}, permissions: res.permissions ?? [], autoRestart: res.autoRestart ?? null,
+        owner: res.owner ?? null, suspendedMessage: null, loadError: null });
     } catch (err) {
-      if (err instanceof ApiError && err.status === 423) {
-        setSuspendedMessage(err.message);
-        setServer(null);
-      } else {
-        setLoadError(err instanceof ApiError ? err.message : 'Failed to load instance');
-      }
-    }
-  }
+      if (!current()) return;
+      const denied = err instanceof ApiError && [401, 403, 404, 423].includes(err.status);
+      setSnapshot(old => ({ ...(old.serverId === serverId && !denied ? old : { ...empty, serverId }),
+        suspendedMessage: err instanceof ApiError && err.status === 423 ? err.message : null,
+        loadError: err instanceof Error ? err.message : 'Failed to load instance' }));
+    } finally { if (pending.current === sequence) pending.current = null; }
+  }, [serverId]);
 
   useEffect(() => {
-    setServer(null);
-    setSuspendedMessage(null);
-    setLoadError(null);
-    refresh();
-    const interval = setVisibleInterval(refresh, 3000);
-    return () => interval();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [serverId]);
+    mounted.current = true; pending.current = null;
+    setSnapshot({ ...empty, serverId });
+    void refresh();
+    // Skip overlapping polls on slow links; explicit refreshes still supersede older reads.
+    const stop = setVisibleInterval(() => { if (pending.current === null) void refresh(); }, 3000);
+    return () => { mounted.current = false; serial.current++; pending.current = null; stop(); };
+  }, [serverId, refresh]);
+
+  // Routing changes before effects run. Never expose the previous instance's data or grants.
+  const details: DetailSnapshot = snapshot.serverId === serverId ? snapshot : { ...empty, serverId };
+  const { server, runtime, running, configAccess, permissions, autoRestart, owner, suspendedMessage, loadError } = details;
 
   const isAdmin = user?.role === 'admin';
   // Admins can still manage a suspended instance; its lock applies to everyone else.
-  const locked = !!server?.suspended && !isAdmin;
+  const locked = !server || (!!server.suspended && !isAdmin);
   const can = (permission: ServerPermission) => !locked && permissions.includes(permission) && !(permission === 'settings' && Object.values(configAccess).includes(false));
   const canConfig = (kind: 'setting' | 'property', key: string) => {
     const alias = kind === 'setting' && key === 'serverPort' ? 'property.server-port' : kind === 'property' && key === 'server-port' ? 'setting.serverPort' : null;

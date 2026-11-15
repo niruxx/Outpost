@@ -8,6 +8,7 @@ import { prep } from '../db/db.js';
 import { HttpError } from '../utils/asyncHandler.js';
 import { logger } from '../utils/logger.js';
 import { backupDir, acquireBackupStorage } from './backupStorageService.js';
+import { beginJob, finishJob, progressJob } from './jobService.js';
 
 /**
  * Off-site backups: every new snapshot is copied to the enabled destinations — S3-compatible
@@ -416,10 +417,12 @@ export function enqueueCopy(serverId: string, fileName: string, onlyDestination?
   const targets = listDestinations().filter((d) => (onlyDestination ? d.id === onlyDestination : d.enabled));
   for (const d of targets) {
     setCopy(serverId, fileName, d.id, 'pending');
+    const job = beginJob('offsite-backup', serverId, `Queued backup copy to ${d.name}`);
     queue = queue.then(async () => {
       try {
-        if (!fs.existsSync(path.join(backupDir(serverId), fileName))) return setCopy(serverId, fileName, d.id, 'failed', 'The local snapshot was deleted before it was copied');
+        if (!fs.existsSync(path.join(backupDir(serverId), fileName))) throw new Error('The local snapshot was deleted before it was copied');
         setCopy(serverId, fileName, d.id, 'uploading');
+        progressJob(job, `Copying backup to ${d.name}`, null);
         await uploadTo(d, serverId, fileName);
         setCopy(serverId, fileName, d.id, 'done');
         logger.info(`Off-site: copied ${serverId}/${fileName} to ${d.name}`);
@@ -427,7 +430,9 @@ export function enqueueCopy(serverId: string, fileName: string, onlyDestination?
           const remote = (await listRemote(d, serverId)).sort((a, b) => b.name.localeCompare(a.name));
           for (const old of remote.slice(d.keep)) await deleteRemote(d, serverId, old.name).catch(() => {});
         }
+        finishJob(job);
       } catch (err) {
+        finishJob(job, err);
         const msg = err instanceof Error ? err.message : String(err);
         setCopy(serverId, fileName, d.id, 'failed', msg.slice(0, 500));
         logger.warn(`Off-site copy of ${serverId}/${fileName} to ${d.name} failed: ${msg}`);

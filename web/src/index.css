@@ -133,9 +133,9 @@ body {
 
 /* MD3 state layer: an overlay in the content color at 8% on hover, 12% on press. */
 .state-layer {
-  position: relative;
   isolation: isolate;
 }
+.state-layer:where(:not(.absolute):not(.fixed):not(.sticky)) { position: relative; }
 .state-layer::after {
   content: '';
   position: absolute;
@@ -1525,6 +1525,14 @@ body {
   outline-offset: 4px;
 }
 
+/* Shared controls keep the same baseline and usable targets across the theme skins. */
+.ui-btn, [data-theme] .ui-btn { min-height: 40px; max-width: 100%; line-height: 1.25rem; overflow-wrap: anywhere; }
+.ui-btn > svg, .ui-btn > .ui-icon { flex-shrink: 0; }
+.ui-input:not(textarea), [data-theme] .ui-input:not(textarea) { min-height: 40px; }
+.ui-card-heading > :not(h2) { max-width: 100%; }
+.ui-card-heading > div { flex-wrap: wrap; }
+.ui-modal-body { overflow-wrap: anywhere; }
+
 /* Native popup menus need an explicit foreground/background pair. In particular,
    Minecraft uses light text on black fields inside an otherwise light theme.
    Use the select's own colors rather than the surrounding page's ink tokens. */
@@ -1569,7 +1577,8 @@ select optgroup:disabled {
 summary { min-height: 2rem; }
 summary:focus-visible, [role='tab']:focus-visible, [role='option']:focus-visible, [tabindex]:focus-visible { outline: 2px solid rgb(var(--accent-400)); outline-offset: 3px; }
 @media (pointer: coarse) {
-  button, .ui-btn, select, summary, [role='tab'], [role='option'] { min-height: 44px; }
+  button, .ui-btn, [data-theme] .ui-btn, [data-theme] .ui-input:not(textarea), select, summary, [role='tab'], [role='option'] { min-height: 44px; }
+  .ui-modal-close { min-width: 44px; }
   input[type='checkbox'], input[type='radio'] { min-width: 20px; min-height: 20px; }
   td, th { padding-top: .75rem; padding-bottom: .75rem; }
 }

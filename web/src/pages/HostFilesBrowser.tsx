@@ -280,7 +280,7 @@ function Browser({ status }: { status: HostFilesStatus }) {
         <Button variant="ghost" onClick={() => go(status.home)} title={`Home (${status.home})`}>
           Home
         </Button>
-        <form onSubmit={submitPath} className="min-w-[12rem] flex-1">
+        <form onSubmit={submitPath} className="min-w-0 max-w-full flex-1 basis-48">
           <Input value={pathInput} onChange={(e) => setPathInput(e.target.value)} className="font-mono" aria-label="Path" spellCheck={false} />
         </form>
         <input ref={fileInput} type="file" multiple className="hidden" onChange={(e) => onUpload(e.target.files)} />
@@ -290,8 +290,8 @@ function Browser({ status }: { status: HostFilesStatus }) {
       </div>
       <div className="flex flex-wrap items-center gap-x-1 gap-y-1 text-sm">
         {tools.crumbs(path).map((crumb, i, all) => (
-          <span key={crumb.path} className="flex items-center gap-1 text-ink-400">
-            <button className="hover:text-accent-500 hover:underline" onClick={() => go(crumb.path)}>{crumb.label}</button>
+          <span key={crumb.path} className="flex min-w-0 max-w-full items-center gap-1 text-ink-400">
+            <button className="min-w-0 break-all text-left hover:text-accent-500 hover:underline" onClick={() => go(crumb.path)}>{crumb.label}</button>
             {crumb.label !== '/' && i < all.length - 1 && tools.sep}
           </span>
         ))}

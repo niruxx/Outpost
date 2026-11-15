@@ -32,6 +32,7 @@ export function PlayersTab() {
     try {
       const res = await api.get<{ players: PlayerInfo[] }>(`/servers/${serverId}/players`);
       setPlayers(res.players);
+      setError('');
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to load players');
     }
@@ -50,8 +51,10 @@ export function PlayersTab() {
     try {
       await api.post(`/servers/${serverId}/players/${encodeURIComponent(name)}/${action}`, reason ? { reason } : undefined);
       await load();
+      return true;
     } catch (err) {
       setError(err instanceof ApiError ? err.message : `Failed to ${action} ${name}`);
+      return false;
     } finally {
       setBusyKey(null);
     }
@@ -72,18 +75,19 @@ export function PlayersTab() {
       {canWrite && (
         <Card className="p-5">
           <h3 className="mb-2 text-sm font-semibold text-ink-200">Whitelist a player</h3>
-          <div className="flex gap-2">
+          <form className="flex flex-wrap items-end gap-2" onSubmit={e => { e.preventDefault(); if (!running || !newName.trim() || busyKey) return; void act(newName.trim(), 'whitelist-add').then(ok => { if (ok) setNewName(''); }); }}>
+            <div className="min-w-0 flex-1 basis-40">
             <Field label="Player name">
-              <Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Notch" />
+              <Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Notch" disabled={!!busyKey} />
             </Field>
+            </div>
             <Button
-              className="mt-5"
-              disabled={!running || !newName.trim() || busyKey === `${newName}:whitelist-add`}
-              onClick={() => act(newName.trim(), 'whitelist-add').then(() => setNewName(''))}
+              type="submit"
+              disabled={!running || !newName.trim() || !!busyKey}
             >
               Add
             </Button>
-          </div>
+          </form>
         </Card>
       )}
 
@@ -111,8 +115,8 @@ export function PlayersTab() {
             <Card className="divide-y divide-surface-700/80 overflow-hidden">
               {saved?.map((p) => (
                 <div key={p.uuid} className="flex flex-wrap items-center gap-3 px-4 py-3">
-                  <span className="font-medium text-ink-100">{p.name ?? 'Unknown player'}</span>
-                  <span className="font-mono text-xs text-ink-500">{p.uuid}</span>
+                  <span className="min-w-0 break-all font-medium text-ink-100">{p.name ?? 'Unknown player'}</span>
+                  <span className="min-w-0 break-all font-mono text-xs text-ink-500">{p.uuid}</span>
                   {p.online && <Badge tone="green" pulse>online</Badge>}
                   <span className="text-xs text-ink-500">saved {new Date(p.modified).toLocaleString()}</span>
                   <Button className="ml-auto" onClick={() => setEditing(p.uuid)}>
@@ -157,29 +161,29 @@ function PlayerTable({
             transition={{ type: 'spring', stiffness: 400, damping: 34 }}
             className="flex flex-wrap items-center gap-3 px-4 py-3"
           >
-            <span className="font-medium text-ink-100">{p.name}</span>
-            <div className="flex gap-1.5">
+            <span className="min-w-0 break-all font-medium text-ink-100">{p.name}</span>
+            <div className="flex flex-wrap gap-1.5">
               {p.online && <Badge tone="green" pulse>online</Badge>}
               {p.op && <Badge tone="blue">op</Badge>}
               {p.whitelisted && <Badge tone="neutral">whitelisted</Badge>}
               {p.banned && <Badge tone="red">banned</Badge>}
             </div>
             {canWrite && (
-              <div className="ml-auto flex flex-wrap gap-1.5">
-                <Button disabled={!running} onClick={() => onAction(p.name, p.op ? 'deop' : 'op')}>
+              <div className="flex w-full flex-wrap gap-1.5 sm:ml-auto sm:w-auto">
+                <Button disabled={!running || !!busyKey} onClick={() => onAction(p.name, p.op ? 'deop' : 'op')}>
                   {p.op ? 'De-op' : 'Op'}
                 </Button>
-                <Button disabled={!running} onClick={() => onAction(p.name, p.whitelisted ? 'whitelist-remove' : 'whitelist-add')}>
+                <Button disabled={!running || !!busyKey} onClick={() => onAction(p.name, p.whitelisted ? 'whitelist-remove' : 'whitelist-add')}>
                   {p.whitelisted ? 'Unwhitelist' : 'Whitelist'}
                 </Button>
                 {p.online && (
-                  <Button disabled={!running} onClick={() => onAction(p.name, 'kick')}>
+                  <Button disabled={!running || !!busyKey} onClick={() => onAction(p.name, 'kick')}>
                     Kick
                   </Button>
                 )}
                 <Button
                   variant="danger"
-                  disabled={!running || busyKey === `${p.name}:${p.banned ? 'pardon' : 'ban'}`}
+                  disabled={!running || !!busyKey}
                   onClick={() => onAction(p.name, p.banned ? 'pardon' : 'ban')}
                 >
                   {p.banned ? 'Pardon' : 'Ban'}

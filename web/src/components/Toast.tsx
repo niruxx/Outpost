@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion';
-import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 
 type ToastKind = 'success' | 'error' | 'info';
 
@@ -30,11 +30,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
   const show = useCallback((message: string, kind: ToastKind = 'info') => {
     const id = ++counter.current;
-    setToasts((prev) => [...prev, { id, kind, message }]);
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 4200);
+    setToasts((prev) => [...prev.slice(-3), { id, kind, message }]);
   }, []);
+  const dismiss = useCallback((id: number) => setToasts(prev => prev.filter(toast => toast.id !== id)), []);
 
   const value: ToastState = {
     show,
@@ -45,32 +43,36 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={value}>
       {children}
-      <div className="pointer-events-none fixed bottom-4 right-4 z-[100] flex w-full max-w-sm flex-col gap-2">
+      <div className="pointer-events-none fixed right-4 top-20 z-[100] flex max-h-[calc(100dvh-6rem)] w-[calc(100vw-2rem)] max-w-sm flex-col gap-2 overflow-y-auto" aria-label="Notifications">
         <AnimatePresence>
-          {toasts.map((t) => (
-            <motion.div
-              key={t.id}
-              layout
-              initial={{ opacity: 0, y: 16, scale: 0.94 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, x: 40, scale: 0.94 }}
-              transition={{ type: 'spring', stiffness: 420, damping: 32 }}
-              className="ui-toast pointer-events-auto flex items-start gap-3 rounded-xl bg-inverse px-4 py-3 text-sm text-inverse-on shadow-card"
-            >
-              <span className="mt-0.5">{ICONS[t.kind]}</span>
-              <span className="flex-1 leading-snug">{t.message}</span>
-              <button
-                onClick={() => setToasts((prev) => prev.filter((x) => x.id !== t.id))}
-                className="text-inverse-muted hover:text-inverse-on"
-              >
-                ✕
-              </button>
-            </motion.div>
-          ))}
+          {toasts.map(toast => <ToastNotice key={toast.id} toast={toast} onDismiss={dismiss} />)}
         </AnimatePresence>
       </div>
     </ToastContext.Provider>
   );
+}
+
+function ToastNotice({ toast, onDismiss }: { toast: Toast; onDismiss: (id: number) => void }) {
+  const [hovered, setHovered] = useState(false), [focused, setFocused] = useState(false);
+  useEffect(() => {
+    if (hovered || focused) return;
+    const timer = window.setTimeout(() => onDismiss(toast.id), toast.kind === 'error' ? 8000 : 5000);
+    return () => window.clearTimeout(timer);
+  }, [toast.id, toast.kind, onDismiss, hovered, focused]);
+  return <motion.div
+    layout role={toast.kind === 'error' ? 'alert' : 'status'} aria-atomic="true"
+    initial={{ opacity: 0, y: 16, scale: 0.94 }}
+    animate={{ opacity: 1, y: 0, scale: 1 }}
+    exit={{ opacity: 0, x: 40, scale: 0.94 }}
+    transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+    onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
+    onFocusCapture={() => setFocused(true)} onBlurCapture={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocused(false); }}
+    className="ui-toast pointer-events-auto flex shrink-0 items-start gap-3 rounded-xl bg-inverse px-4 py-3 text-sm text-inverse-on shadow-card"
+  >
+    <span aria-hidden="true" className="mt-0.5 shrink-0">{ICONS[toast.kind]}</span>
+    <span className="min-w-0 flex-1 leading-snug [overflow-wrap:anywhere]">{toast.message}</span>
+    <button type="button" aria-label="Dismiss notification" onClick={() => onDismiss(toast.id)} className="-my-2 -mr-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-inverse-muted hover:bg-black/5 hover:text-inverse-on">✕</button>
+  </motion.div>;
 }
 
 export function useToast(): ToastState {

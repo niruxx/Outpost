@@ -1,3 +1,4 @@
+import { beginOperation, clearOperations, describeOperation, finishOperation, updateOperation } from '../lib/operationQueue.js';
 const TOKEN_KEY = 'outpost_token';
 // Sessions signed in before the rename to Outpost are carried over instead of being logged out.
 const LEGACY_TOKEN_KEY = 'multicraft_token';
@@ -16,6 +17,7 @@ export function getToken(): string | null {
 export function setToken(token: string | null) {
   if (token) localStorage.setItem(TOKEN_KEY, token);
   else {
+    clearOperations();
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(LEGACY_TOKEN_KEY);
   }
@@ -43,7 +45,11 @@ function trackActivity<T>(work: Promise<T>, immediate: boolean): Promise<T> {
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  return trackActivity(requestUntracked<T>(path, init), !!init.method && init.method !== 'GET');
+  const description = describeOperation(path, init.method ?? 'GET');
+  const id = description ? beginOperation(description.title, description.serverId, 'Working', description.href) : null;
+  if (id) init = { ...init, headers: { ...init.headers, 'X-Outpost-Operation': id } };
+  try { const result = await trackActivity(requestUntracked<T>(path, init), !!init.method && init.method !== 'GET'); if (id) finishOperation(id); return result; }
+  catch (error) { if (id) finishOperation(id, error); throw error; }
 }
 async function requestUntracked<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = getToken();
@@ -90,16 +96,21 @@ export interface UploadProgress {
   remainingSeconds: number | null; bytesPerSecond: number; processing: boolean;
 }
 function upload<T>(path: string, body: FormData | Blob, onProgress?: (progress: UploadProgress) => void): Promise<T> {
+  const serverId = path.match(/^\/servers\/([^/]+)/)?.[1];
+  const names = body instanceof FormData ? [...body.values()].filter(v => v instanceof File).map(v => (v as File).name) : [];
+  const id = beginOperation(names.length ? `Upload ${names.slice(0, 2).join(', ')}${names.length > 2 ? ` +${names.length - 2}` : ''}` : 'Upload content', serverId, 'Preparing upload', serverId ? `/instances/${serverId}/files` : undefined);
   return trackActivity(new Promise<T>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     const started = performance.now();
     xhr.open('POST', `/api${path}`);
+    xhr.setRequestHeader('X-Outpost-Operation', id);
     if (body instanceof Blob && body.type) xhr.setRequestHeader('Content-Type', body.type);
     const token = getToken();
     if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
     const report = (loaded: number, total: number | null, processing = false) => {
       const elapsedSeconds = (performance.now() - started) / 1000;
       const bytesPerSecond = loaded / Math.max(elapsedSeconds, 0.001);
+      updateOperation(id, { stage: processing ? 'Upload received; processing on server' : 'Uploading', progress: processing ? null : total ? Math.min(99, loaded / total * 100) : null });
       onProgress?.({ loaded, total, percent: processing ? 100 : total ? Math.min(99, loaded / total * 100) : loaded === 0 ? 0 : null, elapsedSeconds,
         remainingSeconds: total && bytesPerSecond > 0 ? Math.max(0, (total - loaded) / bytesPerSecond) : null, bytesPerSecond, processing });
     };
@@ -122,13 +133,13 @@ function upload<T>(path: string, body: FormData | Blob, onProgress?: (progress: 
     };
     report(0, body instanceof Blob ? body.size : null);
     xhr.send(body);
-  }), true);
+  }), true).then(value => { finishOperation(id); return value; }, error => { finishOperation(id, error); throw error; });
 }
 
 export const api = {
   get: <T>(path: string) => request<T>(path),
-  post: <T>(path: string, body?: unknown) =>
-    request<T>(path, { method: 'POST', body: body !== undefined ? JSON.stringify(body) : undefined }),
+  post: <T>(path: string, body?: unknown, operationId?: string) =>
+    request<T>(path, { method: 'POST', headers: operationId ? { 'X-Outpost-Operation': operationId } : undefined, body: body !== undefined ? JSON.stringify(body) : undefined }),
   put: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: 'PUT', body: body !== undefined ? JSON.stringify(body) : undefined }),
   patch: <T>(path: string, body?: unknown) =>

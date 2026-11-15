@@ -45,7 +45,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
       <Modal open={open} onClose={() => settle(false)} title={request?.title ?? 'Are you sure?'}>
         <div className="space-y-4">
           <div className="text-sm leading-relaxed text-ink-300">{request?.message}</div>
-          <div className="flex justify-end gap-2">
+          <div className="flex flex-wrap justify-end gap-2">
             <Button variant="ghost" onClick={() => settle(false)}>
               {request?.cancelLabel ?? t('Cancel')}
             </Button>

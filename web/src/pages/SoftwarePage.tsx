@@ -645,7 +645,7 @@ function AppsTab({
           if (query.trim().length >= 1) setSubmitted(query.trim());
         }}
       >
-        <div className="relative min-w-[14rem] flex-1">
+        <div className="relative min-w-0 max-w-full flex-1 basis-56">
           <Icon name="search" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-500" />
           <Input className="pl-9" placeholder="Search all packages — e.g. nginx, postgres, ffmpeg" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search packages" />
         </div>
@@ -765,7 +765,7 @@ function InstalledTab({ revision, actionsDisabled, disabledTitle, onRemove }: { 
   return (
     <Card className="space-y-4 p-5">
       <div className="flex flex-wrap items-center gap-3">
-        <div className="relative min-w-[14rem] flex-1">
+        <div className="relative min-w-0 max-w-full flex-1 basis-56">
           <Icon name="search" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-500" />
           <Input className="pl-9" placeholder="Filter installed packages…" value={query} onChange={(e) => setQuery(e.target.value)} />
         </div>

@@ -36,7 +36,7 @@ export async function runBrowser(origin, test, options = {}) {
     const emulateReducedMotion = reduced => cdp('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: reduced ? 'reduce' : 'no-preference' }] });
     const captureScreenshot = async file => fs.writeFile(file, Buffer.from((await cdp('Page.captureScreenshot', { format: 'png' })).data, 'base64'));
     const viewport = (width, height) => cdp('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: width < 768 });
-    const pressKey = async (key, code = key, modifiers = 0) => { await cdp('Input.dispatchKeyEvent', { type: 'keyDown', key, code, modifiers }); await cdp('Input.dispatchKeyEvent', { type: 'keyUp', key, code, modifiers }); };
+    const pressKey = async (key, code = key, modifiers = 0) => { const native = key === 'Enter' ? { windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 } : {}; await cdp('Input.dispatchKeyEvent', { type: 'keyDown', key, code, modifiers, ...native, ...(key === 'Enter' ? { text: '\r', unmodifiedText: '\r' } : {}) }); await cdp('Input.dispatchKeyEvent', { type: 'keyUp', key, code, modifiers, ...native }); };
     const network = async ({ offline = false, latencyMs = 0, downloadBytesPerSecond = -1, uploadBytesPerSecond = -1 } = {}) => { await cdp('Network.enable'); await cdp('Network.emulateNetworkConditions', { offline, latency: latencyMs, downloadThroughput: downloadBytesPerSecond, uploadThroughput: uploadBytesPerSecond }); };
     const browserVersion = (await cdp('Browser.getVersion')).product;
     await options.onBrowserVersion?.(browserVersion);

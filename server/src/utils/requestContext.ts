@@ -8,6 +8,8 @@ import type { NextFunction, Request, Response } from 'express';
 export interface RequestContext {
   ip: string | null;
   userAgent: string | null;
+  operationId?: string;
+  serverId?: string;
   /** Set once the request has written an audit entry, so the catch-all activity log skips it. */
   audited?: boolean;
 }
@@ -27,5 +29,8 @@ function clientIp(req: Request): string | null {
 
 export function requestContextMiddleware(req: Request, _res: Response, next: NextFunction) {
   const ua = typeof req.headers['user-agent'] === 'string' ? req.headers['user-agent'].slice(0, 300) : null;
-  storage.run({ ip: clientIp(req), userAgent: ua }, next);
+  const candidate = req.get('X-Outpost-Operation') ?? req.query.operation;
+  const operationId = typeof candidate === 'string' && /^[a-f0-9-]{36}$/i.test(candidate) ? candidate : undefined;
+  const serverId = req.path.match(/^\/api\/servers\/([^/]+)/)?.[1];
+  storage.run({ ip: clientIp(req), userAgent: ua, operationId, serverId }, next);
 }

@@ -93,6 +93,7 @@ import { proxyRouter } from './routes/proxy.routes.js';
 import { rconRouter } from './routes/rcon.routes.js';
 import { initRewind } from './services/rewindService.js';
 import { requestContextMiddleware } from './utils/requestContext.js';
+import { trackDownloads } from './services/downloadTrackingService.js';
 import { activityMiddleware, startActivityPruning } from './services/activityService.js';
 import { activityRouter, serverActivityRouter } from './routes/activity.routes.js';
 import { startAuditPruning } from './services/auditService.js';
@@ -129,6 +130,7 @@ app.set('json replacer', (key: string, value: unknown) => {
 });
 // Lets the audit log record each request's address and browser.
 app.use(requestContextMiddleware);
+app.use(trackDownloads);
 // Records every state-changing request a signed-in user makes that its route didn't log itself.
 app.use(activityMiddleware);
 

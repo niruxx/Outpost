@@ -318,7 +318,7 @@ CREATE TABLE IF NOT EXISTS host_service_metrics (
 );
 CREATE INDEX IF NOT EXISTS host_service_metrics_unit ON host_service_metrics(unit, at);
 CREATE TABLE IF NOT EXISTS ui_preferences (user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, kind TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY(user_id,kind));
-CREATE TABLE IF NOT EXISTS panel_jobs (id TEXT PRIMARY KEY, server_id TEXT, kind TEXT NOT NULL, status TEXT NOT NULL, stage TEXT NOT NULL, progress REAL, logs TEXT NOT NULL DEFAULT '[]', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS panel_jobs (id TEXT PRIMARY KEY, server_id TEXT, kind TEXT NOT NULL, status TEXT NOT NULL, stage TEXT NOT NULL, progress REAL, logs TEXT NOT NULL DEFAULT '[]', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, operation_id TEXT);
 CREATE INDEX IF NOT EXISTS panel_jobs_created ON panel_jobs(created_at);
 CREATE TABLE IF NOT EXISTS ui_bulk_runs (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, action TEXT NOT NULL, patch TEXT, results TEXT NOT NULL, cancel INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL, created_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS antivirus_scans (id TEXT PRIMARY KEY, server_id TEXT REFERENCES servers(id) ON DELETE CASCADE, source TEXT NOT NULL, status TEXT NOT NULL, started_at INTEGER NOT NULL, finished_at INTEGER, report TEXT NOT NULL DEFAULT '{}');

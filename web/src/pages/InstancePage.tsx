@@ -307,9 +307,11 @@ function InstanceTopBar({ server, compact }: { server: ServerRecord; compact: bo
         <GameTile kind={kind} className={`${compact ? '-mt-10 h-14 w-14' : '-mt-12 h-16 w-16'} shrink-0 shadow-card ring-4 ring-surface-850`} running={server.status === 'running'} />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="truncate text-2xl font-normal text-ink-50">{server.name}</h1>
-            {server.suspended ? <SuspendedBadge /> : <StatusBadge status={server.status} />}
-            <HeaderPin serverId={server.id} />
+            <h1 title={server.name} className="min-w-0 truncate text-2xl font-normal text-ink-50">{server.name}</h1>
+            <div className="inline-flex shrink-0 items-center gap-1.5">
+              {server.suspended ? <SuspendedBadge /> : <StatusBadge status={server.status} />}
+              <HeaderPin serverId={server.id} />
+            </div>
           </div>
           <p className="mt-0.5 text-sm text-ink-400">
             {gameLabel(kind)}

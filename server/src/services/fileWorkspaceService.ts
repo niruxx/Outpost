@@ -5,6 +5,7 @@ import { DATA_DIR, instanceDir, safeJoinReal } from '../utils/paths.js';
 import { HttpError } from '../utils/asyncHandler.js';
 import { scanIngestedPath } from './antivirusService.js';
 import { snapshotFile, type FileSnapshot } from './fileChangeService.js';
+import { beginJob, finishJob, progressJob } from './jobService.js';
 
 export const CHUNK_SIZE = 1024 * 1024;
 const root = path.join(DATA_DIR, 'file-workspace');
@@ -173,13 +174,15 @@ export async function finishTransfer(server: string, owner: string, id: string, 
   if (busy.has(id)) throw new HttpError(409, 'Transfer is processing');
   if (t.state === 'publishing') throw new HttpError(409, 'Publication was interrupted. Inspect the destination and recycle bin before cancelling this transfer.');
   if (t.offset !== t.size) throw new HttpError(409, 'Upload is incomplete');
+  const job = beginJob('file-upload', server, `Checking upload before saving ${t.path}`);
   busy.add(id);
   const payload = path.join(privateDir('uploads', server), id, 'payload');
   let temp: string | undefined;
   try {
     await scanIngestedPath(payload); authorize();
+    progressJob(job, `Publishing verified upload ${t.path}`, null);
     let target = confined(server, t.path); fs.mkdirSync(path.dirname(target), { recursive: true });
-    if (fs.existsSync(target) && t.collision === 'skip') { t.state = 'skipped'; save('uploads', server, t); return t; }
+    if (fs.existsSync(target) && t.collision === 'skip') { t.state = 'skipped'; save('uploads', server, t); finishJob(job); progressJob(job, 'Skipped: destination already exists', 100); return t; }
     if (t.collision === 'rename') {
       const original = target; const ext = path.extname(target); let n = 1;
       while (fs.existsSync(target)) { if (n > 10000) throw new HttpError(409, 'Too many duplicate names'); target = `${original.slice(0, original.length - ext.length)} (${n++})${ext}`; }
@@ -193,8 +196,9 @@ export async function finishTransfer(server: string, owner: string, id: string, 
     // link provides atomic no-overwrite publication, including collision races.
     fs.linkSync(temp, target); fs.unlinkSync(temp); temp = undefined;
     t.state = 'done'; save('uploads', server, t); fs.unlinkSync(payload);
-    onPublished?.(t.result, before, snapshotFile(target)); return t;
+    onPublished?.(t.result, before, snapshotFile(target)); finishJob(job); return t;
   } catch (error) {
+    finishJob(job, error);
     if (t.state !== 'publishing') { t.state = 'paused'; save('uploads', server, t); }
     throw error;
   } finally { if (temp) { try { fs.unlinkSync(temp); } catch {} } busy.delete(id); }

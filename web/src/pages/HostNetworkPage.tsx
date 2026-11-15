@@ -143,7 +143,7 @@ export function HostNetworkPage() {
     <HostLayout
       action={
         data?.available && (
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             {(['bond', 'bridge', 'vlan'] as const).map((k) => (
               <Button key={k} variant="outlined" onClick={() => setCreating(k)} disabled={dis} title={title}>
                 <Icon name="plus" className="h-4 w-4" /> {k === 'vlan' ? 'VLAN' : k[0].toUpperCase() + k.slice(1)}
@@ -211,8 +211,8 @@ export function HostNetworkPage() {
               <CardTitle>Other connection profiles</CardTitle>
               <div className="divide-y divide-surface-700 overflow-hidden rounded-2xl bg-surface-900">
                 {inactive.map((c) => (
-                  <button key={c.uuid} type="button" onClick={() => setSelected(c.uuid)} className="state-layer flex w-full items-center gap-3 px-4 py-3 text-left">
-                    <span className="flex-1 text-sm text-ink-100">{c.name}</span>
+                  <button key={c.uuid} type="button" onClick={() => setSelected(c.uuid)} className="state-layer flex w-full flex-wrap items-center gap-3 px-4 py-3 text-left">
+                    <span className="min-w-0 flex-1 break-all text-sm text-ink-100">{c.name}</span>
                     <span className="text-xs text-ink-500">{c.type}</span>
                     <Badge tone="neutral">{c.autoconnect ? 'auto' : 'manual'}</Badge>
                   </button>

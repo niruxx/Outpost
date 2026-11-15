@@ -21,6 +21,7 @@ import { useToast } from './Toast.js';
 import { NotificationBell } from './NotificationBell.js';
 import { AdminModeButton } from './AdminModeButton.js';
 import { saveColorMode, storedColorMode, storedTheme, type ColorMode } from '../lib/theme.js';
+import { useDialogFocus } from '../lib/dialogFocus.js';
 
 /**
  * The app shell, laid out like a productivity suite:
@@ -368,13 +369,15 @@ function Popover({ anchor, onClose, label, width, children }: { anchor: HTMLElem
     return () => window.removeEventListener('resize', place);
   }, [anchor, width]);
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    const focus = window.setTimeout(() => panel.current?.querySelector<HTMLElement>('a[href],button:not(:disabled),[tabindex="0"]')?.focus(), 0);
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); onClose(); anchor?.focus(); } };
     const onDown = (e: MouseEvent) => {
       if (!panel.current?.contains(e.target as Node) && !anchor?.contains(e.target as Node)) onClose();
     };
     window.addEventListener('keydown', onKey);
     window.addEventListener('mousedown', onDown);
     return () => {
+      window.clearTimeout(focus);
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('mousedown', onDown);
     };
@@ -384,6 +387,7 @@ function Popover({ anchor, onClose, label, width, children }: { anchor: HTMLElem
       ref={panel}
       role="dialog"
       aria-label={t(label)}
+      onBlurCapture={event => { if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget as Node) && event.relatedTarget !== anchor) onClose(); }}
       className="ui-modal ui-popover fixed z-[55] max-h-[calc(100dvh-80px)] overflow-y-auto rounded-3xl bg-surface-800 p-2 shadow-card ring-1 ring-surface-700"
       style={{ top: pos.top, left: pos.left, width: Math.min(width, window.innerWidth - 16) }}
       initial={{ opacity: 0, y: -6, scale: 0.98 }}
@@ -571,16 +575,16 @@ function SearchField() {
   );
 }
 
-function TopBar({ onMenu, menuLabel, system }: { onMenu: () => void; menuLabel: string; system: SystemInfo | null }) {
+function TopBar({ onMenu, onOtherAction, menuLabel, system }: { onMenu: () => void; onOtherAction: () => void; menuLabel: string; system: SystemInfo | null }) {
   return (
-    <header className="ui-topbar relative z-[2] flex h-16 shrink-0 items-center gap-2 bg-surface-950 px-2 sm:px-3">
+    <header onClickCapture={event => { const button = (event.target as Element).closest('button'); if (button?.getAttribute('aria-label') !== t(menuLabel)) onOtherAction(); }} className="ui-topbar relative z-[2] flex h-16 shrink-0 items-center gap-2 bg-surface-950 px-2 sm:px-3">
       <TopBarButton label={menuLabel} onClick={onMenu}>
         <Icon name="menu" className="h-5 w-5" />
       </TopBarButton>
       {/* Brand column lines up with the sidebar, so the search starts where the page does. */}
-      <Link to="/" className="flex min-w-0 shrink-0 items-center gap-2.5 rounded-full pr-3 md:w-[13.5rem]">
+      <Link to="/" aria-label="Outpost home" className="flex min-w-0 shrink-0 items-center gap-2.5 rounded-full pr-1 sm:pr-3 md:w-[13.5rem]">
         <Logo className="h-8 w-8 shrink-0 rounded-lg" />
-        <span className="ui-brand truncate text-[22px] leading-none text-ink-200">Outpost</span>
+        <span className="ui-brand hidden truncate text-[22px] leading-none text-ink-200 min-[360px]:inline">Outpost</span>
       </Link>
       <SearchField />
       <div className="ml-auto flex items-center gap-0.5">
@@ -661,6 +665,7 @@ export function Layout({
 }) {
   const [system, setSystem] = useState<SystemInfo | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const mobileDrawer = useRef<HTMLElement>(null);
   const [rail, setRail] = useState(() => readFlag(RAIL_KEY));
   const location = useLocation();
   const { user } = useAuth();
@@ -680,6 +685,13 @@ export function Layout({
   }, [mobileOpen]);
 
   const close = () => setMobileOpen(false);
+  useDialogFocus(mobileOpen, mobileDrawer, close);
+  useEffect(() => {
+    const wide = window.matchMedia('(min-width: 768px)');
+    const resized = () => { if (wide.matches) setMobileOpen(false); };
+    wide.addEventListener('change', resized);
+    return () => wide.removeEventListener('change', resized);
+  }, []);
   function toggleMenu() {
     if (window.matchMedia('(min-width: 768px)').matches) {
       setRail((r) => {
@@ -715,7 +727,7 @@ export function Layout({
   return (
     <div className="ui-app relative isolate flex h-screen flex-col bg-surface-950">
       <Wallpaper />
-      <TopBar onMenu={toggleMenu} menuLabel={rail ? 'Expand menu' : 'Main menu'} system={system} />
+      <TopBar onMenu={toggleMenu} onOtherAction={close} menuLabel={mobileOpen ? 'Close menu' : rail ? 'Expand menu' : 'Main menu'} system={system} />
 
       <div className="relative z-[1] flex min-h-0 flex-1">
         <aside
@@ -730,9 +742,10 @@ export function Layout({
             its backdrop can never be left covering the page (an interrupted exit animation used to
             leave an invisible layer that swallowed taps and scrolling until a reload). */}
         {/* It opens below the top bar, which stays in place so the menu button can close it again. */}
-        <div className={`fixed inset-x-0 bottom-0 top-16 z-40 md:hidden ${mobileOpen ? '' : 'pointer-events-none'}`} aria-hidden={!mobileOpen}>
+        <div ref={node => { if (node) node.inert = !mobileOpen; }} className={`fixed inset-x-0 bottom-0 top-16 z-40 md:hidden ${mobileOpen ? '' : 'pointer-events-none'}`} aria-hidden={!mobileOpen}>
           <div className={`absolute inset-0 bg-black/50 transition-opacity duration-200 ${mobileOpen ? 'opacity-100' : 'opacity-0'}`} onClick={close} />
           <aside
+            ref={mobileDrawer} role={mobileOpen ? 'dialog' : undefined} aria-modal={mobileOpen ? 'true' : undefined} aria-label="Main navigation" tabIndex={-1}
             className={`ui-sidebar absolute inset-y-0 left-0 w-72 max-w-[85vw] rounded-r-2xl bg-surface-950 shadow-card transition-transform duration-300 ease-out ${
               mobileOpen ? 'translate-x-0' : '-translate-x-full'
             }`}
@@ -742,7 +755,7 @@ export function Layout({
           </aside>
         </div>
 
-        <div className="ui-sheet relative flex min-w-0 flex-1 flex-col">
+        <div ref={node => { if (node) node.inert = mobileOpen; }} className="ui-sheet relative flex min-w-0 flex-1 flex-col">
           <PanelUpdateBanner />
           <a href="#main-content" className="ui-skip-link">Skip to main content</a>
           <main id="main-content" tabIndex={-1} className="ui-main min-h-0 flex-1 overflow-y-auto">
@@ -763,8 +776,8 @@ export function Layout({
 export function PageHeader({ title, subtitle, action }: { title: string; subtitle?: string; action?: ReactNode }) {
   return (
     <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} className="ui-page-header mb-6 flex flex-wrap items-end justify-between gap-4">
-      <div className="min-w-0">
-        <h1 className="ui-page-title text-[28px] font-normal leading-9 text-ink-50">{t(title)}</h1>
+      <div className="min-w-0 flex-1 basis-64">
+        <h1 className="ui-page-title break-words text-[28px] font-normal leading-9 text-ink-50">{t(title)}</h1>
         {subtitle && <p className="mt-1 max-w-2xl text-sm leading-relaxed text-ink-400">{t(subtitle)}</p>}
       </div>
       {action}

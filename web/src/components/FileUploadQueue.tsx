@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, getToken } from '../api/client.js';
 import { Button, Input } from './ui.js';
+import { batchOperations, setOperation, updateOperation, forgetOperation, operationId } from '../lib/operationQueue.js';
 
 type Transfer = { id: string; path: string; size: number; offset: number; state: string; result?: string; fingerprint: string };
 type Row = { key: string; path: string; file?: File; transfer?: Transfer; percent: number; state: string; error?: string; controller?: AbortController };
@@ -26,11 +27,20 @@ export function FileUploadQueue({ serverId, basePath, onChanged }: { serverId: s
   const input = useRef<HTMLInputElement>(null);
   const folder = useRef<HTMLInputElement>(null);
   const prefix = `/servers/${serverId}/files/transfers`;
-  const update = (key: string, patch: Partial<Row>) => setRows(old => old.map(row => row.key === key ? { ...row, ...patch } : row));
+  const mounted = useRef(true);
+  function publishRow(row: Row) {
+    if (!mounted.current) return;
+    const status = ['Complete', 'Skipped'].includes(row.state) ? 'completed' : row.state === 'Failed' ? 'failed' : row.state === 'Queued' ? 'queued' : row.state === 'Paused' || !row.file ? 'paused' : 'running';
+    setOperation({ id: row.transfer?.id ?? row.key, followsJob: row.state === 'Scanning and publishing', title: `Upload ${row.path}`, serverId, href: `/instances/${serverId}/files`, status, stage: row.error || row.state, progress: /Hashing|Scanning|publication/.test(row.state) ? null : row.percent, startedAt: started.current.get(row.key) ?? Date.now(), updatedAt: Date.now() });
+  }
+  const started = useRef(new Map<string, number>());
+  const update = (key: string, patch: Partial<Row>) => { const row = rowsRef.current.find(r => r.key === key); if (row) { if (patch.transfer && patch.transfer.id !== key) forgetOperation(key); const next = { ...row, ...patch }; rowsRef.current = rowsRef.current.map(r => r.key === key ? next : r); publishRow(next); } setRows(old => old.map(row => row.key === key ? { ...row, ...patch } : row)); };
+  useEffect(() => { batchOperations(() => { for (const row of rows) { if (!started.current.has(row.key)) started.current.set(row.key, Date.now()); publishRow(row); } }); }, [rows, serverId]);
   useEffect(() => {
+    mounted.current = true;
     let live = true;
     api.get<{ items: Transfer[] }>(prefix).then(({ items }) => { if (live) setRows(items.filter(t => !['done', 'skipped'].includes(t.state)).map(t => ({ key: t.id, path: t.path, transfer: t, percent: t.size ? t.offset / t.size * 100 : 0, state: t.state === 'publishing' ? 'Review interrupted publication' : 'Reselect file to resume' }))); }).catch(e => live && setError(e.message));
-    return () => { live = false; rowsRef.current.forEach(r => r.controller?.abort()); };
+    return () => { live = false; mounted.current = false; rowsRef.current.forEach(r => { if (r.controller) { r.controller.abort(); updateOperation(r.transfer?.id ?? r.key, { status: 'paused', stage: 'Page closed; return to files and reselect the file to resume', progress: null }); } }); };
   }, [prefix]);
 
   function enqueue(files: { file: File; relative: string }[]) {
@@ -40,7 +50,7 @@ export function FileUploadQueue({ serverId, basePath, onChanged }: { serverId: s
         const path = [basePath, relative].filter(Boolean).join('/');
         const existing = result.find(r => r.path === path && r.transfer?.size === file.size && !r.file && r.transfer.state !== 'publishing');
         if (existing) { existing.file = file; existing.state = 'Queued'; }
-        else result.push({ key: crypto.randomUUID(), path, file, percent: 0, state: 'Queued' });
+        else result.push({ key: operationId(), path, file, percent: 0, state: 'Queued' });
       }
       return result;
     });
@@ -74,7 +84,7 @@ export function FileUploadQueue({ serverId, basePath, onChanged }: { serverId: s
       for (let offset = 0; offset < file.size; offset += CHUNK) { signal.throwIfAborted(); hashes.push(await sha(await file.slice(offset, offset + CHUNK).arrayBuffer())); }
       signal.throwIfAborted();
       if (row.transfer && row.transfer.fingerprint !== await sha(new TextEncoder().encode(JSON.stringify(hashes)).buffer)) throw new Error('Selected file differs from the saved transfer. Select the original file or cancel this transfer.');
-      let t = row.transfer ? await api.get<Transfer>(`${prefix}/${row.transfer.id}`) : await api.post<Transfer>(prefix, { path: row.path, size: file.size, hashes, collision: controls.current.collision });
+      let t = row.transfer ? await api.get<Transfer>(`${prefix}/${row.transfer.id}`) : await api.post<Transfer>(prefix, { path: row.path, size: file.size, hashes, collision: controls.current.collision }, row.key);
       if (row.transfer && row.transfer.id !== t.id) throw new Error('Selected file differs from the saved transfer. Cancel the old transfer first.');
       update(row.key, { transfer: t, state: 'Uploading' });
       while (t.offset < t.size) {
@@ -97,7 +107,7 @@ export function FileUploadQueue({ serverId, basePath, onChanged }: { serverId: s
         if (response?.status === 409 && t.offset < t.size && t.offset % CHUNK !== 0) throw new Error('Invalid saved offset. Cancel and retry.');
       }
       signal.throwIfAborted(); update(row.key, { state: 'Scanning and publishing', percent: 100 });
-      t = await api.post<Transfer>(`${prefix}/${t.id}/complete`);
+      t = await api.post<Transfer>(`${prefix}/${t.id}/complete`, undefined, t.id);
       update(row.key, { transfer: t, state: t.state === 'done' ? 'Complete' : 'Skipped', file: undefined, percent: 100 }); onChanged();
     } catch (e) { update(row.key, { state: signal.aborted ? 'Paused' : 'Failed', error: signal.aborted ? undefined : (e as Error).message }); }
     finally { active.current.delete(row.key); update(row.key, { controller: undefined }); }
@@ -108,7 +118,7 @@ export function FileUploadQueue({ serverId, basePath, onChanged }: { serverId: s
   async function cancel(row: Row) {
     row.controller?.abort();
     if (active.current.has(row.key)) { update(row.key, { state: 'Paused' }); return; }
-    try { if (row.transfer) await api.delete(`${prefix}/${row.transfer.id}`); setRows(old => old.filter(r => r.key !== row.key)); } catch (e) { setError((e as Error).message); }
+    try { if (row.transfer) await api.delete(`${prefix}/${row.transfer.id}`); forgetOperation(row.transfer?.id ?? row.key); setRows(old => old.filter(r => r.key !== row.key)); } catch (e) { setError((e as Error).message); }
   }
   return <section className="space-y-2 rounded-lg border border-surface-700 p-3" onDragOver={e => e.preventDefault()} onDrop={drop} aria-label="Upload queue">
     <div className="flex flex-wrap items-center gap-2">

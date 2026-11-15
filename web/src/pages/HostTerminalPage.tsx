@@ -52,7 +52,7 @@ export function HostTerminalPage() {
         <option value="service">Service account ({status.serviceUser})</option>
         {status.platform !== 'win32' && <><option value="root">Root{status.isRoot ? '' : ' (via sudo)'}</option><option value="user">Named operating system user</option></>}
       </Select></Field></div>
-      {mode === 'user' && <div className="min-w-48 flex-1"><Field label="OS username"><Input autoComplete="off" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="e.g. outpost" disabled={active} /></Field></div>}
+      {mode === 'user' && <div className="min-w-0 max-w-full flex-1 basis-48"><Field label="OS username"><Input autoComplete="off" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="e.g. outpost" disabled={active} /></Field></div>}
       <Button variant="primary" onClick={start} disabled={active || !status.available || (mode === 'user' && !/^[a-zA-Z_][a-zA-Z0-9_.-]{0,63}\$?$/.test(username.trim()))}>New session</Button>
       <Button variant="danger" disabled={!active} onClick={() => endSession.current()}>End session</Button>
       </div>
@@ -60,7 +60,7 @@ export function HostTerminalPage() {
       <p className="text-xs text-ink-400">Navigating away closes the session. Sessions also close after {status.idleMinutes} minutes without input. Up to {status.maxSessionsPerAdmin} sessions per admin can run in separate tabs.</p>
     </Card>}
     <div ref={fullscreen} className="flex min-h-[480px] flex-1 flex-col overflow-hidden rounded-2xl border border-surface-600 bg-[#101310] p-3 sm:p-4">
-      <div className="mb-3 flex items-center justify-between gap-3"><span className="text-sm font-medium text-ink-200">{session ? session.mode === 'root' ? 'Root shell' : session.mode === 'user' ? `Shell · ${session.username}` : `Shell · ${status?.serviceUser ?? 'service account'}` : 'Host terminal'}</span><div className="flex gap-2"><Button variant="ghost" disabled={!session} onClick={() => clear.current()}>Clear display</Button><Button variant="ghost" onClick={() => fullscreen.current?.requestFullscreen?.().catch((err) => setError(err.message))}>Fullscreen</Button></div></div>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3"><span className="text-sm font-medium text-ink-200">{session ? session.mode === 'root' ? 'Root shell' : session.mode === 'user' ? `Shell · ${session.username}` : `Shell · ${status?.serviceUser ?? 'service account'}` : 'Host terminal'}</span><div className="flex flex-wrap gap-2"><Button variant="ghost" disabled={!session} onClick={() => clear.current()}>Clear display</Button><Button variant="ghost" onClick={() => fullscreen.current?.requestFullscreen?.().catch((err) => setError(err.message))}>Fullscreen</Button></div></div>
       {session ? <HostTerminal key={session.id} request={session} onState={setConnection} endSession={endSession} clear={clear} /> : <div className="flex min-h-80 flex-1 items-center justify-center p-8 text-center text-sm text-ink-400">Choose an account and select New session to open a shell.</div>}
     </div>
   </div></Layout>;

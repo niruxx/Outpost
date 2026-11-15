@@ -280,7 +280,7 @@ export function ServicesPage() {
         ) : (
           <Card className="p-5">
             <div className="mb-4 flex flex-wrap items-center gap-3">
-              <div className="relative min-w-[14rem] flex-1">
+              <div className="relative min-w-0 max-w-full flex-1 basis-56">
                 <Icon name="search" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-500" />
                 <Input className="pl-9" placeholder={`Filter ${TYPES.find((t) => t.id === type)!.label.toLowerCase()}…`} value={query} onChange={(e) => setQuery(e.target.value)} />
               </div>
@@ -291,7 +291,7 @@ export function ServicesPage() {
                   </option>
                 ))}
               </Select>
-              <div className="flex gap-2 text-xs">
+              <div className="flex flex-wrap gap-2 text-xs">
                 <Badge tone="green">{counts.active} active</Badge>
                 {counts.failed > 0 && (
                   <button type="button" onClick={() => setFilter('failed')}>
@@ -314,8 +314,8 @@ export function ServicesPage() {
                     className="state-layer flex min-w-0 flex-1 flex-wrap items-center gap-3 px-4 py-3 text-left"
                   >
                     <div className="min-w-0 flex-1">
-                      <p className="flex items-center gap-2 truncate font-mono text-sm text-ink-100">
-                        {u.unit}
+                      <p className="flex flex-wrap items-center gap-2 font-mono text-sm text-ink-100">
+                        <span className="min-w-0 break-all">{u.unit}</span>
                         {u.unit === data.ownUnit && <Badge tone="blue">Outpost</Badge>}
                         {u.managed && <Badge tone="blue">Outpost timer</Badge>}
                       </p>
@@ -530,7 +530,7 @@ function UnitModal({
               ))}
           </dl>
 
-          <div className="flex gap-1 border-b border-surface-700">
+          <div className="flex flex-wrap gap-1 border-b border-surface-700">
             {(
               [
                 ['logs', 'Logs'],

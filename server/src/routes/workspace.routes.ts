@@ -7,7 +7,7 @@ import { previewGameChange } from '../services/changePreviewService.js';
 import { getUserById, logAudit, userHasServerAccess } from '../services/userService.js';
 import { readPreference, savePreference, configPreview, performUiAction, permissionReport } from '../services/uiWorkspaceService.js';
 import { fleetInventory, remoteNode } from '../services/fleetService.js';
-import { jobRows } from '../services/jobService.js';
+import { jobRows, queueJobRows } from '../services/jobService.js';
 import { getServer, listServers } from '../services/serverService.js';
 import { getDiskUsage } from '../services/diskUsageService.js';
 
@@ -21,7 +21,7 @@ workspaceRouter.get('/preferences/:kind', (req, res) => res.json({ value: readPr
 workspaceRouter.put('/preferences/:kind', (req, res, next) => { try { res.json({ value: savePreference(req.auth!.sub, req.params.kind, req.body?.value) }); } catch (err) { next(err); } });
 workspaceRouter.get('/jobs', (req, res) => {
   const admin = req.auth!.role === 'admin';
-  res.json({ jobs: jobRows().filter(j => admin || (j.server_id && getServer(j.server_id) && !getServer(j.server_id)!.suspended && userHasServerAccess(req.auth!.sub, j.server_id))) });
+  res.json({ jobs: (req.query.view === 'queue' ? queueJobRows() : jobRows()).filter(j => admin || (j.server_id && getServer(j.server_id) && !getServer(j.server_id)!.suspended && userHasServerAccess(req.auth!.sub, j.server_id))) });
 });
 workspaceRouter.get('/summary', (req, res) => res.json({ storage: listServers().filter(s => req.auth!.role === 'admin' || (!s.suspended && userHasServerAccess(req.auth!.sub, s.id))).map(s => ({ name: s.name, bytes: getDiskUsage(s.id).serverBytes })) }));
 workspaceRouter.post('/preview/:serverId', requireServerAccess(), (req, res, next) => { try { requireConfigItems(req, 'setting', req.body?.patch ?? {}); res.json(configPreview(req.params.serverId, req.body?.patch)); } catch (err) { next(err); } });

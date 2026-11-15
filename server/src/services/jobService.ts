@@ -1,12 +1,14 @@
 import crypto from 'node:crypto';
 import { prep } from '../db/db.js';
+import { requestContext } from '../utils/requestContext.js';
 
-export interface PanelJob { id: string; server_id: string | null; kind: string; status: string; stage: string; progress: number | null; logs: string[]; created_at: number; updated_at: number }
+export interface PanelJob { id: string; server_id: string | null; kind: string; status: string; stage: string; progress: number | null; logs: string[]; created_at: number; updated_at: number; operation_id?: string | null }
 type Row = Omit<PanelJob, 'logs'> & { logs: string };
 export function jobRows(): PanelJob[] { return (prep('SELECT * FROM panel_jobs ORDER BY created_at DESC LIMIT 300').all() as unknown as Row[]).map(r => ({ ...r, logs: JSON.parse(r.logs) })); }
+export function queueJobRows(): Omit<PanelJob, 'logs'>[] { return prep("SELECT id,server_id,kind,status,stage,progress,created_at,updated_at,operation_id FROM panel_jobs ORDER BY (status='running') DESC,created_at DESC LIMIT 300").all() as unknown as Omit<PanelJob, 'logs'>[]; }
 export function beginJob(kind: string, serverId: string | null, stage = 'Preparing') {
   const id = crypto.randomUUID(), at = Date.now();
-  prep('INSERT INTO panel_jobs(id,server_id,kind,status,stage,progress,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)').run(id, serverId, kind, 'running', stage, 0, at, at);
+  prep('INSERT INTO panel_jobs(id,server_id,kind,status,stage,progress,created_at,updated_at,operation_id) VALUES (?,?,?,?,?,?,?,?,?)').run(id, serverId, kind, 'running', stage, null, at, at, requestContext()?.operationId ?? null);
   return id;
 }
 export function progressJob(id: string, stage: string, progress: number | null = null) {

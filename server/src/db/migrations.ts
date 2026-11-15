@@ -8,6 +8,9 @@ import { logger } from '../utils/logger.js';
  * already been applied before doing anything, so this is safe to call on every startup.
  */
 export function runMigrations(db: DatabaseSync): void {
+  if (!db.prepare("SELECT 1 FROM pragma_table_info('panel_jobs') WHERE name = 'operation_id'").get()) {
+    db.exec('ALTER TABLE panel_jobs ADD COLUMN operation_id TEXT');
+  }
   if (!db.prepare("SELECT 1 FROM pragma_table_info('users') WHERE name = 'storage'").get()) {
     db.exec("ALTER TABLE users ADD COLUMN storage TEXT NOT NULL DEFAULT '[]'");
   }

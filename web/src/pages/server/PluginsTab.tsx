@@ -159,8 +159,8 @@ export function PluginsTab() {
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface-700 text-ink-300">
                   <Icon name="plugin" className="h-[18px] w-[18px]" />
                 </span>
-                <div className="min-w-40 flex-1">
-                  <p className="break-words text-sm font-medium text-ink-100">{item?<Link className="text-accent-400 hover:underline" to={`/instances/${serverId}/plugins/${item.id}`}>{item.name}</Link>:p.displayName}</p>
+                <div className="min-w-0 flex-1 basis-40">
+                  <p className="break-all text-sm font-medium text-ink-100">{item?<Link className="text-accent-400 hover:underline" to={`/instances/${serverId}/plugins/${item.id}`}>{item.name}</Link>:p.displayName}</p>
                   <p className="truncate text-xs text-ink-400">
                     {item?.metadata.version??item?.provenance?.version??'Unknown version'} - {formatSize(p.sizeBytes)}
                     {p.detail && ` · ${p.detail}`}
@@ -169,7 +169,7 @@ export function PluginsTab() {
                 {item&&<><p className="text-xs text-ink-400">{item.installation==='dependency'?'Automatic dependency':item.installation==='explicit'?'Explicitly installed / kept':'Untracked'}{item.requiredBy.length?' - Required by '+item.requiredBy.length+' installed add-on(s)':''}</p><Link className="rounded-full border border-surface-600 px-3 py-2 text-sm text-ink-300" to={`/instances/${serverId}/plugins/${item.id}`}>Details</Link></>}
                 <Badge tone={p.enabled ? 'green' : 'neutral'}>{p.enabled ? 'Enabled' : 'Disabled'}</Badge>
                 {canWrite && (
-                  <div className="flex gap-1.5">
+                  <div className="flex flex-wrap gap-1.5">
                     {p.canToggle && (
                       <Button disabled={uploading||!stopped} onClick={() => openAction(p,p.enabled?'disable':'enable')}>
                         {p.enabled ? 'Disable' : 'Enable'}
