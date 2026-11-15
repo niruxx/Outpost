@@ -1,4 +1,4 @@
-# Outpost-Website
+# Outpost website
 
 The landing page for [Outpost](https://github.com/niruxx/outpost), the self-hosted panel for game servers, apps and containers.
 
@@ -21,9 +21,13 @@ There's no build step and no dependencies other than Google Fonts.
 
 ## Hosting on GitHub Pages
 
-1. Push to `main`.
-2. In the repo, go to **Settings → Pages** and set **Source** to **Deploy from a branch**, then pick **`main`** / **`/ (root)`**.
-3. The site goes live at `https://<user>.github.io/Outpost-Website/`. All paths are relative, so it also works from a custom domain.
+1. Push website changes to the `website` branch of `niruxx/Outpost`.
+2. In the repo, go to **Settings → Pages** and set **Source** to **Deploy from a branch**, then pick **`website`** / **`/ (root)`**.
+3. The site goes live at `https://niruxx.github.io/Outpost/`. All paths are relative, so it also works from a custom domain.
+
+The service lives on `main`; this branch contains only the public website and preserves its original commit history. Do not merge this branch into `main`.
+
+The previous `niruxx/Outpost-website` repository can be archived after this deployment is verified. If it uses a custom domain, move that domain in the GitHub Pages settings and verify DNS before retiring the previous deployment.
 
 ## Previewing locally
 
