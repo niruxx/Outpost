@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { isBeamMP, beammpModFolder } from './beammpService.js';
 import { isModded } from './moddedService.js';
 import path from 'node:path';
 import AdmZip from 'adm-zip';
@@ -23,7 +24,7 @@ import { isProxyLoader, PLUGIN_CAPABLE_LOADERS } from '../types/index.js';
  *   bepinex  — Valheim BepInEx plugins in BepInEx/plugins
  *   pak      — Palworld .pak mods in Pal/Content/Paks/~mods
  */
-export type AddonKind = 'bukkit' | 'datapack' | 'bedrock' | 'bepinex' | 'pak' | 'mod' | 'gmod';
+export type AddonKind = 'bukkit' | 'datapack' | 'bedrock' | 'bepinex' | 'pak' | 'mod' | 'gmod' | 'beammp';
 export type AddonCatalog = 'plugin' | 'datapack' | 'bedrock' | `mod:${'fabric' | 'quilt' | 'forge' | 'neoforge'}` | `proxy:${'velocity' | 'bungee'}`;
 
 export interface AddonProfile {
@@ -76,6 +77,18 @@ function bepinexInstalled(server: ServerRecord): boolean {
 }
 
 export function getAddonSupport(server: ServerRecord): AddonSupport {
+  if (isBeamMP(server)) return {
+    supported: true,
+    profile: {
+      kind: 'beammp', label: 'Mods', singular: 'mod', folder: beammpModFolder(server),
+      extensions: ['.zip'], catalog: null, warning: null,
+      notes: [
+        'Upload original BeamNG vehicle or map ZIP files, including BeamNG Earth. Keep ZIPs intact; players download them when joining.',
+        'For custom maps, set BEAMMP_MAP in Configuration → Launch to /levels/<folder inside the ZIP>/info.json. Use the actual map folder, not the ZIP filename.',
+        'Stop the server before changing mods, then restart it. Server-side Lua plugins belong in Resources/Server/<plugin>/ through File Management.',
+      ],
+    },
+  };
   if (server.platform === 'java' && isModded(server.loader)) {
     const ecosystem = server.loader === 'mohist' || server.loader === 'spongeforge' ? 'forge' : server.loader;
     const notes = ['Restart the server after adding, removing or toggling a mod.', 'Players need the same client-side mods to join (server-only mods excepted).'];
@@ -262,6 +275,8 @@ export function requireAddonProfile(server: ServerRecord): AddonProfile {
 
 function addonDir(server: ServerRecord, profile: AddonProfile): string {
   switch (profile.kind) {
+    case 'beammp':
+      return inInstance(server, beammpModFolder(server));
     case 'bukkit':
       return inInstance(server, 'plugins');
     case 'mod':
@@ -567,6 +582,17 @@ export function installUploadedAddon(server: ServerRecord, originalName: string,
 
   const dir = addonDir(server, profile);
   fs.mkdirSync(dir, { recursive: true });
+
+  if (profile.kind === 'beammp') {
+    try {
+      const zip = new AdmZip(buffer);
+      if (!zip.getEntries().some(e => !e.isDirectory && /^(levels|vehicles)\//i.test(e.entryName.replace(/\\/g, '/')))) {
+        throw new Error('No levels/ or vehicles/ content');
+      }
+    } catch {
+      throw new HttpError(400, `${originalName}: expected a BeamNG vehicle or map ZIP with levels/ or vehicles/ at its root`);
+    }
+  }
 
   if (profile.kind === 'bepinex' && lower.endsWith('.zip')) {
     let zip: AdmZip;

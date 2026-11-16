@@ -128,7 +128,7 @@ export function CreateFromTemplateModal({ open, onClose, onCreated }: { open: bo
                 <div className="grid gap-3 sm:grid-cols-2">
                   {tpl.variables.map((v) => (
                     <Field key={v.key} label={`${v.label}${v.required ? ' *' : ''}`}>
-                      <Input value={vars[v.key] ?? ''} onChange={(e) => setVars({ ...vars, [v.key]: e.target.value })} placeholder={v.default} />
+                      <Input type={/pass|secret|token|auth|key/i.test(v.key) ? 'password' : 'text'} value={vars[v.key] ?? ''} onChange={(e) => setVars({ ...vars, [v.key]: e.target.value })} placeholder={v.default} />
                       {v.description && <span className="mt-1 block text-[11px] text-ink-500">{v.description}</span>}
                     </Field>
                   ))}

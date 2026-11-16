@@ -13,6 +13,8 @@
 
 <h3 align="center">Your self-hosted workspace for games, apps and containers.</h3>
 
+BeamMP servers are available through **New instance → From a template → BeamMP Server**, with vehicle and map ZIP mod management, including BeamNG Earth setups. See the [BeamMP setup guide](docs/beammp.md).
+
 <p align="center">
   Deploy instances, watch host health, and manage day-to-day operations from one browser tab.<br>
   Minecraft and Steam servers &middot; Docker and Podman &middot; Web apps and databases &middot; Custom processes

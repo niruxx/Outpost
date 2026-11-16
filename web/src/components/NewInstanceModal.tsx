@@ -41,7 +41,7 @@ const CHOICES: { id: Choice; title: string; description: string; kind: GameKind 
   {
     id: 'template',
     title: 'From a template',
-    description: 'A saved or imported setup — game, settings and config files ready to go.',
+    description: 'Built-in BeamMP setup, or a saved or imported server configuration.',
     kind: 'app:template',
   },
   {

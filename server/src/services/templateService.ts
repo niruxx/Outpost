@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { BEAMMP_TEMPLATE_ID, beammpTemplate } from './beammpService.js';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { prep } from '../db/db.js';
@@ -226,17 +227,19 @@ export function exportTemplate(server: ServerRecord, opts: { name?: string; desc
 // ---------------------------------------------------------------------------
 
 export function listTemplates(): StoredTemplate[] {
-  return (prep('SELECT id, name, description, platform, created_by, created_at FROM templates ORDER BY name COLLATE NOCASE').all() as any[]).map((r) => ({
+  const builtin: StoredTemplate[] = process.platform === 'win32' || process.platform === 'linux' ? [{ id: BEAMMP_TEMPLATE_ID, name: 'BeamMP Server', description: beammpTemplate().description, platform: 'custom', createdBy: null, createdAt: '' }] : [];
+  return builtin.concat((prep('SELECT id, name, description, platform, created_by, created_at FROM templates ORDER BY name COLLATE NOCASE').all() as any[]).map((r) => ({
     id: r.id,
     name: r.name,
     description: r.description,
     platform: r.platform,
     createdBy: r.created_by,
     createdAt: r.created_at,
-  }));
+  })));
 }
 
 export function getTemplate(id: string): OutpostTemplate | null {
+  if (id === BEAMMP_TEMPLATE_ID) return process.platform === 'win32' || process.platform === 'linux' ? beammpTemplate() : null;
   const row = prep('SELECT data FROM templates WHERE id = ?').get(id) as { data: string } | undefined;
   if (!row) return null;
   return validateTemplate(JSON.parse(row.data));
@@ -257,6 +260,7 @@ export function saveTemplate(tpl: OutpostTemplate, createdBy: string): string {
 }
 
 export function deleteTemplate(id: string): boolean {
+  if (id === BEAMMP_TEMPLATE_ID) throw new HttpError(400, 'Built-in templates cannot be deleted');
   return Number(prep('DELETE FROM templates WHERE id = ?').run(id).changes) > 0;
 }
 

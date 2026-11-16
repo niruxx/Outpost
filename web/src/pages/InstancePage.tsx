@@ -54,7 +54,9 @@ function InstanceNav({ server, onNavigate }: { server: ServerRecord; onNavigate:
   const proxy = isProxyLoader(server.loader);
   const world = !steam && !proxy;
   const kind = gameKindOf(server);
-  const addons = server.platform === 'java' || server.platform === 'bedrock' || server.platform === 'steam';
+  let beammp = false;
+  try { const launch = JSON.parse(server.launch_config || '{}'); beammp = server.platform === 'custom' && !launch.useShell && /^BeamMP-Server(?:\.exe)?$/i.test((launch.executable || '').split(/[\\/]/).pop()); } catch { /* Invalid launch settings have no mod profile. */ }
+  const addons = server.platform === 'java' || server.platform === 'bedrock' || server.platform === 'steam' || beammp;
   // Only label the game group when something lands in it.
   const game = world || proxy || addons || isCs2 || isGmodServer(server) || hasBrowserStats(server);
   const rail = useRail();
