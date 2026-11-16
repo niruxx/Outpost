@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { isBeamMP } from './beammpService.js';
 import { envVar } from '../utils/env.js';
 import dgram from 'node:dgram';
 import { HttpError } from '../utils/asyncHandler.js';
@@ -331,6 +332,7 @@ export async function listRouterMappings(gw: Gateway, limit = 128): Promise<Rout
 // ---------------------------------------------------------------------------
 
 export function defaultProtocol(server: ServerRecord): UpnpProtocol {
+  if (isBeamMP(server)) return 'BOTH';
   if (server.platform === 'java') return 'TCP';
   if (server.platform === 'bedrock') return 'UDP';
   if (server.platform === 'custom') return (launchConfigOf(server).protocol ?? 'tcp').toUpperCase() as UpnpProtocol;

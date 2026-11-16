@@ -60,6 +60,13 @@ export interface NewRule {
   comment: string | null;
 }
 
+export interface FirewallPort { port: number; protocol: 'tcp' | 'udp' }
+export interface AllowPortsResult {
+  added: FirewallPort[];
+  existing: FirewallPort[];
+  failed: (FirewallPort & { error: string })[];
+}
+
 export type Exec = (cmd: string, args: string[]) => Promise<{ code: number | null; stdout: string; stderr: string }>;
 
 // ---------------------------------------------------------------------------
@@ -116,6 +123,23 @@ export function ruleOpens(rule: FirewallRule, port: number, protocol: 'tcp' | 'u
   if (rule.protocol !== 'any' && rule.protocol !== protocol) return false;
   const [a, b] = portRange(rule.port);
   return port >= a && port <= b;
+}
+
+function ruleBlocks(rule: FirewallRule, port: number, protocol: 'tcp' | 'udp'): boolean {
+  if (!['deny', 'reject'].includes(rule.action) || rule.direction !== 'in' || rule.protocol !== 'any' && rule.protocol !== protocol) return false;
+  if (!rule.port) return true;
+  const [a, b] = portRange(rule.port);
+  return port >= a && port <= b;
+}
+
+/** Conservative rule presence, respecting UFW ordering and explicit firewalld blockers. */
+export function portHasAllowRule(status: Pick<FirewallStatus, 'backend' | 'rules'>, port: number, protocol: 'tcp' | 'udp'): boolean {
+  if (status.backend === 'firewalld' && status.rules.some(r => ruleBlocks(r, port, protocol))) return false;
+  for (const rule of status.rules) {
+    if (ruleBlocks(rule, port, protocol)) return false;
+    if (ruleOpens(rule, port, protocol)) return true;
+  }
+  return false;
 }
 
 // ---------------------------------------------------------------------------
@@ -457,6 +481,45 @@ export function createFirewall(env: FirewallEnv) {
     });
   }
 
+  /** One server click: serialized, idempotent and persistent, without toggling the firewall. */
+  function allowPorts(ports: FirewallPort[], comment: string): Promise<AllowPortsResult> {
+    return serial(async () => {
+      const rules = ports.map(p => {
+        if (!Number.isInteger(p.port) || !['tcp', 'udp'].includes(p.protocol)) throw new HttpError(400, 'Invalid server port');
+        return sanitizeNewRule({ port: p.port, protocol: p.protocol, action: 'allow', source: null, comment });
+      }).filter((p, i, all) => all.findIndex(q => q.port === p.port && q.protocol === p.protocol) === i);
+      if (!rules.length || rules.length > 64) throw new HttpError(400, 'Provide between 1 and 64 server ports');
+      const current = await status();
+      if (!current.available) throw new HttpError(409, current.reason ?? 'Firewall unavailable');
+      if (current.backend === 'firewalld' && !current.active) throw new HttpError(409, current.reason ?? 'Start firewalld before adding server rules');
+      const fw = await requireBackend();
+      if (fw.backend !== current.backend) throw new HttpError(409, 'The firewall backend changed; refresh and try again');
+      const result: AllowPortsResult = { added: [], existing: [], failed: [] };
+      const permanent = fw.backend === 'firewalld' ? parseFirewalldPorts(await must(fw.bin, ['--permanent', `--zone=${current.zone}`, '--list-ports'])) : current.rules;
+      for (const rule of rules) {
+        const port: FirewallPort = { port: Number(rule.port), protocol: rule.protocol as 'tcp' | 'udp' };
+        const live = portHasAllowRule(current, port.port, port.protocol);
+        const saved = fw.backend === 'ufw' ? live : permanent.some(r => ruleOpens(r, port.port, port.protocol));
+        if (live && saved) { result.existing.push(port); continue; }
+        try {
+          if (fw.backend === 'firewalld' && current.rules.some(r => ruleBlocks(r, port.port, port.protocol))) throw new HttpError(409, 'An explicit firewalld deny/reject rule covers this port. Review that rule on the Firewall page before allowing the port.');
+          if (fw.backend === 'ufw') {
+            // First rule wins in UFW. Insert the requested allow before an earlier deny.
+            for (const args of ufwAddArgs(rule)) await must(fw.bin, ['insert', '1', ...args]);
+          } else {
+            const args = [`--zone=${current.zone}`, `--add-port=${rule.port}/${rule.protocol}`];
+            if (!saved) await must(fw.bin, ['--permanent', ...args]);
+            if (!live) await must(fw.bin, args);
+          }
+          result.added.push(port);
+        } catch (error) {
+          result.failed.push({ ...port, error: error instanceof Error ? error.message : String(error) });
+        }
+      }
+      return result;
+    });
+  }
+
   function deleteRule(id: string): Promise<void> {
     return serial(async () => {
       const fw = await requireBackend();
@@ -509,7 +572,7 @@ export function createFirewall(env: FirewallEnv) {
     });
   }
 
-  return { status, addRule, deleteRule, setEnabled, protectedPorts };
+  return { status, addRule, allowPorts, deleteRule, setEnabled, protectedPorts };
 }
 
 export const firewall = createFirewall({

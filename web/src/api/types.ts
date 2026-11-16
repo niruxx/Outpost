@@ -494,6 +494,8 @@ export type StopConfig =
 export type RestartConfig = { kind: 'default' } | { kind: 'stdin'; commands: string[] } | { kind: 'script'; command: string };
 
 export interface LaunchConfig {
+  installer?: 'beammp';
+  beamngEarth?: boolean;
   executable?: string;
   javaPath?: string;
   javaVersion?: number;
@@ -828,6 +830,30 @@ export interface FirewallInstancePort {
   port: number;
   protocol: 'tcp' | 'udp';
   open: boolean;
+  source?: string;
+}
+
+export interface InstanceFirewallPort {
+  serverId: string;
+  name: string;
+  port: number;
+  protocol: 'tcp' | 'udp';
+  source: string;
+  configured: boolean;
+}
+
+export interface InstanceFirewallInfo {
+  status: FirewallStatus;
+  access: FirewallAccess;
+  ports: InstanceFirewallPort[];
+}
+
+export interface InstanceFirewallResult {
+  status: FirewallStatus;
+  ports: InstanceFirewallPort[];
+  added: { port: number; protocol: 'tcp' | 'udp' }[];
+  existing: { port: number; protocol: 'tcp' | 'udp' }[];
+  failed: { port: number; protocol: 'tcp' | 'udp'; error: string }[];
 }
 
 /** One open panel tab, as reported by its presence pings. */

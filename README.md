@@ -15,6 +15,8 @@
 
 BeamMP servers are available through **New instance → From a template → BeamMP Server**, with vehicle and map ZIP mod management, including BeamNG Earth setups. See the [BeamMP setup guide](docs/beammp.md).
 
+Create **New instance → BeamNG.Earth server**, or enable Earth on an existing stopped BeamMP server from Status or Mods. Outpost installs the official Earth mod and server plugin automatically. Each player needs the matching Earth app. See the [BeamNG.Earth guide](docs/beamng-earth.md).
+
 <p align="center">
   Deploy instances, watch host health, and manage day-to-day operations from one browser tab.<br>
   Minecraft and Steam servers &middot; Docker and Podman &middot; Web apps and databases &middot; Custom processes
@@ -731,7 +733,7 @@ journalctl -u outpost -f
 
 Packages for other distros: 🏔️ `pacman -S nodejs npm git jdk21-openjdk` · 🎩 `dnf install nodejs npm git java-21-openjdk-headless` · 🦎 `zypper install nodejs22 npm22 git java-21-openjdk-headless`.
 
-Open ports: the panel's `8642` only needs to reach admins (consider HTTPS via a reverse proxy, or a VPN); each game server needs its own port open to players — e.g. `sudo ufw allow 25565/tcp` or `sudo firewall-cmd --permanent --add-port=25565/tcp && sudo firewall-cmd --reload`.
+Open ports: the panel's `8642` only needs to reach admins (consider HTTPS via a reverse proxy, or a VPN). On a Linux host, use **Status → Server firewall → Allow server ports** to detect UFW/firewalld and allow the ports from the instance's saved configuration. Minecraft, CS2, BeamMP and published container ports use their configured protocols. See the [one-click firewall guide](docs/firewall.md) for permissions and supported settings. Router/cloud forwarding remains separate.
 
 **🪟 Windows service** — with [NSSM](https://nssm.cc/download): `nssm install Outpost` → Path `C:\Program Files\nodejs\node.exe`, Startup directory = the Outpost folder, Arguments `server\dist\index.js` → `nssm start Outpost`.
 

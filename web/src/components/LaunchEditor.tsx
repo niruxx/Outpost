@@ -360,6 +360,8 @@ export function LaunchEditor({
 /** Drops empty fields so "unset" really means "use the platform default". */
 export function cleanLaunchConfig(c: LaunchConfig): LaunchConfig {
   const out: LaunchConfig = {};
+  if (c.installer) out.installer = c.installer;
+  if (c.beamngEarth) out.beamngEarth = c.beamngEarth;
   for (const key of ['executable', 'javaPath', 'args', 'workingDir', 'readyPattern'] as const) {
     if (c[key]?.trim()) out[key] = c[key]!.trim();
   }

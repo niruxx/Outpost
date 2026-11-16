@@ -17,6 +17,7 @@ interface TemplateVariable {
   description?: string;
   default: string;
   required?: boolean;
+  options?: { value: string; label: string }[];
 }
 interface FullTemplate {
   name: string;
@@ -30,7 +31,7 @@ interface FullTemplate {
 const PLATFORM: Record<string, string> = { java: 'Minecraft: Java', bedrock: 'Minecraft: Bedrock', steam: 'Steam', custom: 'Custom process', docker: 'Container' };
 
 /** New instance → From a template: pick one, fill in its variables, create. */
-export function CreateFromTemplateModal({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: (s: ServerRecord) => void }) {
+export function CreateFromTemplateModal({ open, onClose, onCreated, initialTemplateId }: { open: boolean; onClose: () => void; onCreated: (s: ServerRecord) => void; initialTemplateId?: string }) {
   const [list, setList] = useState<TemplateSummary[] | null>(null);
   const [id, setId] = useState('');
   const [tpl, setTpl] = useState<FullTemplate | null>(null);
@@ -40,6 +41,10 @@ export function CreateFromTemplateModal({ open, onClose, onCreated }: { open: bo
   const [eula, setEula] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [startAfterInstall, setStartAfterInstall] = useState(true);
+  const [forwardPort, setForwardPort] = useState(false);
+  const earth = id === 'builtin-beamng-earth';
+  const beammp = id === 'builtin-beammp' || earth;
 
   useEffect(() => {
     if (!open) return;
@@ -47,23 +52,29 @@ export function CreateFromTemplateModal({ open, onClose, onCreated }: { open: bo
       .get<{ templates: TemplateSummary[] }>('/templates')
       .then((r) => {
         setList(r.templates);
-        setId((cur) => cur || r.templates[0]?.id || '');
+        setId((cur) => initialTemplateId || cur || r.templates[0]?.id || '');
       })
       .catch(() => setList([]));
-  }, [open]);
+  }, [open, initialTemplateId]);
 
   useEffect(() => {
     if (!id) return setTpl(null);
+    let active = true;
+    setTpl(null);
+    setStartAfterInstall(true);
+    setForwardPort(false);
     api
       .get<{ template: FullTemplate }>(`/templates/${id}`)
       .then((r) => {
+        if (!active) return;
         setTpl(r.template);
         setName((n) => n || r.template.name);
         setPort(String(r.template.instance.defaultPort ?? ''));
         setVars(Object.fromEntries(r.template.variables.map((v) => [v.key, v.default])));
         setError('');
       })
-      .catch(() => setTpl(null));
+      .catch(() => { if (active) setTpl(null); });
+    return () => { active = false; };
   }, [id]);
 
   async function create() {
@@ -76,6 +87,7 @@ export function CreateFromTemplateModal({ open, onClose, onCreated }: { open: bo
         serverPort: port ? Number(port) : undefined,
         variables: vars,
         acceptEula: eula,
+        ...(beammp ? { startAfterInstall, forwardPort } : {}),
       });
       onCreated(server);
       onClose();
@@ -127,13 +139,22 @@ export function CreateFromTemplateModal({ open, onClose, onCreated }: { open: bo
               {tpl.variables.length > 0 && (
                 <div className="grid gap-3 sm:grid-cols-2">
                   {tpl.variables.map((v) => (
-                    <Field key={v.key} label={`${v.label}${v.required ? ' *' : ''}`}>
-                      <Input type={/pass|secret|token|auth|key/i.test(v.key) ? 'password' : 'text'} value={vars[v.key] ?? ''} onChange={(e) => setVars({ ...vars, [v.key]: e.target.value })} placeholder={v.default} />
+                    <Field key={v.key} label={`${v.label}${v.required || (beammp && v.key === 'AUTH_KEY' && vars.PRIVATE === 'false') ? ' *' : ''}`}>
+                      {v.options?.length ? <Select value={vars[v.key] ?? v.default} onChange={e => setVars({ ...vars, [v.key]: e.target.value })}>
+                        {v.options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                      </Select> : <Input type={/pass|secret|token|auth|key/i.test(v.key) ? 'password' : 'text'} value={vars[v.key] ?? ''} onChange={(e) => setVars({ ...vars, [v.key]: e.target.value })} placeholder={v.default} />}
                       {v.description && <span className="mt-1 block text-[11px] text-ink-500">{v.description}</span>}
                     </Field>
                   ))}
                 </div>
               )}
+              {beammp && <div className="space-y-3 rounded-2xl bg-surface-900 p-3 text-sm text-ink-300">
+                {earth && <p>Each player must install and run the matching <a href="https://github.com/TecnaGamer/BeamNG.Earth/releases" target="_blank" rel="noreferrer" className="text-accent-500 underline">BeamNG.Earth app</a>. The server package alone cannot build the world on a player's computer.</p>}
+                <label className="flex items-center gap-2"><input type="checkbox" checked={startAfterInstall} onChange={e => setStartAfterInstall(e.target.checked)} />Start the server when setup finishes</label>
+                <label className="flex items-start gap-2"><input type="checkbox" checked={forwardPort} onChange={e => setForwardPort(e.target.checked)} /><span>Try automatic router port forwarding (TCP and UDP)<span className="mt-1 block text-xs text-ink-400">Uses UPnP while the server runs. Your router must support it; host firewall rules may still be needed. Leave off for LAN-only play.</span></span></label>
+                <p className="text-xs text-ink-400">Friends join through BeamMP → Direct Connect using your host IP and port. Use the LAN address on the same network or your public address from outside. Unlisted means hidden from the server list, with no invite-only access restriction.</p>
+                <p className="text-xs text-ink-400">Setup downloads the matching official server and installs missing Visual C++ (Windows) or Lua 5.3 (Debian/Ubuntu) runtime dependencies using existing host permissions.</p>
+              </div>}
               {tpl.instance.platform === 'java' && (
                 <label className="flex items-start gap-2 text-sm text-ink-300">
                   <input type="checkbox" className="mt-0.5" checked={eula} onChange={(e) => setEula(e.target.checked)} />
@@ -150,7 +171,7 @@ export function CreateFromTemplateModal({ open, onClose, onCreated }: { open: bo
                 <Button variant="ghost" onClick={onClose}>
                   Cancel
                 </Button>
-                <Button variant="primary" disabled={busy || !name.trim() || (tpl.instance.platform === 'java' && !eula)} onClick={create}>
+                <Button variant="primary" disabled={busy || !name.trim() || (tpl.instance.platform === 'java' && !eula) || (beammp && vars.PRIVATE === 'false' && !vars.AUTH_KEY?.trim())} onClick={create}>
                   {busy ? t('Creating…') : t('Create')}
                 </Button>
               </div>

@@ -1,10 +1,10 @@
 import { Router, type Request } from 'express';
 import { asyncHandler, HttpError } from '../utils/asyncHandler.js';
-import { requireAuth } from '../auth/middleware.js';
+import { requireAuth, requireServerAccess } from '../auth/middleware.js';
 import { effectiveFirewallAccess, getUserServerAccess, logAudit } from '../services/userService.js';
-import { listServers } from '../services/serverService.js';
-import { instancePortProtocol } from '../services/portProtocol.js';
-import { firewall, ruleOpens, sanitizeNewRule, type FirewallRule, type FirewallStatus, type NewRule } from '../services/firewallService.js';
+import { listServers, getServer } from '../services/serverService.js';
+import { instanceFirewallPorts } from '../services/instanceFirewallService.js';
+import { firewall, ruleOpens, portHasAllowRule, sanitizeNewRule, type FirewallRule, type FirewallStatus, type NewRule } from '../services/firewallService.js';
 import type { FirewallAccess } from '../types/index.js';
 
 /**
@@ -32,8 +32,36 @@ function instancePorts(req: Request) {
   const allowed = req.auth!.role === 'admin' ? null : new Set(getUserServerAccess(req.auth!.sub));
   return listServers()
     .filter((s) => !allowed || allowed.has(s.id))
-    .map((s) => ({ serverId: s.id, name: s.name, port: s.server_port, protocol: instancePortProtocol(s) }));
+    .filter(s => req.auth!.role === 'admin' || !s.suspended)
+    .flatMap((s) => {
+      try { return instanceFirewallPorts(s).map(p => ({ serverId: s.id, name: s.name, ...p })); }
+      catch { return []; } // Invalid configs are reported on the instance's scoped endpoint.
+    });
 }
+
+function configuredPorts(serverId: string, status: FirewallStatus) {
+  const server = getServer(serverId);
+  if (!server) throw new HttpError(404, 'Server not found');
+  return instanceFirewallPorts(server).map(p => ({ ...p, serverId, name: server.name, configured: portHasAllowRule(status, p.port, p.protocol) }));
+}
+
+firewallRouter.get('/instances/:serverId', requireServerAccess(), asyncHandler(async (req, res) => {
+  const access = requireAccess(req, 'view');
+  const status = await firewall.status();
+  res.json({ status, access, ports: configuredPorts(req.params.serverId, status) });
+}));
+
+firewallRouter.post('/instances/:serverId/allow', requireServerAccess(), asyncHandler(async (req, res) => {
+  requireAccess(req, 'change');
+  const server = getServer(req.params.serverId);
+  if (!server) throw new HttpError(404, 'Server not found');
+  // Resolve from fresh server/config state; never trust a client-supplied port or command.
+  const ports = instanceFirewallPorts(server);
+  const result = await firewall.allowPorts(ports, `Outpost: ${server.name}`);
+  logAudit(req.auth!.sub, req.auth!.username, 'firewall.instance.allow', server.id, JSON.stringify(result));
+  const status = await firewall.status();
+  res.json({ status, ports: configuredPorts(server.id, status), ...result });
+}));
 
 const covers = (port: string, p: number) => {
   const [a, b] = port.split('-').map(Number);

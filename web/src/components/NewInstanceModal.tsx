@@ -11,9 +11,10 @@ import { api } from '../api/client.js';
 import { EMPHASIZED } from './motion.js';
 import { useAuth } from '../state/AuthContext.js';
 
-type Choice = 'game' | 'app' | 'portainer' | 'container' | 'custom' | 'template';
+type Choice = 'game' | 'app' | 'portainer' | 'container' | 'custom' | 'template' | 'earth';
 
 const CHOICES: { id: Choice; title: string; description: string; kind: GameKind }[] = [
+  { id: 'earth', title: 'BeamNG.Earth server', description: 'Create a real-world multiplayer server with BeamMP, the Earth mod and its server plugin installed automatically.', kind: 'custom' },
   {
     id: 'app',
     title: 'App from the catalog',
@@ -70,16 +71,18 @@ export function NewInstanceModal({
   const [choice, setChoice] = useState<Choice | null>(null);
   const canGame = !!creation?.allowedPlatforms.some((p) => p === 'java' || p === 'bedrock' || p === 'steam');
   const [templateCount, setTemplateCount] = useState(0);
+  const [hasEarth, setHasEarth] = useState(false);
   useEffect(() => {
     if (!open) return;
     api
-      .get<{ templates: unknown[] }>('/templates')
-      .then((r) => setTemplateCount(r.templates.length))
-      .catch(() => setTemplateCount(0));
+      .get<{ templates: { id: string }[] }>('/templates')
+      .then((r) => { setTemplateCount(r.templates.length); setHasEarth(r.templates.some(t => t.id === 'builtin-beamng-earth')); })
+      .catch(() => { setTemplateCount(0); setHasEarth(false); });
   }, [open]);
 
   const containers = isAdmin ? 'any' : creation?.canCreate ? creation.containers : 'none';
   const available: Record<Choice, boolean> = {
+    earth: isAdmin && hasEarth,
     game: canGame,
     app: containers !== 'none',
     portainer: containers !== 'none' && (isAdmin || !!creation?.engineSocket),
@@ -88,6 +91,7 @@ export function NewInstanceModal({
     template: templateCount > 0 && (isAdmin || !!creation?.canCreate),
   };
   const reason: Record<Choice, string> = {
+    earth: !isAdmin ? 'An administrator must create BeamNG.Earth servers' : 'Requires a supported Windows or Linux host',
     game: 'Your account can’t create game servers',
     app: 'Ask an admin for container access',
     portainer: 'Needs Portainer (container engine) access — ask an admin',
@@ -138,7 +142,7 @@ export function NewInstanceModal({
       </Modal>
 
       <CreateServerModal open={open && (effective === 'game' || effective === 'custom')} mode={effective === 'custom' ? 'custom' : 'game'} onClose={close} onCreated={onCreated} />
-      <CreateFromTemplateModal open={open && effective === 'template'} onClose={close} onCreated={onCreated} />
+      <CreateFromTemplateModal open={open && (effective === 'template' || effective === 'earth')} initialTemplateId={effective === 'earth' ? 'builtin-beamng-earth' : undefined} onClose={close} onCreated={onCreated} />
       <CreateContainerModal
         open={open && (effective === 'app' || effective === 'portainer' || effective === 'container')}
         initialTemplate={effective === 'portainer' ? 'portainer' : effective === 'container' ? 'blank' : undefined}

@@ -15,6 +15,9 @@ import type { ServerRecord } from '../types/index.js';
  * SERVER_DIR, SERVER_MIN_MEMORY_MB and SERVER_MAX_MEMORY_MB.
  */
 export interface LaunchConfig {
+  /** Managed native server installation; custom processes otherwise bring their own files. */
+  installer?: 'beammp';
+  beamngEarth?: boolean;
   /** Java: the .jar to run. Others: the binary/script to run. Relative to the instance folder;
    *  absolute paths are admin-only. */
   executable?: string;
@@ -79,6 +82,15 @@ export function sanitizeLaunchConfig(input: unknown, opts: { isAdmin: boolean; p
   if (!input || typeof input !== 'object') throw new HttpError(400, 'launch config must be an object');
   const raw = input as Record<string, unknown>;
   const out: LaunchConfig = {};
+  if (raw.beamngEarth === true) {
+    if (opts.platform !== 'custom' || !opts.isAdmin) throw new HttpError(403, 'BeamNG.Earth setup requires an administrator and a BeamMP custom instance');
+    out.beamngEarth = true;
+  }
+  if (raw.installer !== undefined) {
+    if (raw.installer !== 'beammp' || opts.platform !== 'custom') throw new HttpError(400, 'Unknown server installer');
+    if (!opts.isAdmin) throw new HttpError(403, 'Managed custom servers can only be configured by an admin');
+    out.installer = 'beammp';
+  }
   const adminOnly = (what: string) => {
     if (!opts.isAdmin) throw new HttpError(403, `${what} can only be set by an admin`);
   };

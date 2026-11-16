@@ -1,4 +1,5 @@
 import { GameWorkflowsTab } from './server/GameWorkflowsTab.js';
+import { beammpInfo } from '../lib/beammp.js';
 import { ReliabilityTab } from './server/ReliabilityTab.js';
 import { useEffect, useState } from 'react';
 import { Cs2Tab } from './server/Cs2Tab.js';
@@ -54,8 +55,7 @@ function InstanceNav({ server, onNavigate }: { server: ServerRecord; onNavigate:
   const proxy = isProxyLoader(server.loader);
   const world = !steam && !proxy;
   const kind = gameKindOf(server);
-  let beammp = false;
-  try { const launch = JSON.parse(server.launch_config || '{}'); beammp = server.platform === 'custom' && !launch.useShell && /^BeamMP-Server(?:\.exe)?$/i.test((launch.executable || '').split(/[\\/]/).pop()); } catch { /* Invalid launch settings have no mod profile. */ }
+  const beammp = !!beammpInfo(server);
   const addons = server.platform === 'java' || server.platform === 'bedrock' || server.platform === 'steam' || beammp;
   // Only label the game group when something lands in it.
   const game = world || proxy || addons || isCs2 || isGmodServer(server) || hasBrowserStats(server);

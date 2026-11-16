@@ -1,5 +1,5 @@
 import fs from 'node:fs';
-import { BEAMMP_TEMPLATE_ID, beammpTemplate } from './beammpService.js';
+import { BEAMMP_TEMPLATE_ID, BEAMNG_EARTH_TEMPLATE_ID, beammpTemplate, beamngEarthTemplate, normalizeBeamMPLaunch } from './beammpService.js';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { prep } from '../db/db.js';
@@ -32,6 +32,7 @@ export interface TemplateVariable {
   description?: string;
   default: string;
   required?: boolean;
+  options?: { value: string; label: string }[];
 }
 
 export interface TemplateInstance {
@@ -97,7 +98,8 @@ export function validateTemplate(input: unknown): OutpostTemplate {
   for (const v of Array.isArray(raw.variables) ? raw.variables.slice(0, 30) : []) {
     if (!v || typeof v.key !== 'string' || !VAR_KEY.test(v.key)) throw new HttpError(400, `Variable keys must be UPPER_SNAKE_CASE (got ${JSON.stringify(v?.key)})`);
     if (['PORT', 'NAME', 'ID', 'DIR', 'MIN_MEMORY', 'MAX_MEMORY'].includes(v.key)) throw new HttpError(400, `{{${v.key}}} is built in — pick another variable name`);
-    variables.push({ key: v.key, label: str(v.label, 80) || v.key, description: str(v.description, 300) || undefined, default: str(v.default, 500), required: v.required === true });
+    const options = Array.isArray(v.options) ? v.options.slice(0, 30).map((o: any) => ({ value: str(o?.value, 500), label: str(o?.label, 100) })) : undefined;
+    variables.push({ key: v.key, label: str(v.label, 80) || v.key, description: str(v.description, 300) || undefined, default: str(v.default, 500), required: v.required === true, ...(options?.length ? { options } : {}) });
   }
 
   const files: { path: string; content: string }[] = [];
@@ -227,7 +229,10 @@ export function exportTemplate(server: ServerRecord, opts: { name?: string; desc
 // ---------------------------------------------------------------------------
 
 export function listTemplates(): StoredTemplate[] {
-  const builtin: StoredTemplate[] = process.platform === 'win32' || process.platform === 'linux' ? [{ id: BEAMMP_TEMPLATE_ID, name: 'BeamMP Server', description: beammpTemplate().description, platform: 'custom', createdBy: null, createdAt: '' }] : [];
+  const builtin: StoredTemplate[] = process.platform === 'win32' || process.platform === 'linux' ? [
+    { id: BEAMMP_TEMPLATE_ID, name: 'BeamMP Server', description: beammpTemplate().description, platform: 'custom', createdBy: null, createdAt: '' },
+    { id: BEAMNG_EARTH_TEMPLATE_ID, name: 'BeamNG.Earth Server', description: beamngEarthTemplate().description, platform: 'custom', createdBy: null, createdAt: '' },
+  ] : [];
   return builtin.concat((prep('SELECT id, name, description, platform, created_by, created_at FROM templates ORDER BY name COLLATE NOCASE').all() as any[]).map((r) => ({
     id: r.id,
     name: r.name,
@@ -240,6 +245,7 @@ export function listTemplates(): StoredTemplate[] {
 
 export function getTemplate(id: string): OutpostTemplate | null {
   if (id === BEAMMP_TEMPLATE_ID) return process.platform === 'win32' || process.platform === 'linux' ? beammpTemplate() : null;
+  if (id === BEAMNG_EARTH_TEMPLATE_ID) return process.platform === 'win32' || process.platform === 'linux' ? beamngEarthTemplate() : null;
   const row = prep('SELECT data FROM templates WHERE id = ?').get(id) as { data: string } | undefined;
   if (!row) return null;
   return validateTemplate(JSON.parse(row.data));
@@ -260,7 +266,7 @@ export function saveTemplate(tpl: OutpostTemplate, createdBy: string): string {
 }
 
 export function deleteTemplate(id: string): boolean {
-  if (id === BEAMMP_TEMPLATE_ID) throw new HttpError(400, 'Built-in templates cannot be deleted');
+  if ([BEAMMP_TEMPLATE_ID, BEAMNG_EARTH_TEMPLATE_ID].includes(id)) throw new HttpError(400, 'Built-in templates cannot be deleted');
   return Number(prep('DELETE FROM templates WHERE id = ?').run(id).changes) > 0;
 }
 
@@ -276,6 +282,7 @@ export function resolveVariables(tpl: OutpostTemplate, given: unknown): Record<s
     const value = typeof input[v.key] === 'string' ? (input[v.key] as string) : v.default;
     if (v.required && !value.trim()) throw new HttpError(400, `“${v.label}” is required by this template`);
     if (value.length > 500 || /[\r\n]/.test(value)) throw new HttpError(400, `“${v.label}” must be one line`);
+    if (v.options?.length && !v.options.some(o => o.value === value)) throw new HttpError(400, `Choose a valid value for “${v.label}”`);
     out[v.key] = value;
   }
   return out;
@@ -295,7 +302,9 @@ function substituteDeep<T>(value: T, vars: Record<string, string>): T {
 
 /** The template's instance settings with variables filled in. */
 export function instantiate(tpl: OutpostTemplate, vars: Record<string, string>): TemplateInstance {
-  return substituteDeep(tpl.instance, vars);
+  const instance = substituteDeep(tpl.instance, vars);
+  if (instance.launch?.installer === 'beammp') instance.launch = normalizeBeamMPLaunch(instance.launch);
+  return instance;
 }
 
 /** Writes the template's files into a (new) instance, variables filled in. */

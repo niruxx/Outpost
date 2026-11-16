@@ -1,5 +1,6 @@
 import { spawnSupervised, connectSupervisor, supervisorStates, supervisorLocation, type SupervisedChild } from './instanceSupervisor.js';
 import fs from 'node:fs';
+import { prepareEarthStart } from './beamngEarthService.js';
 import { assertAddonIdle } from './addonOperationService.js';
 import os from 'node:os';
 import { assertDiskRoom, wrapWithLimits } from './limitsService.js';
@@ -546,6 +547,7 @@ export async function startServer(serverId: string, options: { auto?: boolean; w
   if (server.suspended) throw new HttpError(423, 'This instance is suspended — lift the suspension before starting it');
   if (server.status === 'installing') throw new HttpError(409, 'Server is still installing');
   if (server.status === 'transferring') throw new HttpError(409, 'Server is being transferred to another node');
+  prepareEarthStart(server);
 
   const dir = instanceDir(serverId);
   const config = launchConfigOf(server);

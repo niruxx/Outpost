@@ -10,6 +10,9 @@ import { Icon, type IconName } from '../../components/icons.js';
 import { CHART, Sparkline, tint, type ChartPoint } from '../../components/charts.js';
 import { BrowserStatsCard } from './BrowserStats.js';
 import { StatusOverview } from './StatusOverview.js';
+import { FirewallCard } from './FirewallCard.js';
+import { BeamngEarthCard } from './BeamngEarthCard.js';
+import { beammpInfo } from '../../lib/beammp.js';
 import { t } from '../../i18n/index.js';
 
 type Range = 'live' | '1h' | '24h' | '7d';
@@ -193,6 +196,7 @@ function ConnectionCard() {
   const { server, running } = useServerDetail();
   const endpoint = useEndpoint(server?.id, server?.server_port);
   if (!server) return null;
+  const beammp = beammpInfo(server);
   const others = endpoint?.addresses.filter((a) => a.address !== endpoint.host) ?? [];
   return (
     <Card className="p-5">
@@ -207,7 +211,7 @@ function ConnectionCard() {
           <p className="text-xs text-ink-400">Port</p>
           <p className="mt-1 font-mono text-lg text-ink-50">
             {server.server_port}
-            <span className="ml-1.5 text-sm text-ink-400">{endpoint?.protocol.toUpperCase()}</span>
+            <span className="ml-1.5 text-sm text-ink-400">{beammp ? 'TCP + UDP' : endpoint?.protocol.toUpperCase()}</span>
           </p>
           <p className="text-xs text-ink-500">Open this port in your firewall/router for players</p>
         </div>
@@ -219,6 +223,11 @@ function ConnectionCard() {
           </p>
         </div>
       </div>
+      {beammp && <div className="mt-4 space-y-1 text-sm text-ink-300">
+        <p>{beammp.private ? 'Friends / private — hidden from public server lists.' : beammp.earth ? 'Public — listed in the BeamNG.Earth category for Earth players.' : 'Public — listed in the BeamMP server browser.'}</p>
+        <p>Join through BeamMP → Direct Connect with the host address and port {server.server_port}. On this host use 127.0.0.1; on the same network use its LAN address. Friends outside your network need your public address and both TCP and UDP forwarded.</p>
+        {beammp.private && <p className="text-xs text-ink-400">Anyone with the address can connect. Share it with friends. Change visibility in Configuration → Launch using BEAMMP_PRIVATE.</p>}
+      </div>}
       {others.length > 0 && (
         <p className="mt-4 text-xs text-ink-500">
           Also reachable at:{' '}
@@ -329,6 +338,8 @@ export function StatusTab() {
 
       <StatusOverview lines={lines} connected={connected} />
       <ConnectionCard />
+      <FirewallCard key={serverId} />
+      <BeamngEarthCard key={`earth-${serverId}`} />
       <BrowserStatsCard />
 
       <div className="flex flex-wrap items-center justify-between gap-3 pt-1">

@@ -83,7 +83,7 @@ export function getAddonSupport(server: ServerRecord): AddonSupport {
       kind: 'beammp', label: 'Mods', singular: 'mod', folder: beammpModFolder(server),
       extensions: ['.zip'], catalog: null, warning: null,
       notes: [
-        'Upload original BeamNG vehicle or map ZIP files, including BeamNG Earth. Keep ZIPs intact; players download them when joining.',
+        'Upload original BeamNG vehicle or map ZIP files. Keep ZIPs intact; players download them when joining. Use the dedicated BeamNG.Earth setup to install both its mod and server plugin.',
         'For custom maps, set BEAMMP_MAP in Configuration → Launch to /levels/<folder inside the ZIP>/info.json. Use the actual map folder, not the ZIP filename.',
         'Stop the server before changing mods, then restart it. Server-side Lua plugins belong in Resources/Server/<plugin>/ through File Management.',
       ],

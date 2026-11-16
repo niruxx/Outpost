@@ -33,6 +33,9 @@ import {
 import { getPrimaryAddress, listHostAddresses } from '../services/networkService.js';
 import { getTransferState, startTransfer } from '../services/nodeService.js';
 import { installServer, listAvailableVersions } from '../services/downloadService.js';
+import { isManagedBeamMP, normalizeBeamMPLaunch, BEAMMP_TEMPLATE_ID, BEAMNG_EARTH_TEMPLATE_ID } from '../services/beammpService.js';
+import { installBeamMP } from '../services/beammpInstallService.js';
+import { defaultUpnpConfig, saveUpnpConfig } from '../services/upnpService.js';
 import { beginJob, progressJob, finishJob } from '../services/jobService.js';
 import { checkForUpdate, runUpdate } from '../services/updateService.js';
 import { forgetHistory } from '../services/consoleHistoryService.js';
@@ -99,7 +102,7 @@ serversRouter.use(requireAuth);
  * executable path *before* this runs (set at creation time) — installServer's steam branch has
  * no way to know it, so this only verifies the file actually exists afterward.
  */
-async function runServerInstall(server: ServerRecord, afterInstall?: () => void): Promise<void> {
+async function runServerInstall(server: ServerRecord, afterInstall?: () => void, startAfterInstall = false): Promise<void> {
   const job = beginJob('install', server.id);
   if (server.platform === 'docker') {
     // "Installing" a Docker instance = pulling its image.
@@ -121,7 +124,11 @@ async function runServerInstall(server: ServerRecord, afterInstall?: () => void)
     return;
   }
   try {
-    const result = await installServer(
+    const result = isManagedBeamMP(server) ? await installBeamMP(
+      server,
+      (pct, message) => { progressJob(job, message, pct); publish(consoleTopic(server.id), { type: 'install_progress', pct, message }); },
+      line => appendLine(server.id, line),
+    ) : await installServer(
       server.platform,
       server.loader,
       server.version,
@@ -171,6 +178,10 @@ async function runServerInstall(server: ServerRecord, afterInstall?: () => void)
     finishJob(job);
     setServerStatus(server.id, 'stopped');
     publish(consoleTopic(server.id), { type: 'status', status: 'stopped' });
+    if (startAfterInstall) {
+      try { await startServer(server.id); }
+      catch (error) { appendLine(server.id, `[Outpost] Server setup finished, but startup failed: ${error instanceof Error ? error.message : error}`, 'stderr'); }
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     appendLine(server.id, `[Outpost] Installation failed: ${message}`, 'stderr');
@@ -274,6 +285,9 @@ export async function createInstance(req: Request, res: Response) {
     }
     // Creating from a template: its settings (variables filled in) are the defaults; what the
     // person typed (name, port, memory, EULA, Steam login) wins. Everything below still applies.
+    const beammpSetup = [BEAMMP_TEMPLATE_ID, BEAMNG_EARTH_TEMPLATE_ID].includes(req.body?.templateId);
+    const startBeammpAfterInstall = beammpSetup && req.body?.startAfterInstall !== false;
+    const forwardBeammpPort = beammpSetup && req.body?.forwardPort === true;
     let fromTemplate: { tpl: OutpostTemplate; vars: Record<string, string>; inst: TemplateInstance } | null = null;
     if (typeof req.body?.templateId === 'string') {
       const tpl = getTemplate(req.body.templateId);
@@ -384,7 +398,9 @@ export async function createInstance(req: Request, res: Response) {
     let launchConfig: string | null = null;
     if (platform === 'custom') {
       if (req.auth!.role !== 'admin') throw new HttpError(403, 'Only admins can create custom instances');
-      launchConfig = JSON.stringify(sanitizeLaunchConfig(req.body?.launch ?? {}, { isAdmin: true, platform: 'custom' }));
+      let launch = sanitizeLaunchConfig(req.body?.launch ?? {}, { isAdmin: true, platform: 'custom' });
+      if (launch.installer === 'beammp') launch = normalizeBeamMPLaunch(launch);
+      launchConfig = JSON.stringify(launch);
     }
 
     // Container instances follow the user's container permission (none / catalog apps / any image,
@@ -459,6 +475,10 @@ export async function createInstance(req: Request, res: Response) {
     if(typeof res.locals.onInstanceCreated==='function')res.locals.onInstanceCreated(record);
     if (res.locals.fleetRequestId) { const { prep } = await import('../db/db.js'); prep('UPDATE fleet_requests SET server_id=? WHERE id=?').run(record.id, res.locals.fleetRequestId); }
     if (allocation) commitAllocation(allocation.token, record.id);
+    if (forwardBeammpPort && isManagedBeamMP(record)) {
+      const config = defaultUpnpConfig(record);
+      saveUpnpConfig(record.id, { ...config, autoMap: true });
+    }
     if (platform === 'java' || platform === 'bedrock') writeServerProperties(record.id, platform, { 'server-port': String(chosenPort), ...(platform === 'java' && allocation && allocation.address !== '0.0.0.0' ? { 'server-ip': allocation.address } : {}) });
     if (modpackRef) {
       if (req.file) {
@@ -517,7 +537,7 @@ export async function createInstance(req: Request, res: Response) {
       }
     }
 
-    if (platform === 'custom') {
+    if (platform === 'custom' && !isManagedBeamMP(record)) {
       // Nothing to download: the user brings the files (File Management) or points at a host binary.
       afterInstall?.();
       setServerStatus(record.id, 'stopped');
@@ -526,7 +546,7 @@ export async function createInstance(req: Request, res: Response) {
     }
 
     res.status(201).json({ server: getServer(record.id) ?? record });
-    void runServerInstall(getServer(record.id) ?? record, afterInstall);
+    void runServerInstall(getServer(record.id) ?? record, afterInstall, startBeammpAfterInstall);
 }
 
 serversRouter.post(
@@ -546,7 +566,7 @@ serversRouter.post(
     if (server.status !== 'install_failed') {
       throw new HttpError(409, 'Retry is only available after a failed install');
     }
-    if (server.platform === 'custom') throw new HttpError(409, 'Custom instances have no install step');
+    if (server.platform === 'custom' && !isManagedBeamMP(server)) throw new HttpError(409, 'Custom instances have no install step');
 
     setServerStatus(server.id, 'installing');
     publish(consoleTopic(server.id), { type: 'status', status: 'installing' });
@@ -628,11 +648,12 @@ serversRouter.put(
     requirePermission(req, 'launch');
     const server = getServer(req.params.serverId);
     if (!server) throw new HttpError(404, 'Server not found');
-    const config = sanitizeLaunchConfig(req.body?.config ?? {}, { isAdmin: req.auth!.role === 'admin', platform: server.platform });
+    let config = sanitizeLaunchConfig(req.body?.config ?? {}, { isAdmin: req.auth!.role === 'admin', platform: server.platform });
+    if (config.installer === 'beammp') config = normalizeBeamMPLaunch(config);
     setLaunchConfig(server.id, Object.keys(config).length ? JSON.stringify(config) : null);
     if (config.executable && !config.useShell) ensureExecutable(resolveExecutable(server, config.executable));
     appendLine(server.id, `[Outpost] Launch settings changed by ${req.auth!.username} — they apply on the next start`, 'system');
-    logAudit(req.auth!.sub, req.auth!.username, 'server.launch.update', server.id, JSON.stringify(config).slice(0, 500));
+    logAudit(req.auth!.sub, req.auth!.username, 'server.launch.update', server.id, JSON.stringify({ executable: config.executable, installer: config.installer, envKeys: config.env?.map(e => e.key) }).slice(0, 500));
     const updated = getServer(server.id)!;
     let preview: string | null = null;
     let previewError: string | null = null;

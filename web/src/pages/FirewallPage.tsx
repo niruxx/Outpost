@@ -6,7 +6,7 @@ import { Icon } from '../components/icons.js';
 import { useToast } from '../components/Toast.js';
 import { useConfirm } from '../components/ConfirmDialog.js';
 import { api, ApiError } from '../api/client.js';
-import type { FirewallAccess, FirewallInstancePort, FirewallRule, FirewallStatus } from '../api/types.js';
+import type { FirewallAccess, FirewallInstancePort, FirewallRule, FirewallStatus, InstanceFirewallResult } from '../api/types.js';
 
 interface FirewallResponse {
   status: FirewallStatus;
@@ -117,7 +117,14 @@ export function FirewallPage() {
   async function toggleInstancePort(p: FirewallInstancePort) {
     if (!data) return;
     if (!p.open) {
-      await change(`inst-${p.serverId}`, () => api.post('/firewall/rules', { port: p.port, protocol: p.protocol, action: 'allow', comment: p.name }), `Opened ${p.port}/${p.protocol} for ${p.name}`);
+      setBusy(`inst-${p.serverId}`);
+      try {
+        const result = await api.post<InstanceFirewallResult>(`/firewall/instances/${p.serverId}/allow`);
+        if (result.failed.length) toast.error(result.failed.map(item => `${item.port}/${item.protocol}: ${item.error}`).join('; '));
+        else toast.success(`Allowed the configured server ports for ${p.name}`);
+        await load();
+      } catch (error) { toast.error(error instanceof Error ? error.message : 'Could not allow server ports'); }
+      finally { setBusy(null); }
       return;
     }
     const rules = exactRules(data.status.rules, p.port, p.protocol);
@@ -230,7 +237,7 @@ export function FirewallPage() {
                 ) : (
                   <div className="divide-y divide-surface-700 overflow-hidden rounded-2xl bg-surface-900">
                     {data.instancePorts.map((p) => (
-                      <div key={p.serverId} className="flex flex-wrap items-center gap-3 px-4 py-3">
+                      <div key={`${p.serverId}-${p.port}-${p.protocol}`} className="flex flex-wrap items-center gap-3 px-4 py-3">
                         <div className="min-w-0 flex-1">
                           <Link to={`/instances/${p.serverId}`} className="block truncate text-sm font-medium text-ink-100 hover:underline">
                             {p.name}
@@ -238,11 +245,12 @@ export function FirewallPage() {
                           <p className="font-mono text-xs text-ink-400">
                             {p.port}/{p.protocol}
                           </p>
+                          {p.source && <p className="text-xs text-ink-500">{p.source}</p>}
                         </div>
                         <Badge tone={p.open ? 'green' : 'neutral'}>{p.open ? 'Reachable' : 'Blocked'}</Badge>
                         {canChange && status.active && (
                           <Button variant={p.open ? 'danger' : 'primary'} disabled={busy === `inst-${p.serverId}`} onClick={() => toggleInstancePort(p)}>
-                            {p.open ? 'Close' : 'Open port'}
+                            {p.open ? 'Close' : 'Allow server ports'}
                           </Button>
                         )}
                       </div>

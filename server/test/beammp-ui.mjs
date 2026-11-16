@@ -1,0 +1,64 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { once } from 'node:events';
+import express from 'express';
+import { runBrowser } from './browserHarness.mjs';
+
+const root = await fs.mkdtemp(path.join(os.tmpdir(), 'outpost-beammp-ui-'));
+process.env.OUTPOST_DATA_DIR = root;
+const { beammpTemplate } = await import('../dist/services/beammpService.js');
+const template = beammpTemplate();
+const { db } = await import('../dist/db/db.js');
+const artifacts = path.resolve('artifacts/beammp'); await fs.mkdir(artifacts, { recursive: true });
+const submissions = [];
+const app = express(); app.use(express.json());
+app.get('/api/auth/status', (_q, r) => r.json({ setupRequired: false }));
+app.get('/api/auth/me', (_q, r) => r.json({ user: { id: 'admin', username: 'BeamMP tester', role: 'admin', theme: null }, creation: { canCreate: true, allowedPlatforms: ['custom', 'java', 'bedrock', 'steam'], containers: 'any', owned: 0, maxInstances: 0, maxMemoryMb: 0 } }));
+app.get('/api/servers', (_q, r) => r.json({ servers: [], metrics: {} }));
+app.get('/api/templates', (_q, r) => r.json({ templates: [{ id: 'builtin-beammp', name: template.name, description: template.description, platform: 'custom', createdAt: '' }] }));
+app.get('/api/templates/builtin-beammp', (_q, r) => r.json({ template }));
+app.post('/api/servers', (q, r) => { submissions.push(q.body); r.status(400).json({ error: 'Fixture captured setup request' }); });
+app.use('/api', (_q, r) => r.status(503).json({ error: 'Outside BeamMP fixture scope' }));
+app.use(express.static(path.resolve('web/dist')));
+app.get('*', (_q, r) => r.sendFile(path.resolve('web/dist/index.html')));
+const http = app.listen(0, '127.0.0.1'); await once(http, 'listening');
+try {
+  await runBrowser(`http://127.0.0.1:${http.address().port}`, async ({ navigate, text, click, evaluate, until, viewport, captureScreenshot }) => {
+    await viewport(1440, 1100);
+    await navigate('/?new=1'); await text('From a template');
+    await until(() => evaluate(`![...document.querySelectorAll('button')].find(e => e.textContent.includes('From a template')).disabled`), 'Built-in templates loaded');
+    await evaluate(`[...document.querySelectorAll('button')].find(e => e.textContent.includes('From a template')).click()`);
+    await text('Server visibility'); await text('Start the server when setup finishes');
+    const input = label => `document.querySelector('[role="dialog"]') && [...document.querySelectorAll('[role="dialog"] label')].find(e => e.textContent.trim().startsWith(${JSON.stringify(label)}))`;
+    assert.equal(await evaluate(`(${input('Server visibility')}).querySelector('select').value`), 'true');
+    assert.equal(await evaluate(`(${input('BeamMP auth key')}).querySelector('input').value`), '');
+    assert.equal(await evaluate(`(${input('Start the server')}).querySelector('input').checked`), true);
+    assert.equal(await evaluate(`(${input('Try automatic router')}).querySelector('input').checked`), false);
+    assert.equal(await evaluate(`[...document.querySelectorAll('button')].find(e => e.textContent.trim() === 'Create').disabled`), false, 'Private creation works without a key');
+    await captureScreenshot(path.join(artifacts, 'private-setup-desktop.png'));
+    await viewport(390, 844);
+    await captureScreenshot(path.join(artifacts, 'private-setup-mobile.png'));
+    assert(await evaluate(`document.documentElement.scrollWidth <= innerWidth`), 'No horizontal overflow on mobile');
+    await viewport(1440, 1100);
+    await evaluate(`(() => { const e=(${input('Server visibility')}).querySelector('select');e.value='false';e.dispatchEvent(new Event('change',{bubbles:true})); })()`);
+    await until(() => evaluate(`[...document.querySelectorAll('button')].find(e => e.textContent.trim() === 'Create').disabled`), 'Public creation requires a key');
+    await evaluate(`(() => { const e=(${input('BeamMP auth key')}).querySelector('input');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,'public-key-fixture');e.dispatchEvent(new Event('input',{bubbles:true})); })()`);
+    await until(() => evaluate(`![...document.querySelectorAll('button')].find(e => e.textContent.trim() === 'Create').disabled`), 'Public key enables creation');
+    await click('Create'); await text('Fixture captured setup request');
+    assert.equal(submissions[0].variables.PRIVATE, 'false');
+    assert.equal(submissions[0].startAfterInstall, true);
+    assert.equal(submissions[0].forwardPort, false);
+    await evaluate(`(() => { const e=(${input('Server visibility')}).querySelector('select');e.value='true';e.dispatchEvent(new Event('change',{bubbles:true})); })()`);
+    await evaluate(`(${input('Start the server')}).querySelector('input').click(); (${input('Try automatic router')}).querySelector('input').click()`);
+    await click('Create'); await until(() => Promise.resolve(submissions.length === 2), 'Private setup submitted');
+    assert.equal(submissions[1].variables.PRIVATE, 'true');
+    assert.equal(submissions[1].startAfterInstall, false);
+    assert.equal(submissions[1].forwardPort, true);
+  }, { artifactDirectory: artifacts });
+  console.log('BeamMP setup browser: private defaults, public key requirement, startup/UPnP controls, request payloads and mobile width passed.');
+} finally {
+  http.closeAllConnections(); await new Promise(resolve => http.close(resolve));
+  db.close(); await fs.rm(root, { recursive: true, force: true });
+}
