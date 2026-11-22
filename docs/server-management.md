@@ -135,3 +135,21 @@ Restart by stopping then starting the task. The generated `state/windows-launch.
 ## Removal and backups
 
 macOS/Windows uninstallers keep data, shared Node.js/Java installations and update backups by default. Their `--purge` option requires typing `delete`; data outside the checkout is retained for manual cleanup. Linux's `--purge` has broader package/checkout removal semantics. Read the platform's `--help` before using destructive options. Never delete the root `dist/` directory as build cleanup: it contains the platform management scripts, unlike `server/dist/` and `web/dist/`.
+## Core Keeper dedicated servers
+
+Choose **Core Keeper** under Steam dedicated servers. Outpost installs the dedicated-server
+app `1963720`. Linux hosts need `xvfb-run` and `xauth` for Unity’s virtual display.
+Find the Steam Game ID in `GameInfo.txt`. To allow direct PC connections, enable
+**Direct IP connections** in Game settings and share the configured UDP port and
+direct connection password with your players.
+
+Core Keeper stores its worlds and settings under `core-keeper-data/` in the instance
+directory. After the first start, stop the server and open its `ServerConfig.json`
+in Game settings to edit world selection or generation settings. Outpost keeps
+existing custom Steam installations on their original paths.
+
+**Stop** sends a normal shutdown request and waits for Core Keeper to exit.
+Outpost leaves the game running if it does not exit before the stop timeout.
+**Force Stop** can interrupt a save. Instance ZIP backups and environment exports
+require Core Keeper to be stopped. Instance backups store the game files, saves,
+and native configuration. Environment exports also include panel settings.

@@ -27,7 +27,12 @@ export interface Manifest {
 }
 const active = new Set<string>();
 export function assertBackupIdle(id: string) { if (active.has(id))
-    throw new HttpError(423, 'A verified backup operation holds this instance stopped'); }
+    throw new HttpError(423, 'A backup operation is active for this instance'); }
+export function holdBackupOperation(id: string) {
+    assertBackupIdle(id);
+    active.add(id);
+    return () => active.delete(id);
+}
 export async function hashFile(file: string) { const hash = crypto.createHash('sha256'); await pipeline(fs.createReadStream(file), hash); return hash.digest('hex'); }
 function root(id: string) { const dir = safeJoinReal(backupDir(id), '.deduplicated'); fs.mkdirSync(dir, { recursive: true, mode: 0o700 }); return dir; }
 function manifestPath(id: string, name: string) { if (!/^[a-f0-9-]{36}$/.test(name))

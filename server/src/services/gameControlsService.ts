@@ -212,6 +212,7 @@ function sanitize(server: ServerRecord, profile: GameProfile, input: Record<stri
   for (const key of (clear as string[] | undefined) ?? []) values[key] = '';
   if (profile.map) validateMap(values[profile.map.key], profile);
   if (profile.id === 'valheim' && values.password && values.password.length < 5) throw new HttpError(400, 'Valheim passwords need at least five characters');
+  if (profile.id === 'core_keeper' && values.directPassword.length > 28) throw new HttpError(400, 'Core Keeper direct connection passwords may have at most 28 characters');
   if (profile.id === 'rust' && values['server.levelurl']) {
     let url: URL;
     try { url = new URL(values['server.levelurl']); } catch { throw new HttpError(400, 'Use a public HTTPS custom map URL'); }

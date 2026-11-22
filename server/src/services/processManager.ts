@@ -23,6 +23,7 @@ import * as consoleLog from './consoleLogService.js';
 import { logger } from '../utils/logger.js';
 import { HttpError } from '../utils/asyncHandler.js';
 import { findPresetFor, type StopStrategy } from './steamGames.js';
+import { isCoreKeeper } from './coreKeeper.js';
 import { notify } from './notificationService.js';
 import { ensurePrefix, findWine, findXvfbRun, INSTALL_HINT, prefixNeedsWork, usesWine, wineBusy, wineEnv, wineSettingsOf, withWineJob } from './wineService.js';
 import { isProxyLoader, type ServerRecord } from '../types/index.js';
@@ -252,6 +253,10 @@ export async function buildLaunch(server: ServerRecord): Promise<LaunchPlan> {
   const expand = (v: string) => expandVariables(v, vars);
   const customArgs = config.args ? splitArgs(expand(config.args)) : null;
   const preset = server.platform === 'steam' ? findPresetFor(server) : undefined;
+  const coreKeeper = isCoreKeeper(server);
+  if (coreKeeper && (config.executable || customArgs || config.workingDir || config.useShell || wineSettingsOf(config).mode === 'always')) {
+    throw new HttpError(400, 'Core Keeper uses the managed launch settings so Outpost can stop it safely and back up its saves');
+  }
   const cwd = config.workingDir ? resolveExecutable(server, config.workingDir) : preset?.workingDir ? path.join(dir, preset.workingDir) : dir;
   let env = launchEnv(server, config);
   // In shell mode `executable` is a command line, not a file.
@@ -312,6 +317,12 @@ export async function buildLaunch(server: ServerRecord): Promise<LaunchPlan> {
       ({ cmd, args } = viaWine);
       env = { ...viaWine.env, ...env };
       wine = { bin: viaWine.wine };
+    } else if (coreKeeper && process.platform === 'linux') {
+      const xvfb = findXvfbRun();
+      if (!xvfb) throw new HttpError(400, 'Install xvfb and xauth on the Linux host before starting Core Keeper');
+      cmd = xvfb;
+      // Report the game PID before exec so stopping it leaves Xvfb alive until the save finishes.
+      args = ['-a', '/bin/sh', '-c', 'printf "[Outpost Core Keeper PID] %s\\n" "$$"; exec "$@"', 'core-keeper', exe, ...gameArgs];
     } else {
       ({ cmd, args } = scriptCommand(exe, gameArgs));
     }
@@ -354,7 +365,8 @@ export async function buildLaunch(server: ServerRecord): Promise<LaunchPlan> {
     detached: server.platform === 'custom' && process.platform !== 'win32',
     cwd,
     env,
-    display: [cmd, ...args].map((a) => (/\s/.test(a) ? `"${a}"` : a)).join(' '),
+    display: [cmd, ...args.map((a, i) => coreKeeper && args[i - 1] === '-password' ? '[redacted]' : a)]
+      .map((a) => (/\s/.test(a) ? `"${a}"` : a)).join(' '),
   };
 }
 
@@ -373,6 +385,7 @@ function resolveReadyRegex(server: ServerRecord, config: LaunchConfig): RegExp |
 }
 
 function resolveStopStrategy(server: ServerRecord, config: LaunchConfig): StopPlan {
+  if (isCoreKeeper(server)) return { kind: 'core-keeper' };
   const vars = launchVariables(server);
   const stop = config.stop;
   if (stop?.kind === 'stdin') return { kind: 'stdin', commands: stop.commands.map((c) => expandVariables(c, vars)), delayMs: stop.delayMs ?? 0 };
@@ -468,6 +481,8 @@ function issueStop(serverId: string, instance: RunningInstance) {
         if (strategy.delayMs) await new Promise((resolve) => setTimeout(resolve, strategy.delayMs));
       }
     })();
+  } else if (strategy.kind === 'core-keeper') {
+    (instance.child as SupervisedChild).stopCoreKeeper();
   } else if (strategy.kind === 'signal') {
     signalInstance(instance, strategy.signal);
   } else if (strategy.kind === 'script') {
@@ -622,7 +637,7 @@ export async function startServer(serverId: string, options: { auto?: boolean; w
     cmd: target.cmd, args: target.args, cwd: plan.cwd, env,
     shell: plan.useShell && !sandboxed, detached: plan.detached, sandboxed,
     ready: ready ? { source: ready.source, flags: ready.flags } : null,
-    context: { config, cwd: plan.cwd, groupKill: plan.detached, sandboxed },
+    context: { config, cwd: plan.cwd, groupKill: plan.detached, sandboxed, coreKeeper: isCoreKeeper(server) },
   });
   attachRuntime(server, config, plan.cwd, plan.detached, sandboxed, child);
 }
@@ -784,8 +799,13 @@ export function stopServer(serverId: string, options: { force?: boolean } = {}):
   publish(consoleTopic(serverId), { type: 'status', status: 'stopping' });
   issueStop(serverId, instance);
 
+  if (instance.forceKillTimer) clearTimeout(instance.forceKillTimer);
   instance.forceKillTimer = setTimeout(() => {
     if (running.has(serverId)) {
+      if (instance.stopStrategy.kind === 'core-keeper') {
+        appendLog(serverId, '[Outpost] Core Keeper has not exited. Check its console before using Force Stop.', 'system');
+        return;
+      }
       appendLog(serverId, '[Outpost] Graceful stop timed out, forcing termination', 'system');
       signalInstance(instance, 'SIGKILL');
     }
@@ -810,8 +830,13 @@ export async function restartServer(serverId: string): Promise<void> {
     return;
   }
   if (instance) {
-    await new Promise<void>((resolve) => {
-      instance.child.once('exit', () => resolve());
+    await new Promise<void>((resolve, reject) => {
+      const exited = () => { if (deadline) clearTimeout(deadline); resolve(); };
+      const deadline = instance.stopStrategy.kind === 'core-keeper' ? setTimeout(() => {
+        instance.child.off('exit', exited);
+        reject(new HttpError(409, 'Core Keeper is still stopping. Wait for it to finish saving before restarting.'));
+      }, instance.stopTimeoutMs) : null;
+      instance.child.once('exit', exited);
       stopServer(serverId);
     });
   }

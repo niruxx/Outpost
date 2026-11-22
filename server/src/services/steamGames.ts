@@ -12,10 +12,12 @@ import type { ServerRecord } from '../types/index.js';
 import { gmodLaunchArgs } from './gmodService.js';
 import { gameControlsLaunch } from './gameControlsLaunch.js';
 import { prepareGameControls } from './gameControlsService.js';
+import { CORE_KEEPER_APP, CORE_KEEPER_ID, coreKeeperArgs, coreKeeperData } from './coreKeeper.js';
 
 export type StopStrategy =
   | { kind: 'stdin'; commands: string[]; delayMs: number }
   | { kind: 'signal'; signal: 'SIGINT' | 'SIGTERM' | 'SIGQUIT' | 'SIGHUP' }
+  | { kind: 'core-keeper' }
   | { kind: 'none' };
 
 export interface SteamGamePreset {
@@ -134,6 +136,22 @@ function migrateZomboidCacheDir(server: ServerRecord): string | null {
 }
 
 export const STEAM_GAME_PRESETS: SteamGamePreset[] = [
+  {
+    id: CORE_KEEPER_ID,
+    label: 'Core Keeper',
+    appId: CORE_KEEPER_APP,
+    defaultPort: 27015,
+    portProtocol: 'udp',
+    hosts: ['win32', 'linux'],
+    executable: { win32: 'CoreKeeperServer.exe', linux: 'CoreKeeperServer' },
+    installFlags: ['+app_license_request', CORE_KEEPER_APP, ...(process.platform === 'linux' ? ['+app_update', '1007'] : [])],
+    libraryPaths: ['linux64', 'Steamworks SDK Redist/linux64'],
+    buildLaunchArgs: coreKeeperArgs,
+    prepareInstance: (server) => { fs.mkdirSync(coreKeeperData(server), { recursive: true }); return null; },
+    stopStrategy: { kind: 'core-keeper' },
+    needsExecuteBit: true,
+    notes: 'Join with the Steam Game ID, or enable direct PC connections in Game settings. Linux needs xvfb-run and xauth. Stop the server before taking a backup.',
+  },
   {
     id: 'palworld',
     label: 'Palworld',
@@ -792,5 +810,7 @@ export function findPresetById(id: string | null | undefined): SteamGamePreset |
 /** The preset an instance was created from. Some games share an App ID (CS 1.6 and Condition Zero
  *  are both app 90), so the preset id wins; older instances fall back to the App ID. */
 export function findPresetFor(server: Pick<ServerRecord, 'steam_app_id'> & { steam_preset?: string | null }): SteamGamePreset | undefined {
+  // Existing custom Core Keeper installs may have saves outside the instance.
+  if (!server.steam_preset && server.steam_app_id === CORE_KEEPER_APP) return undefined;
   return findPresetById(server.steam_preset) ?? findPreset(server.steam_app_id);
 }

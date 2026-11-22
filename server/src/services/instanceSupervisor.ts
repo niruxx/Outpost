@@ -12,7 +12,7 @@ import type { LaunchConfig } from './launchConfig.js';
 export interface SupervisorLaunch {
   cmd: string; args: string[]; cwd: string; env: Record<string, string>; shell: boolean;
   detached: boolean; sandboxed: boolean; ready: { source: string; flags: string } | null;
-  context: { config: LaunchConfig; cwd: string; groupKill: boolean; sandboxed: boolean };
+  context: { config: LaunchConfig; cwd: string; groupKill: boolean; sandboxed: boolean; coreKeeper?: boolean };
 }
 export interface SupervisorState { version: number; serverId: string; token: string; port: number; pid: number; workerPid: number; innerPid: number | null; startedAt: number; ready: boolean; exited: boolean; manualStop: boolean; code: number | null; signal: string | null; context: SupervisorLaunch['context'] }
 const root = () => path.join(DATA_DIR, 'instance-supervisors');
@@ -31,7 +31,7 @@ export function supervisorStates(): SupervisorState[] {
     return [state];
   });
 }
-export interface SupervisedChild extends ChildProcessWithoutNullStreams { detach(): void; markManualStop(): void; resume(): void; supervisorState: SupervisorState }
+export interface SupervisedChild extends ChildProcessWithoutNullStreams { detach(): void; markManualStop(): void; stopCoreKeeper(): void; resume(): void; supervisorState: SupervisorState }
 export async function connectSupervisor(state: SupervisorState): Promise<SupervisedChild> {
   return new Promise((resolve, reject) => {
     const socket = net.connect(state.port, '127.0.0.1');
@@ -42,6 +42,7 @@ export async function connectSupervisor(state: SupervisorState): Promise<Supervi
     child.stdin = new Writable({ write(data, _encoding, done) { if (socket.destroyed) { done(new Error('Supervisor connection unavailable')); return; } send({ type: 'stdin', data: data.toString() }); done(); } });
     child.kill = (signal = 'SIGTERM') => { send({ type: 'signal', signal }); return true; };
     child.markManualStop = () => send({ type: 'manualStop' });
+    child.stopCoreKeeper = () => send({ type: 'stopCoreKeeper' });
     child.detach = () => { detached = true; socket.destroy(); };
     const cursorFile = path.join(supervisorLocation(state.serverId), 'cursor.json');
     let after = 0;

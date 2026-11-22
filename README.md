@@ -224,6 +224,7 @@ Every template is just a starting point — change the image, ports, environment
 | 🏝️ | **Rust, 7 Days to Die, Satisfactory, Unturned** | — | game default |
 | 🧟 | **Project Zomboid** | 🧰 Steam Workshop items, written into its `.ini` | `16261/udp` |
 | 🌳 | **Terraria** | — *(the vanilla server has no mod loader)* | `7777/tcp` |
+| 🌱 | **Core Keeper** | Steam Game ID or direct PC connections | `27015/udp` when direct connections are enabled |
 | 🎯 | **Any Steam App ID** — CS2, TF2, Rust, ARK, Quake Live… | — | your choice |
 
 Known titles and app types get their own emblem, and running instances wear a live 🟢 dot.

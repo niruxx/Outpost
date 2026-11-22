@@ -50,7 +50,7 @@ interface PlayersView {
 }
 
 /** Steam games that don't answer server-browser queries, so get no stats card / players page. */
-const NO_A2S = ['palworld', 'satisfactory', 'terraria', 'quake3'];
+const NO_A2S = ['palworld', 'satisfactory', 'terraria', 'quake3', 'core_keeper'];
 export const hasBrowserStats = (s: { platform: string; steam_preset?: string | null }) => s.platform === 'steam' && !NO_A2S.includes(s.steam_preset ?? '');
 
 /** Max per bucket, so a short spike still shows on a week-long chart. */

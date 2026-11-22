@@ -10,6 +10,8 @@ import { logger } from '../utils/logger.js';
 import { HttpError } from '../utils/asyncHandler.js';
 import { DatabaseSync } from 'node:sqlite';
 import { acquireBackupStorage, backupDir, rewindDir } from './backupStorageService.js';
+import { holdCoreKeeperBackup } from './backupService.js';
+import { isCoreKeeper } from './coreKeeper.js';
 
 function timestampSlug(): string {
   return new Date().toISOString().replace(/[:.]/g, '-');
@@ -43,6 +45,10 @@ export async function exportEnvironment(): Promise<{ filePath: string; fileName:
   const release: (() => void)[] = [];
   try {
     const servers = listServers();
+    for (const server of servers.filter(isCoreKeeper)) {
+      const unlock = await holdCoreKeeperBackup(server.id);
+      if (unlock) release.push(unlock);
+    }
     for (const server of servers) release.push(acquireBackupStorage(server.id));
     const zip = new AdmZip();
     zip.addLocalFolder(DATA_DIR, '');

@@ -39,6 +39,11 @@ export function gameControlsLaunch(server: ServerRecord, id: string, original: s
     for (const field of profile.fields) if (!field.launch) setCvar(args, field.key, v[field.key]);
     setCvar(args, 'net_port', String(server.server_port));
     flag(args, '+map', id === 'quakelive' ? [v.map, v.factory] : [v.map], id === 'quakelive' ? 2 : 1);
+  } else if (id === 'core_keeper') {
+    if (v.directConnections === 'true') {
+      args.push('-port', String(server.server_port));
+      if (v.directPassword) args.push('-password', v.directPassword);
+    }
   } else if (id === 'valheim') {
     flag(args, '-name', [v.serverName]); flag(args, '-world', [v.world]); flag(args, '-port', [String(server.server_port)]);
     flag(args, '-public', [v.public === 'true' ? '1' : '0']); flag(args, '-saveinterval', [v.saveinterval]);

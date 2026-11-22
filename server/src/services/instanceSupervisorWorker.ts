@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 
 const directory = process.argv[2];
 const input = JSON.parse(fs.readFileSync(path.join(directory, 'launch.json'), 'utf8'));
@@ -20,9 +20,22 @@ const emit = (event: any) => {
 const child = spawn(input.cmd, input.args, { cwd: input.cwd, env: input.env, shell: input.shell, windowsHide: true, detached: input.detached, stdio: input.sandboxed ? ['pipe', 'pipe', 'pipe', 'pipe'] : ['pipe', 'pipe', 'pipe'] });
 state.pid = child.pid ?? null;
 const ready = input.ready ? new RegExp(input.ready.source, input.ready.flags) : null;
+const coreKeeper = input.context.coreKeeper === true;
+let coreKeeperPid: number | null = null, coreKeeperOutput = '', coreKeeperStopPending = false;
 for (const [stream, pipe] of [['stdout', child.stdout], ['stderr', child.stderr]] as const) {
   pipe!.setEncoding('utf8');
-  pipe!.on('data', (data: string) => { if (!state.ready && (!ready || ready.test(data))) { state.ready = true; save(); } emit({ type: stream, data }); });
+  pipe!.on('data', (data: string) => {
+    if (coreKeeper && process.platform === 'linux' && stream === 'stdout' && coreKeeperPid === null) {
+      coreKeeperOutput = (coreKeeperOutput + data).slice(-8192);
+      const match = coreKeeperOutput.match(/^\[Outpost Core Keeper PID\] ([1-9]\d*)\r?\n/m);
+      if (match) {
+        coreKeeperPid = Number(match[1]);
+        if (coreKeeperStopPending) stopCoreKeeper();
+      }
+    }
+    if (!state.ready && (!ready || ready.test(data))) { state.ready = true; save(); }
+    emit({ type: stream, data });
+  });
 }
 let info = '';
 child.stdio[3]?.on('data', (chunk: Buffer) => { info = (info + chunk.toString()).slice(-8192); const match = info.match(/"child-pid":\s*(\d+)/); if (match) { state.innerPid = Number(match[1]); save(); } emit({ type: 'fd3', data: chunk.toString() }); });
@@ -32,9 +45,29 @@ child.on('error', error => { emit({ type: 'stderr', data: `[Outpost supervisor] 
 child.on('exit', exited);
 function signalChild(signal: NodeJS.Signals) {
   if (state.exited) return;
+  if (coreKeeper && process.platform === 'linux' && coreKeeperPid) {
+    try { process.kill(coreKeeperPid, signal); return; } catch {}
+  }
   if (input.detached && child.pid) { try { process.kill(-child.pid, signal); return; } catch {} }
   if (input.sandboxed && state.innerPid) { try { process.kill(state.innerPid, signal); return; } catch {} }
   child.kill(signal);
+}
+function stopCoreKeeper() {
+  if (!coreKeeper || state.exited || !child.pid) return;
+  if (process.platform === 'win32') {
+    const taskkill = path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'taskkill.exe');
+    // A non-forced close lets the Unity player run its shutdown handler.
+    execFile(taskkill, ['/PID', String(child.pid)], { windowsHide: true, timeout: 10000 }, (error) => {
+      if (error && !state.exited) emit({ type: 'stderr', data: '[Outpost] Windows could not close Core Keeper gracefully. The process was left running.\n' });
+    });
+  } else if (coreKeeperPid) {
+    coreKeeperStopPending = false;
+    try { process.kill(coreKeeperPid, 'SIGTERM'); } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ESRCH') emit({ type: 'stderr', data: '[Outpost] Could not send Core Keeper its shutdown signal.\n' });
+    }
+  } else {
+    coreKeeperStopPending = true;
+  }
 }
 const server = net.createServer(socket => {
   socket.on('error', () => {});
@@ -55,7 +88,11 @@ const server = net.createServer(socket => {
       if (request.type === 'resume') { clients.add(socket); for (const event of history) if (event.seq > (request.after ?? 0)) send(socket, event); if (state.exited && !history.some(e => e.type === 'exit')) send(socket, { type: 'exit', code: state.code, signal: state.signal }); }
       if (request.type === 'stdin' && !state.exited) child.stdin!.write(String(request.data));
       if (request.type === 'signal') signalChild(request.signal);
-      if (request.type === 'manualStop') { state.manualStop = true; save(); const timer = setTimeout(() => signalChild('SIGKILL'), (input.context.config.stopTimeoutSec ?? 60) * 1000); timer.unref(); }
+      if (request.type === 'manualStop') {
+        state.manualStop = true; save();
+        if (!coreKeeper) { const timer = setTimeout(() => signalChild('SIGKILL'), (input.context.config.stopTimeoutSec ?? 60) * 1000); timer.unref(); }
+      }
+      if (request.type === 'stopCoreKeeper') stopCoreKeeper();
       if (request.type === 'dispose' && state.exited) { socket.end(); server.close(); for (const client of clients) client.destroy(); setTimeout(() => process.exit(0), 50); }
     }
   });

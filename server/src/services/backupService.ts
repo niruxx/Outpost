@@ -8,6 +8,8 @@ import { HttpError } from '../utils/asyncHandler.js';
 import { logger } from '../utils/logger.js';
 import { scanIngestedPath } from './antivirusService.js';
 import { beginJob, progressJob, finishJob } from './jobService.js';
+import { getServer } from './serverService.js';
+import { CORE_KEEPER_DATA, coreKeeperData, isCoreKeeper } from './coreKeeper.js';
 
 export interface BackupInfo {
   fileName: string;
@@ -19,11 +21,36 @@ function timestampSlug(): string {
   return new Date().toISOString().replace(/[:.]/g, '-');
 }
 
+export async function holdCoreKeeperBackup(id: string) {
+  const server = getServer(id);
+  if (!server || !isCoreKeeper(server)) return null;
+  const { holdBackupOperation } = await import('./verifiedBackupService.js');
+  const current = getServer(id);
+  if (!current || !['stopped', 'crashed'].includes(current.status) || isRunning(id)) {
+    throw new HttpError(409, 'Stop Core Keeper and wait for it to finish saving before backing up or restoring its files');
+  }
+  checkCoreKeeperData(coreKeeperData(current));
+  return holdBackupOperation(id);
+}
+
+function checkCoreKeeperData(directory: string) {
+  const root = fs.lstatSync(directory, { throwIfNoEntry: false });
+  if (!root) return;
+  if (!root.isDirectory()) throw new HttpError(409, 'Core Keeper backups need an instance-local data directory');
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    const file = path.join(directory, entry.name);
+    if (entry.isDirectory()) checkCoreKeeperData(file);
+    else if (!entry.isFile()) throw new HttpError(409, 'Remove links or special files from Core Keeper’s data before backing it up');
+  }
+}
+
 /** Zips the entire instance directory into the server's backup folder. Skips old backup archives. */
 export async function createBackup(serverId: string, label?: string): Promise<BackupInfo> {
   const release = acquireBackupStorage(serverId);
   const job = beginJob('backup', serverId);
+  let unlock: (() => void) | null = null;
   try {
+    unlock = await holdCoreKeeperBackup(serverId);
     const srcDir = instanceDir(serverId);
     if (!fs.existsSync(srcDir)) throw new HttpError(404, 'Server directory not found');
     const destDir = backupDir(serverId);
@@ -44,7 +71,7 @@ export async function createBackup(serverId: string, label?: string): Promise<Ba
     // Copy it off-site (in the background) when destinations are set up.
     void import('./offsiteService.js').then((o) => o.enqueueCopy(serverId, fileName)).catch(() => {});
     return { fileName, sizeBytes: stat.size, createdAt: new Date().toISOString() };
-  } catch (err) { finishJob(job, err); throw err; } finally { release(); }
+  } catch (err) { finishJob(job, err); throw err; } finally { unlock?.(); release(); }
 }
 
 export function listBackups(serverId: string): BackupInfo[] {
@@ -77,19 +104,56 @@ export function deleteBackup(serverId: string, fileName: string): void {
 /** Restores a backup by wiping the current instance directory and extracting the archive in its place. */
 export async function restoreBackup(serverId: string, fileName: string): Promise<void> {
   const release = acquireBackupStorage(serverId);
+  let unlock: (() => void) | null = null;
   try {
+    unlock = await holdCoreKeeperBackup(serverId);
     if (isRunning(serverId)) {
       throw new HttpError(409, 'Stop the server before restoring a backup');
     }
     const filePath = resolveBackupPath(serverId, fileName);
     await scanIngestedPath(filePath);
     const dir = instanceDir(serverId);
+    if (unlock) {
+      const scratch = fs.mkdtempSync(path.join(path.dirname(dir), '.core-keeper-restore-'));
+      const next = path.join(scratch, 'next');
+      const previous = path.join(scratch, 'previous');
+      let keepPrevious = false;
+      try {
+        const zip = new AdmZip(filePath);
+        const entries = zip.getEntries();
+        if (entries.length === 0) throw new HttpError(400, 'The backup is empty');
+        for (const entry of entries) {
+          const name = entry.entryName.replace(/\\/g, '/').replace(/\/$/, '');
+          if (!name || name.startsWith('/') || name.includes(':') || name.split('/').some((part) => !part || part === '.' || part === '..') ||
+              ((entry.attr >>> 16) & 0xf000) === 0xa000) {
+            throw new HttpError(400, 'The backup contains an invalid file path or symbolic link');
+          }
+        }
+        fs.mkdirSync(next);
+        zip.extractAllTo(next, true);
+        checkCoreKeeperData(path.join(next, CORE_KEEPER_DATA));
+        if (fs.existsSync(dir)) fs.renameSync(dir, previous);
+        keepPrevious = fs.existsSync(previous);
+        try {
+          fs.renameSync(next, dir);
+          keepPrevious = false;
+        } catch (error) {
+          if (keepPrevious) { fs.renameSync(previous, dir); keepPrevious = false; }
+          throw error;
+        }
+      } finally {
+        if (!keepPrevious) fs.rmSync(scratch, { recursive: true, force: true });
+        else logger.error(`Core Keeper restore rollback needs attention at ${previous}`);
+      }
+      logger.info(`Restored Core Keeper ${serverId} from backup ${fileName}`);
+      return;
+    }
     fs.rmSync(dir, { recursive: true, force: true });
     fs.mkdirSync(dir, { recursive: true });
     const zip = new AdmZip(filePath);
     zip.extractAllTo(dir, true);
     logger.info(`Restored server ${serverId} from backup ${fileName}`);
-  } finally { release(); }
+  } finally { unlock?.(); release(); }
 }
 
 export function enforceRetention(serverId: string, retentionCount: number): void {
@@ -168,6 +232,11 @@ export function compareSnapshotFile(serverId: string, fileName: string, rawPath:
 
 /** Copies one file out of a snapshot over the live instance's copy. */
 export function restoreSnapshotFile(serverId: string, fileName: string, rawPath: string): void {
+  const server = getServer(serverId);
+  if (server && isCoreKeeper(server)) {
+    if (isRunning(serverId) || !['stopped', 'crashed'].includes(server.status)) throw new HttpError(409, 'Stop Core Keeper before restoring a file');
+    checkCoreKeeperData(coreKeeperData(server));
+  }
   const entryPath = normalizeEntryPath(rawPath);
   const entry = openSnapshot(serverId, fileName).getEntry(entryPath);
   if (!entry || entry.isDirectory) throw new HttpError(404, 'That file is not in this snapshot');

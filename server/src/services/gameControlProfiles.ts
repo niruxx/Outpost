@@ -45,6 +45,14 @@ export const GAME_PROFILES: GameProfile[] = sourceGames.map(([id, appId, label, 
   notes: ['Save while stopped. Settings load on the next start and map change.', ...(id === 'l4d2' ? ['Game modes enforce their own player limit. Extra slots require compatible server mods.'] : [])],
 }));
 GAME_PROFILES.push(
+  { id: 'core_keeper', appId: '1963720', label: 'Core Keeper', format: 'launch', fields: [
+    boolean('directConnections', 'Enable direct IP connections using the instance port', false),
+    password('directPassword', 'Direct connection password'),
+  ], extraFiles: ['core-keeper-data/ServerConfig.json'], notes: [
+    'The game creates ServerConfig.json after its first start. Edit it while stopped to choose the world slot, name, seed, difficulty and player limit.',
+    'The seed affects newly generated worlds. Use GameInfo.txt in the instance files for the Steam Game ID.',
+    'Direct IP is optional and uses the allocated UDP port. The password applies to direct connections.',
+  ] },
   { id: 'quake3', appId: '2200', label: 'Quake III Arena', format: 'quake', file: 'baseq3/server.cfg', fields: [text('sv_hostname', 'Server name', '@name'), password('g_password'), number('sv_maxclients', 'Player slots', 16, 1, 64), choice('g_gametype', 'Game type', '0', ['0', '1', '3', '4']), number('timelimit', 'Time limit (minutes)', 20, 0, 10000), number('fraglimit', 'Frag limit', 30, 0, 10000), text('map', 'Start map', 'q3dm17', true)], map: { key: 'map', label: 'Maps', roots: ['baseq3'], extension: '.bsp', archive: true, upload: 'pk3', uploadRoot: 'baseq3', live: 'map', rotation: true, builtins: ['q3dm17'] }, notes: ['Map packages are .pk3 archives. The original pak0.pk3 game data is still required.', 'Game types: 0 free-for-all, 1 duel, 3 team deathmatch, 4 capture the flag.'] },
   { id: 'quakelive', appId: '349090', label: 'Quake Live', format: 'quake', file: 'home/baseq3/server.cfg', fields: [text('sv_hostname', 'Server name', '@name'), password('g_password'), number('sv_maxclients', 'Player slots', 16, 1, 64), text('map', 'Start map', 'campgrounds', true), choice('factory', 'Game factory', 'ffa', ['ffa', 'duel', 'tdm', 'ca', 'ctf', 'ad', 'ft', 'dom', 'har'], true), number('timelimit', 'Time limit (minutes)', 20, 0, 10000)], map: { key: 'map', label: 'Maps', roots: ['baseq3', 'home/baseq3'], extension: '.bsp', archive: true, upload: 'pk3', uploadRoot: 'home/baseq3', live: 'map', builtins: ['campgrounds', 'bloodrun'] }, extraFiles: ['home/baseq3/workshop.txt'], notes: ['Linux dedicated server. Workshop IDs can be edited in workshop.txt below.'] },
   { id: 'palworld', appId: '2394010', label: 'Palworld', format: 'palworld', file: '@palworld', section: '/Script/Pal.PalGameWorldSettings', fields: [text('ServerName', 'Server name', '@name'), text('ServerDescription', 'Description'), password('ServerPassword'), password('AdminPassword', 'Admin password'), number('ServerPlayerMaxNum', 'Player slots', 32, 1, 32), number('ExpRate', 'Experience multiplier', 1, 0.1, 100), number('PalCaptureRate', 'Capture multiplier', 1, 0.1, 100), number('DayTimeSpeedRate', 'Day speed', 1, 0.1, 100), number('NightTimeSpeedRate', 'Night speed', 1, 0.1, 100), boolean('bIsPvP', 'PvP', false), choice('DeathPenalty', 'Death penalty', 'All', ['None', 'Item', 'ItemAndEquipment', 'All'])], notes: ['Palworld has a fixed world map. Save data and backups are managed in the instance files; there is no interchangeable map file.', 'Existing advanced OptionSettings values are preserved. Port is applied through the launch command.'] },
@@ -63,5 +71,5 @@ GAME_PROFILES.push(
 export function profileFor(server: { platform: string; steam_preset?: string | null; steam_app_id?: string | null }): GameProfile | undefined {
   if (server.platform !== 'steam') return undefined;
   if (server.steam_preset) return GAME_PROFILES.find((p) => p.id === server.steam_preset);
-  return GAME_PROFILES.find((p) => p.appId === server.steam_app_id);
+  return GAME_PROFILES.find((p) => p.id !== 'core_keeper' && p.appId === server.steam_app_id);
 }
