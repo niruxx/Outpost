@@ -45,7 +45,7 @@ Recovery v1 boundaries:
 | Minecraft Bedrock | Matching source/destination OS and architecture; reserve game and IPv6 ports; review native dependencies. |
 | Steam presets, including extension adapters | Matching OS and architecture and a compatible installed destination preset; review/reconfigure native game/query/RCON ports and licenses before starting. |
 | Valheim | Only worlds explicitly configured for instance-local storage. External home-directory worlds are rejected. |
-| Custom processes / Docker | Not included in this recovery importer. Use their deployment/storage-specific procedure. |
+| Custom processes | Not included in this recovery importer. Use their deployment/storage-specific procedure. |
 | Billing-managed instances | Reconcile billing ownership before migration; this workflow rejects them. |
 
 Instance trees and compressed snapshots are limited to **1 GiB** in v1, with 100,000 archive entries, 256 MiB per file and 20 GiB expanded maximum. Destination disk budget must cover the data. Recovery uses full backups; native configuration files in those archives can contain secrets. Protect the controller/node links and backup storage accordingly. Accounts, grants, billing bindings, external databases/storage, source host credentials and custom launch overrides are not migrated. Portable game settings omit keys identified as credentials; re-enter any required secrets. Restored files do not certify game-world semantic health or mod compatibility; use the separate world-health workflow where supported.

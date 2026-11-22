@@ -26,7 +26,7 @@ Every player must install and run the **matching BeamNG.Earth app** from the [of
 
 Private servers use BeamMP **Direct Connect**. Public Earth servers appear in the **BeamNG.Earth** category for Earth players, rather than the regular BeamMP server list. Outpost synchronizes its launch overrides into `ServerConfig.toml` before starting because the Earth plugin reads that file for listing metadata. Public listing also needs `curl` on the host, as described by the upstream package.
 
-Allow the chosen server port over **TCP and UDP** using **Status → Server firewall → Allow server ports**. Router forwarding can be enabled during creation or managed on the UPnP tab. Earth does not require an extra public world-generation port on this host. The optional upstream share-helper and data-hosting services are separate and are not installed by this setup.
+Allow the chosen server port over **TCP and UDP** in the host firewall. Router forwarding can be enabled during creation or managed on the UPnP tab. Earth does not require an extra public world-generation port on this host. The optional upstream share-helper and data-hosting services are separate and are not installed by this setup.
 
 See the [official Earth server guide](https://github.com/TecnaGamer/BeamNG.Earth/blob/main/beammp/README.md) for player requirements and plugin settings.
 

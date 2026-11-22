@@ -1,4 +1,3 @@
-import { vmGrants } from './vmAccessService.js';
 import crypto from 'node:crypto';
 import { removeUserSteamAccounts } from './steamAccountService.js';
 import { prep, db } from '../db/db.js';
@@ -8,8 +7,8 @@ import { changePath } from './fileChangeService.js';
 import type { PublicUser, Role, User, StoragePermission } from '../types/index.js';
 
 function toPublic(user: User): PublicUser {
-  const { password_hash, password_salt, totp_secret, totp_last_step, totp_recovery, storage, ...rest } = user;
-  return { ...rest, storagePermissions: storagePermissionsOf(user), vmAccess: vmGrants(user.id) };
+  const { password_hash, password_salt, totp_secret, totp_last_step, totp_recovery, storage, firewall: _legacyFirewall, ...rest } = user;
+  return { ...rest, storagePermissions: storagePermissionsOf(user) };
 }
 
 export const STORAGE_PERMISSIONS: StoragePermission[] = ['view', 'mount', 'automount', 'format', 'wipe', 'partition', 'encrypt', 'lvm', 'resize', 'raid', 'migrate', 'crypttab', 'health', 'erase'];
@@ -74,23 +73,11 @@ export function disabledMessage(reason: string | null): string {
   return `This account has been disabled${reason ? `: ${reason}` : ''}. Contact the panel owner.`;
 }
 
-export const FIREWALL_ACCESS = ['none', 'view', 'instances', 'manage'] as const;
-
 /** Theme ids the web app ships (web/src/lib/theme.ts). */
 export const THEME_IDS = ['outpost', 'classic', 'xp', 'minecraft', 'vista', 'aero'] as const;
 
 export function setUserTheme(id: string, theme: (typeof THEME_IDS)[number] | null) {
   prep('UPDATE users SET theme = ? WHERE id = ?').run(theme, id);
-}
-
-export function setFirewallAccess(id: string, access: (typeof FIREWALL_ACCESS)[number]) {
-  prep('UPDATE users SET firewall = ? WHERE id = ?').run(access, id);
-}
-
-/** Admins always manage; everyone else gets what their account allows. */
-export function effectiveFirewallAccess(userId: string, role: Role): (typeof FIREWALL_ACCESS)[number] {
-  if (role === 'admin') return 'manage';
-  return getUserById(userId)?.firewall ?? 'none';
 }
 
 export function updateUserRole(id: string, role: Role) {
@@ -211,8 +198,7 @@ export function logAudit(userId: string | null, username: string | null, action:
 // Instance creation policy (account-level) and ownership
 // ---------------------------------------------------------------------------
 
-/** Instance types a non-admin can be allowed to create. Custom and Docker instances run arbitrary
- *  code / containers on the host, so they stay admin-only no matter what. */
+/** Instance types a non-admin can be allowed to create. Custom instances run arbitrary host code and require an administrator. */
 export const CREATABLE_PLATFORMS = ['java', 'bedrock', 'steam'] as const;
 export type CreatablePlatform = (typeof CREATABLE_PLATFORMS)[number];
 
@@ -223,11 +209,6 @@ export interface CreationPolicy {
   maxInstances: number;
   /** Highest "max memory" per instance in MB (0 = no limit). */
   maxMemoryMb: number;
-  /** Container instances: none, only templates from the app catalog, or any image. */
-  containers: 'none' | 'catalog' | 'any';
-  /** May mount the container engine's socket (Portainer & other container managers). This means
-   *  control over every container on the host — with rootful Docker, effectively the host. */
-  engineSocket: boolean;
 }
 
 export interface EffectiveCreation extends CreationPolicy {
@@ -239,9 +220,8 @@ export interface EffectiveCreation extends CreationPolicy {
 }
 
 export function roleDefaultCreation(role: Role): CreationPolicy {
-  if (role === 'viewer') return { canCreate: false, platforms: [], maxInstances: 0, maxMemoryMb: 0, containers: 'none', engineSocket: false };
-  // Containers stay opt-in: an admin grants catalog or any-image access per user.
-  return { canCreate: true, platforms: [...CREATABLE_PLATFORMS], maxInstances: 0, maxMemoryMb: 0, containers: 'none', engineSocket: false };
+  if (role === 'viewer') return { canCreate: false, platforms: [], maxInstances: 0, maxMemoryMb: 0 };
+  return { canCreate: true, platforms: [...CREATABLE_PLATFORMS], maxInstances: 0, maxMemoryMb: 0 };
 }
 
 export function sanitizeCreationPolicy(input: unknown): CreationPolicy {
@@ -252,13 +232,11 @@ export function sanitizeCreationPolicy(input: unknown): CreationPolicy {
     platforms: CREATABLE_PLATFORMS.filter((p) => Array.isArray(raw.platforms) && raw.platforms.includes(p)),
     maxInstances: int(raw.maxInstances, 10_000),
     maxMemoryMb: int(raw.maxMemoryMb, 4_194_304),
-    containers: raw.containers === 'catalog' || raw.containers === 'any' ? raw.containers : 'none',
-    engineSocket: raw.engineSocket === true && (raw.containers === 'catalog' || raw.containers === 'any'),
   };
 }
 
 export function countOwned(userId: string): number {
-  return (prep('SELECT COUNT(*) AS c FROM servers WHERE created_by = ?').get(userId) as { c: number }).c;
+  return (prep("SELECT COUNT(*) AS c FROM servers WHERE created_by = ? AND platform IN ('java', 'bedrock', 'steam', 'custom')").get(userId) as { c: number }).c;
 }
 
 export function getEffectiveCreation(userId: string, role: Role): EffectiveCreation {
@@ -269,9 +247,7 @@ export function getEffectiveCreation(userId: string, role: Role): EffectiveCreat
       platforms: [...CREATABLE_PLATFORMS],
       maxInstances: 0,
       maxMemoryMb: 0,
-      containers: 'any',
-      engineSocket: true,
-      allowedPlatforms: [...CREATABLE_PLATFORMS, 'custom', 'docker'],
+      allowedPlatforms: [...CREATABLE_PLATFORMS, 'custom'],
       owned,
       fromRole: true,
     };
@@ -287,7 +263,6 @@ export function getEffectiveCreation(userId: string, role: Role): EffectiveCreat
   }
   const effective = policy ?? roleDefaultCreation(role);
   const allowedPlatforms: string[] = effective.canCreate ? [...effective.platforms] : [];
-  if (effective.canCreate && effective.containers !== 'none') allowedPlatforms.push('docker');
   return { ...effective, allowedPlatforms, owned, fromRole: !policy };
 }
 

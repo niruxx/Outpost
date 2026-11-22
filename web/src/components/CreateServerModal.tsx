@@ -28,7 +28,6 @@ const LOADERS_BY_PLATFORM: Record<Platform, { value: Loader; label: string }[]> 
   bedrock: [{ value: 'bedrock', label: 'Bedrock Dedicated Server' }],
   steam: [{ value: 'steam', label: 'Steam Dedicated Server' }],
   custom: [{ value: 'custom', label: 'Custom' }],
-  docker: [{ value: 'docker', label: 'Docker' }],
 };
 
 const CUSTOM_STEAM_GAME = '__custom__';

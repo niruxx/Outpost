@@ -19,7 +19,7 @@ interface InstanceMenuOptions {
   copyExtra?: MenuItems;
 }
 
-/** The right-click menu shared by every place an instance is listed (cards, sidebar, Docker page). */
+/** The right-click menu shared by every place an instance is listed (cards and sidebar). */
 export function instanceMenu({ server, navigate, notify, pinned, togglePin, power, extra = [], copyExtra = [] }: InstanceMenuOptions): MenuItems {
   const base = `/instances/${server.id}`;
   const copy = (text: string, what: string) =>

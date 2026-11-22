@@ -5,7 +5,7 @@ import { Link } from 'react-router-dom';
 import { api, ApiError, downloadUrl } from '../api/client.js';
 import { useToast } from './Toast.js';
 import { useConfirm } from './ConfirmDialog.js';
-import { Button, Card, ErrorText, Field, Select, Spinner } from './ui.js';
+import { Button, Card, ErrorText, Field, Notice, Select, Spinner } from './ui.js';
 import { Icon } from './icons.js';
 
 interface ExportPreview {
@@ -13,13 +13,27 @@ interface ExportPreview {
   instances: { id: string; name: string }[];
 }
 
+const exportParts = [
+  ['includeDatabase', 'Panel database', 'Accounts, permissions, settings, and configurations for selected instances'],
+  ['includeFiles', 'Instance files', 'Worlds, saves, mods, and game configuration files'],
+  ['includeSnapshots', 'Existing snapshots', 'ZIP and deduplicated backups from active storage'],
+  ['includeRestorePoints', 'World restore points', 'Stored World Rewind history'],
+  ['includeSupportFiles', 'Host support files', 'Installed tools and runtimes, plus applicable panel data'],
+] as const;
+type ExportFlag = (typeof exportParts)[number][0];
+const defaultExport: Record<ExportFlag, boolean> & { instanceIds: string[] | null } = {
+  includeDatabase: true, includeFiles: true, includeSnapshots: true,
+  includeRestorePoints: true, includeSupportFiles: true, instanceIds: null,
+};
+
 export function EnvironmentBackupCard() {
   const toast = useToast();
   const confirm = useConfirm();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [scope, setScope] = useState<'environment' | 'instance'>('environment');
-  const [includeHistory, setIncludeHistory] = useState(true);
+  const [options, setOptions] = useState(defaultExport);
   const [preview, setPreview] = useState<ExportPreview | null>(null);
+  const [checking, setChecking] = useState(true);
   const [previewError, setPreviewError] = useState('');
   const [refresh, setRefresh] = useState(0);
   const [instance, setInstance] = useState('');
@@ -27,16 +41,21 @@ export function EnvironmentBackupCard() {
   const [importing, setImporting] = useState(false);
   const [restarting, setRestarting] = useState(false);
 
-  const historyQuery = includeHistory ? '' : '?history=exclude';
   useEffect(() => {
     let current = true;
-    setPreview(null);
+    setChecking(true);
     setPreviewError('');
-    api.get<ExportPreview>(`/environment/export/preview${historyQuery}`)
+    api.post<ExportPreview>('/environment/export/preview', options)
       .then((result) => { if (current) setPreview(result); })
-      .catch((err) => { if (current) setPreviewError(err instanceof Error ? err.message : 'Could not check backup availability.'); });
+      .catch((err) => { if (current) setPreviewError(err instanceof Error ? err.message : 'Could not check backup availability.'); })
+      .finally(() => { if (current) setChecking(false); });
     return () => { current = false; };
-  }, [historyQuery, refresh]);
+  }, [options, refresh]);
+
+  function changeOptions(patch: Partial<typeof options>) {
+    setChecking(true);
+    setOptions((current) => ({ ...current, ...patch }));
+  }
 
   const actionStyle = 'state-layer inline-flex min-h-10 w-fit max-w-full items-center gap-2 rounded-full border border-surface-600 px-4 py-2 text-sm font-medium text-ink-100 hover:bg-surface-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-400';
 
@@ -106,8 +125,8 @@ export function EnvironmentBackupCard() {
         <legend className="text-base font-medium text-ink-100">Create a backup</legend>
         <div className="grid gap-2 sm:grid-cols-2">
           {([
-            ['environment', 'Whole environment', 'Accounts, panel settings, and all instance files'],
-            ['instance', 'Single instance', 'Game files, worlds, settings files, and mods'],
+            ['environment', 'Environment export', 'Choose which instances and data to download'],
+            ['instance', 'Single instance backup', 'Create and manage snapshots for one instance'],
           ] as const).map(([value, title, detail]) => (
             <label key={value} className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 ${scope === value ? 'border-accent-400 bg-surface-850' : 'border-surface-700'}`}>
               <input className="mt-1" name="backup-scope" type="radio" checked={scope === value} onChange={() => setScope(value)} />
@@ -118,26 +137,67 @@ export function EnvironmentBackupCard() {
       </fieldset>
       <ErrorText>{previewError}</ErrorText>
       {scope === 'environment' ? (
-        <div className="space-y-3">
-          <label className="flex items-start gap-2 text-sm text-ink-200">
-            <input className="mt-1" type="checkbox" checked={includeHistory} onChange={(e) => { setPreview(null); setIncludeHistory(e.target.checked); }} />
-            Include existing snapshots and world restore points
-          </label>
-          {preview?.blockers.length ? (
+        <form className="space-y-4" method="post" action={downloadUrl('/environment/export')} target="_blank"
+          onSubmit={(e) => {
+            if (checking || previewError || !preview || preview.blockers.length) e.preventDefault();
+            else toast.show('Export requested. Check your browser downloads.');
+          }}>
+          <input type="hidden" name="options" value={JSON.stringify(options)} />
+          <Field label="Instances to export">
+            <Select value={options.instanceIds === null ? 'all' : 'selected'} disabled={!preview}
+              onChange={(e) => changeOptions({ instanceIds: e.target.value === 'all' ? null : preview?.instances.map(({ id }) => id) ?? [] })}>
+              <option value="all">All instances</option>
+              <option value="selected">Choose instances</option>
+            </Select>
+          </Field>
+          {options.instanceIds !== null && preview && (
+            <fieldset className="min-w-0 space-y-2 rounded-xl border border-surface-700 p-3">
+              <legend className="px-1 text-sm font-medium text-ink-100">Selected instances ({options.instanceIds.length})</legend>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" onClick={() => changeOptions({ instanceIds: preview.instances.map(({ id }) => id) })}>Select all</Button>
+                <Button type="button" onClick={() => changeOptions({ instanceIds: [] })}>Clear selection</Button>
+              </div>
+              <div className="grid max-h-48 gap-1 overflow-y-auto sm:grid-cols-2">
+                {preview.instances.map(({ id, name }) => (
+                  <label key={id} className="flex min-w-0 items-start gap-2 rounded-lg p-1.5 text-sm text-ink-200">
+                    <input className="mt-1" type="checkbox" checked={options.instanceIds?.includes(id) ?? false}
+                      onChange={(e) => {
+                        const ids = options.instanceIds ?? [];
+                        changeOptions({ instanceIds: e.target.checked ? [...ids, id] : ids.filter((value) => value !== id) });
+                      }} />
+                    <span className="min-w-0 break-words">{name}</span>
+                  </label>
+                ))}
+                {!preview.instances.length && <p className="text-sm text-ink-400">No instances are available.</p>}
+              </div>
+            </fieldset>
+          )}
+          <fieldset className="min-w-0 space-y-2">
+            <legend className="text-sm font-medium text-ink-100">Include in the ZIP</legend>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {exportParts.map(([key, label, description]) => (
+                <label key={key} className="flex min-w-0 items-start gap-2 rounded-xl border border-surface-700 p-2.5 text-sm text-ink-200">
+                  <input className="mt-1" type="checkbox" checked={options[key]} onChange={(e) => changeOptions({ [key]: e.target.checked })} />
+                  <span className="min-w-0"><span className="block font-medium">{label}</span><span className="block text-xs text-ink-400">{description}</span></span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          {!options.includeDatabase && <Notice tone="info">This creates a files-only ZIP. Environment restore requires the panel database.</Notice>}
+          {options.includeDatabase && !options.includeFiles && <Notice tone="info">Instance configurations will be included. Restored instances will need their files before they can start.</Notice>}
+          {!checking && preview?.blockers.length ? (
             <ul className="list-disc space-y-1 break-words pl-5 text-sm text-amber-400" role="status">
               {preview.blockers.map((blocker, i) => <li key={i}>{blocker}</li>)}
             </ul>
           ) : null}
           <div className="flex flex-wrap items-center gap-2">
-            {preview && !preview.blockers.length && (
-              <a className={actionStyle} href={downloadUrl(`/environment/export${historyQuery}`)} download target="_blank" rel="noreferrer">
-                <Icon name="download" className="h-4 w-4" /> Download environment ZIP
-              </a>
-            )}
-            {(!preview && !previewError) && <span role="status" className="inline-flex items-center gap-2 text-sm text-ink-400"><Spinner /> Checking availability…</span>}
-            {(previewError || !!preview?.blockers.length) && <Button onClick={() => setRefresh((value) => value + 1)}>Check again</Button>}
+            <Button type="submit" variant="primary" disabled={checking || !!previewError || !preview || !!preview.blockers.length}>
+              <Icon name="download" className="h-4 w-4" /> {options.includeDatabase ? 'Download environment ZIP' : 'Download files ZIP'}
+            </Button>
+            {checking && <span role="status" className="inline-flex items-center gap-2 text-sm text-ink-400"><Spinner /> Checking availability…</span>}
+            {!checking && (previewError || !!preview?.blockers.length) && <Button type="button" onClick={() => setRefresh((value) => value + 1)}>Check again</Button>}
           </div>
-        </div>
+        </form>
       ) : (
         <div className="flex flex-wrap items-end gap-2">
           <div className="w-full min-w-0 sm:w-64">

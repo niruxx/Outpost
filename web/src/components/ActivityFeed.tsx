@@ -38,7 +38,7 @@ const SPECIAL: Record<string, string> = {
   'server.cs2.plugin_config_revert': 'Reverted a plugin config',
 };
 
-const NOUN: Record<string, string> = { server: 'instance', apikey: 'API key', dbhost: 'database host', libvirt: 'VM', cs2: 'CS2', upnp: 'UPnP', rcon: 'RCON', sftp: 'SFTP' };
+const NOUN: Record<string, string> = { server: 'instance', apikey: 'API key', dbhost: 'database host', cs2: 'CS2', upnp: 'UPnP', rcon: 'RCON', sftp: 'SFTP' };
 
 /** "server.properties.update" → "Updated instance properties"; ".failed" entries say so. */
 export function describeAction(action: string): string {
@@ -75,7 +75,6 @@ function actionIcon(action: string): IconName {
   if (/delete|remove/.test(action)) return 'trash';
   if (/^user/.test(action)) return 'users';
   if (/plugin|workshop/.test(action)) return 'plugin';
-  if (/firewall/.test(action)) return 'shieldCheck';
   return 'configuration';
 }
 

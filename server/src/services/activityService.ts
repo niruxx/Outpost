@@ -143,11 +143,9 @@ const PAGE_LABELS: Record<string, string> = {
   '/': 'Instances',
   '/configuration': 'Configuration',
   '/configuration/operations': 'Operations',
-  '/docker': 'Docker',
   '/storage': 'Storage',
   '/host-console': 'Host console',
   '/users': 'Users',
-  '/firewall': 'Firewall',
   '/audit': 'Audit Log',
   '/activity': 'Activity',
   '/files': 'File Management',
@@ -196,7 +194,6 @@ export function describePage(path: string): { label: string; serverId: string | 
     const name = serverName(files[1]);
     return { label: name ? `File Management · ${name}` : 'File Management', serverId: name ? files[1] : null };
   }
-  if (clean.startsWith('/libvirt')) return { label: 'Virtual machines', serverId: null };
   return { label: PAGE_LABELS[clean] ?? clean, serverId: null };
 }
 

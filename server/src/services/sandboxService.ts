@@ -67,7 +67,6 @@ export function setSandboxEnabled(enabled: boolean) {
 
 /** Whether this instance's processes run sandboxed right now. */
 export function sandboxApplies(server: ServerRecord): boolean {
-  if (server.platform === 'docker') return false; // containers isolate themselves
   if (server.isolation === 'off') return false;
   const status = getSandboxStatus();
   return status.available && status.enabled;

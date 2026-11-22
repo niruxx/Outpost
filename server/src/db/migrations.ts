@@ -31,7 +31,6 @@ export function runMigrations(db: DatabaseSync): void {
   addCreationPolicyColumn(db);
   grantCreatorsOwnerAccess(db);
   addTotpColumns(db);
-  addFirewallColumn(db);
   addSteamPresetColumn(db);
   addUserThemeColumn(db);
   if (!db.prepare("SELECT 1 FROM pragma_table_info('users') WHERE name = 'wallpaper_preferences'").get()) {
@@ -46,6 +45,16 @@ export function runMigrations(db: DatabaseSync): void {
   addRewindColumn(db);
   addRconAndAutoUpdateColumns(db);
   addUserDisabledColumns(db);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS snapshot_metadata (
+      server_id TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+      kind TEXT NOT NULL CHECK (kind IN ('zip', 'deduplicated')),
+      snapshot_id TEXT NOT NULL,
+      name TEXT,
+      label TEXT,
+      PRIMARY KEY (server_id, kind, snapshot_id)
+    )
+  `);
 }
 
 /** `file_path` lets the file history ("every change to plugins/x/config.yml") be one indexed lookup. */
@@ -103,12 +112,6 @@ function addSteamPresetColumn(db: DatabaseSync): void {
   db.exec('ALTER TABLE servers ADD COLUMN steam_preset TEXT');
 }
 
-function addFirewallColumn(db: DatabaseSync): void {
-  if (db.prepare("SELECT 1 FROM pragma_table_info('users') WHERE name = 'firewall'").get()) return;
-  logger.info('Migrating database: adding users.firewall column');
-  db.exec("ALTER TABLE users ADD COLUMN firewall TEXT NOT NULL DEFAULT 'none'");
-}
-
 function addTotpColumns(db: DatabaseSync): void {
   if (db.prepare("SELECT 1 FROM pragma_table_info('users') WHERE name = 'totp_secret'").get()) return;
   logger.info('Migrating database: adding two-factor columns to users');
@@ -150,10 +153,6 @@ function addIsolationColumn(db: DatabaseSync): void {
   if (!has) {
     logger.info('Migrating database: adding servers.isolation column');
     db.exec("ALTER TABLE servers ADD COLUMN isolation TEXT NOT NULL DEFAULT 'inherit'");
-  }
-  if (!db.prepare("SELECT 1 FROM pragma_table_info('servers') WHERE name = 'docker_config'").get()) {
-    logger.info('Migrating database: adding servers.docker_config column');
-    db.exec('ALTER TABLE servers ADD COLUMN docker_config TEXT');
   }
 }
 

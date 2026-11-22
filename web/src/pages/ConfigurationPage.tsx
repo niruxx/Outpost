@@ -232,7 +232,6 @@ function SecurityCard() {
           <li>🛡️ <b className="text-ink-100">Process sandbox</b> — instance processes run under bubblewrap: their folder is the only writable place, system folders are read-only, and home folders, other instances and the panel’s data are hidden.</li>
           <li>🔗 <b className="text-ink-100">Symlink-proof file access</b> — the panel never follows a link out of an instance folder (files, uploads, plugins, snapshots).</li>
           <li>🧹 <b className="text-ink-100">Clean environment</b> — instances never inherit the panel’s environment variables or secrets.</li>
-          <li>🐳 <b className="text-ink-100">Docker instances</b> — containers only see their mounted folder, with memory/process limits and no-new-privileges.</li>
         </ul>
         {sandbox && !sandbox.available && <Notice tone="warning">{sandbox.reason}</Notice>}
         {sandbox?.available && (

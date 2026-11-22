@@ -32,6 +32,7 @@ import { MapsTab } from './server/MapsTab.js';
 import { SettingsTab } from './server/SettingsTab.js';
 import { FilesTab } from './server/FilesTab.js';
 import { BackupsTab } from './server/BackupsTab.js';
+import { CoreKeeperTab } from './server/CoreKeeperTab.js';
 import { UpdateTab } from './server/UpdateTab.js';
 import { UpnpTab } from './server/UpnpTab.js';
 import { ActivityTab } from './server/ActivityTab.js';
@@ -105,6 +106,7 @@ function InstanceNav({ server, onNavigate }: { server: ServerRecord; onNavigate:
       {world && <NavItem to="whitelist" icon="checklist" label="Whitelist" onClick={onNavigate} />}
       {addons && <NavItem to="plugins" icon="plugin" label={addonNavLabel(server)} onClick={onNavigate} />}
       {server.platform === 'steam' && server.steam_preset !== 'core_keeper' && <NavItem to="workshop" icon="box" label="Workshop" onClick={onNavigate} />}
+      {server.platform === 'steam' && server.steam_preset === 'core_keeper' && <NavItem to="core-keeper" icon="map" label="Worlds & characters" onClick={onNavigate} />}
       {proxy && <NavItem to="network" icon="node" label="Network" onClick={onNavigate} />}
       {isCs2 && <NavItem to="cs2" icon="bolt" label="CS2" onClick={onNavigate} />}
       {server.platform === 'steam' && !['cs2', 'tf2', 'gmod'].includes(server.steam_preset ?? '') && !( !server.steam_preset && ['730', '232250', '4020'].includes(server.steam_app_id ?? '')) && <NavItem to="game-settings" icon="configuration" label="Game settings" onClick={onNavigate} />}
@@ -318,7 +320,6 @@ function InstanceTopBar({ server, compact }: { server: ServerRecord; compact: bo
           <p className="mt-0.5 text-sm text-ink-400">
             {gameLabel(kind)}
             {isMinecraftPlatform(server.platform) && ` · ${server.loader} ${server.version}`}
-            {server.platform === 'docker' && <span className="font-mono"> · 🐳 {server.version}</span>}
           </p>
         </div>
         <div>
@@ -455,6 +456,7 @@ function InstancePageInner() {
             <Route path="tasks" element={<TasksTab />} />
             <Route path="capabilities" element={<CapabilitiesTab />} />
             <Route path="workshop" element={<CapabilityGate feature="workshop"><WorkshopTab /></CapabilityGate>} />
+            {server.platform === 'steam' && server.steam_preset === 'core_keeper' && <Route path="core-keeper" element={<CoreKeeperTab />} />}
             <Route path="cs2" element={<CapabilityGate gameId="cs2"><Cs2Tab /></CapabilityGate>} />
             <Route path="tf2" element={<CapabilityGate gameId="tf2"><Tf2Tab /></CapabilityGate>} />
             <Route path="game-settings" element={<CapabilityGate feature="settings"><GameSettingsTab /></CapabilityGate>} />

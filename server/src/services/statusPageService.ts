@@ -86,7 +86,6 @@ function gameLabel(server: ServerRecord): string {
   if (server.platform === 'java') return `Minecraft: Java Edition${server.loader !== 'vanilla' ? ` (${server.loader[0].toUpperCase()}${server.loader.slice(1)})` : ''}`;
   if (server.platform === 'bedrock') return 'Minecraft: Bedrock Edition';
   if (server.platform === 'steam') return findPresetFor(server)?.label ?? 'Steam game server';
-  if (server.platform === 'docker') return 'Container';
   return 'Server';
 }
 
@@ -136,8 +135,8 @@ export function publicStatus(slug: string): PublicStatus | null {
     status,
     uptimeSeconds: runtime ? Math.floor(runtime.uptimeMs / 1000) : null,
     address: cfg.showAddress && cfg.address ? cfg.address : null,
-    port: cfg.showAddress && !cfg.address && fresh.platform !== 'docker' ? fresh.server_port : null,
-    version: cfg.showVersion && fresh.platform !== 'docker' && fresh.platform !== 'custom' ? (fresh.platform === 'bedrock' ? fresh.build ?? null : fresh.version !== 'latest' ? fresh.version : null) : null,
+    port: cfg.showAddress && !cfg.address ? fresh.server_port : null,
+    version: cfg.showVersion && fresh.platform !== 'custom' ? (fresh.platform === 'bedrock' ? fresh.build ?? null : fresh.version !== 'latest' ? fresh.version : null) : null,
     players,
     checkedAt: new Date().toISOString(),
   };

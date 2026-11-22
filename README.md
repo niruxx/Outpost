@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/banner.svg" alt="Outpost: self-hosted workspace for games, apps and containers" width="100%">
+  <img src="docs/banner.svg" alt="Outpost: self-hosted panel for dedicated game servers" width="100%">
 </p>
 
 <p align="center">
@@ -11,7 +11,7 @@
   <img alt="Linux · Windows · macOS" src="https://img.shields.io/badge/Linux%20·%20Windows%20·%20macOS-ecc65c?style=flat-square&labelColor=1d211b">
 </p>
 
-<h3 align="center">Your self-hosted workspace for games, apps and containers.</h3>
+<h3 align="center">Your self-hosted panel for dedicated game servers.</h3>
 
 BeamMP servers are available through **New instance → From a template → BeamMP Server**, with vehicle and map ZIP mod management, including BeamNG Earth setups. See the [BeamMP setup guide](docs/beammp.md).
 
@@ -19,7 +19,7 @@ Create **New instance → BeamNG.Earth server**, or enable Earth on an existing 
 
 <p align="center">
   Deploy instances, watch host health, and manage day-to-day operations from one browser tab.<br>
-  Minecraft and Steam servers &middot; Docker and Podman &middot; Web apps and databases &middot; Custom processes
+  Minecraft and Steam servers &middot; Mods and plugins &middot; Snapshots and backups &middot; Custom processes
 </p>
 
 <p align="center">
@@ -34,11 +34,11 @@ Create **New instance → BeamNG.Earth server**, or enable Earth on an existing 
 
 ## Overview
 
-Outpost is a self-hosted control panel for running game servers, applications, containers and custom processes on your own hardware. Create an instance from the catalog or configure it yourself, then manage its console, files, updates and backups in the same place.
+Outpost runs dedicated game servers and custom processes on your own hardware. Start with a built-in preset or a reusable template, then manage the console, files, updates and backups from the panel.
 
 The redesigned interface takes inspiration from **Material Design 3 Expressive**: soft tonal surfaces, clear headings, grouped navigation and prominent actions. The dashboard brings host CPU, memory, storage and throughput together with instance status. Search by name, game or port, filter by category and running state, and switch between list, grid and box views to suit your setup.
 
-Built with **React, TypeScript and Node.js**, Outpost uses built-in SQLite for panel data. Start with a single host, assign access to other users as needed, and link additional Outpost hosts to transfer instances. Container workloads require Docker or Podman; game runtimes depend on the platform you choose.
+Built with **React, TypeScript and Node.js**, Outpost uses built-in SQLite for panel data. Start with a single host, assign access to other users as needed, and link additional Outpost hosts to transfer instances. Game runtime requirements depend on the platform you choose.
 
 Admins can fine-tune each assigned user's access under **Users ? Edit user ? Instance access ? Individual configuration items**. Set general server settings and individual `server.properties` keys to **Inherit**, **Allow**, or **Deny**. Allow grants that item independently of Edit configuration; Deny locks it. Any denial also disables broader actions that could overwrite protected settings, including raw file/SFTP writes, console commands, restores, launch edits, plugins, updates and player actions. Existing scheduled jobs and programs already running on the server keep their own authority. Host-wide settings remain admin-only.
 
@@ -50,15 +50,13 @@ The sidebar's **Storage** page manages Linux disks, filesystem formatting, mount
 
 Storage also includes LUKS2 creation/unlocking/locking and passphrase changes, LVM PV/VG/LV creation and renaming, thin pools/snapshots, partition growth and supported ext4 shrinking. See the [advanced storage guide](docs/advanced-storage.md) for resize ordering, permissions and helper upgrades.
 
-Admins can also discover and manage containers created by Docker CLI/Compose/Portainer and VMs created in Cockpit/virt-manager/virsh. The Docker and Virtual Machines pages show all workloads on their selected engine/libvirt connection, including stopped ones, without importing or recreating them. See [external workload discovery](docs/external-workloads.md).
+Manage virtual machines, Docker and Podman workloads, and firewall rules directly on the host. Upgrading preserves existing host workloads, firewall rules, and legacy container instance data.
 
 ## Screenshots
 
 Configuration includes [Linux system Java defaults](docs/java-defaults.md) for Debian, Fedora and Arch. Host Console explains missing dependencies in a popup with automatic native-backend repair; see the [host console guide](docs/host-console.md). Admins can remove stopped VM entries while retaining their disks and firmware/TPM state.
 
 **Operations** adds fleet inventory and instance placement across registered hosts, primary IP/port allocation pools, personal Steam accounts with Steam Guard, and CurseForge server modpack installation. Instance **Tasks & Automation** supports player/state rules and authenticated incoming webhooks; the CS2 tab includes match plans, rotation, SourceTV demos and player kick/ban controls. See the [operations guide](docs/operations.md) for setup and supported limits.
-
-Administrators can also manage QEMU/KVM guests from **Virtual Machines** and **Libvirt Configuration** in the sidebar: start/stop/pause guests, configure CPU/memory/autostart, import or edit domain XML, and open read-only previews or interactive browser VNC/SPICE consoles. Includes offline snapshots, directory storage pools, virtual disks, NAT/isolated/bridged networks, migration jobs and per-user VM permissions. Supports local libvirt and remote SSH connections. See the [libvirt setup guide](docs/libvirt.md) and [roadmap and comparison with AMP and other panels](roadmap.md).
 
 ### Desktop workspace
 
@@ -84,17 +82,14 @@ The dashboard adapts to smaller screens with stacked cards and a navigation draw
 ## 🚀 Quick start
 
 > [!TIP]
-> On **Debian/Ubuntu, Arch or Fedora**, `./install.sh` does all of this for you — Node.js, Java, the **bubblewrap** sandbox, a **container engine** for Docker/Portainer/app instances (enabled with systemd), the build, a health check, and an optional `outpost.service`.
+> On **Debian/Ubuntu, Arch or Fedora**, `./install.sh` does all of this for you — Node.js, Java, the **bubblewrap** sandbox, the build, a health check, and an optional `outpost.service`.
 >
 > ```bash
-> ./install.sh                    # asks as it goes (container engine: Docker by default)
-> ./install.sh --engine=podman    # rootless Podman instead — no root daemon, no docker group
+> ./install.sh                    # asks as it goes
 > ./install.sh -y                 # accept every default
-> ./install.sh --no-containers    # skip the container engine
 > ./install.sh --wine             # also install Wine + winetricks (Windows-only game servers)
 > ```
 >
-> With **Docker** it installs `docker.io` / `moby-engine` / `docker`, enables `docker.service` + `docker.socket` and adds you to the `docker` group (root-equivalent — log out and back in afterwards). With **Podman** it installs `podman`, enables your user's `podman.socket` (what Portainer talks to) and turns on lingering so it runs without a login. Either way it can pre-download the Portainer image.
 
 ### File structure, per-OS server management and Node.js
 
@@ -136,7 +131,7 @@ macOS/Windows updates back up data before pulling with `--ff-only` and rebuildin
 > [!TIP]
 > On **macOS (Intel and Apple Silicon)**, `./install.sh` currently targets **Minecraft Java servers**. It installs prebuilt Node.js and checksum-verified Temurin JDKs 8, 11, 17, 21 and 25, plus legacy Java 16 where available, builds and verifies the panel, and can run it at login with launchd. JDKs live in `server/data/runtimes` (or `$DATA_DIR/runtimes`) and are selected per instance by Outpost. Existing managed runtimes are reused. No Homebrew, container engine, SteamCMD or Wine is installed.
 
-> Intel Macs are detected automatically; no `--intel` option is needed. Run `./install.sh -y` for unattended setup, or `--no-java` to skip runtime downloads. Legacy Java 16 may be unavailable on some architectures; the installer reports this explicitly. Containers, SteamCMD/Wine games, Bedrock and broader macOS host features are planned for later phases; their existing UI entries do not imply macOS compatibility.
+> Intel Macs are detected automatically; no `--intel` option is needed. Run `./install.sh -y` for unattended setup, or `--no-java` to skip runtime downloads. Legacy Java 16 may be unavailable on some architectures; the installer reports this explicitly. SteamCMD/Wine games, Bedrock and broader macOS host features are planned for later phases; their existing UI entries do not imply macOS compatibility.
 
 ```bash
 git clone <this-repo-url> Outpost && cd Outpost
@@ -161,13 +156,13 @@ Open **http://localhost:8642** — the first visit walks you through creating th
 
 | Area | What you can do |
 |---|---|
-| **Deploy and organize** | Create games, catalog apps, Docker/Podman containers and custom processes. Use templates and configure ports, environment variables, launch commands and resource limits. |
+| **Deploy and organize** | Create game servers and custom processes. Use templates and configure ports, environment variables, launch commands and resource limits. |
 | **Monitor and control** | Check host and instance metrics, start or stop instances, follow live console output, send commands, and browse retained console history. |
 | **Manage games** | Install Minecraft loaders, plugins and mods; manage supported Steam Workshop content; configure players, maps and game-specific settings. |
 | **Protect your data** | Create manual or scheduled snapshots, restore individual files, configure off-site backups, or export the whole environment. |
 | **Automate operations** | Schedule commands and restarts, configure automatic game updates and crash recovery, and send Discord or webhook notifications. |
 | **Share access** | Assign roles and per-instance permissions, set creation limits, enable authenticator-based two-factor sign-in, and review the audit log. |
-| **Manage the host** | Browse files, configure SFTP and database hosts, manage supported host firewalls and UPnP forwarding, and transfer instances between linked hosts. |
+| **Manage the host** | Browse files, configure SFTP and database hosts, manage router forwarding with UPnP, and transfer instances between linked hosts. |
 | **Make it yours** | Use the Material-inspired dark theme or select Windows XP, Vista / 7, Frutiger Aero or Minecraft themes. Reduce effects when you prefer less motion. |
 
 Platform-specific capabilities and setup requirements are covered in the guides below.
@@ -180,25 +175,10 @@ Click **New instance** and pick what to create:
 
 | | Option | What you get | Who |
 |:-:|---|---|---|
-| 📦 | **App from the catalog** | One-click web apps, databases, media servers and tools (below) — pre-wired ports, folders and a web UI link | admins · users with container access |
-| 🧭 | **Portainer** | A full container-management UI for this host, set up in one click | admins · users with Portainer access |
-| 🐳 | **Docker container** | Any image from Docker Hub, GHCR or your own registry | admins · users with *any image* access |
 | 🎮 | **Game server** | Minecraft Java/Bedrock or Steam dedicated servers — installed, updated and modded for you | anyone allowed to create |
 | ⌨️ | **Custom process** | Any Linux binary or shell script with your own start/stop/restart commands | admins |
 
-The Instances page groups everything with **🎮 Games · 📦 Apps · 🐳 Containers · ⌨️ Custom** filters, and anything with a web interface gets an **Open web UI** button.
-
-### 📦 App catalog
-
-| Section | Apps |
-|---|---|
-| 🧭 Platform tools | **Portainer** (container management) · **Uptime Kuma** (uptime monitoring & status pages) |
-| 🌐 Web & apps | **Nginx** (static sites from the instance's `html` folder) · **Vaultwarden** (Bitwarden-compatible passwords) |
-| 🗄️ Databases | **PostgreSQL** · **MariaDB** · **Redis** |
-| 🎞️ Media & files | **Jellyfin** (media streaming) · **File Browser** (share files) |
-| 🎮 Games | Minecraft Java & Bedrock, Valheim, Palworld, Counter-Strike 2 (as containers) |
-
-Every template is just a starting point — change the image, ports, environment, folders and limits before creating, or later under **Configuration → Container**.
+Use the **Games** and **Custom** filters on the Instances page to find your servers and processes.
 
 ### 🎮 Game servers
 
@@ -334,7 +314,6 @@ Pick the server software when creating a Java instance:
 - **Disk:** a cap in MB on the instance folder.
 - **How they're enforced:**
   - On Linux, CPU, memory and processes are enforced by the kernel. The instance runs inside a systemd scope wrapped around its sandbox. This needs Outpost running as a systemd service with lingering on (install.sh sets that up), or as root.
-  - Container instances get the same values as Docker/Podman limits.
   - Disk usage is checked every few minutes. Going over warns in the console and by webhook ("Disk limit reached"), blocks starts, uploads, editor saves and SFTP writes, and can also stop the server.
 
 **API keys** (Configuration → API keys)
@@ -476,14 +455,11 @@ Each user also has an **Instance creation** policy (Users → Edit), either the 
 | 🎮 Allowed types | Java · Bedrock · Steam | — | any of Java · Bedrock · Steam |
 | 🔢 Max instances owned | no limit | — | e.g. 3 |
 | 🧠 Max memory per instance | no limit | — | e.g. 4096 MB |
-| 🐳 Containers | — | — | none · 📦 catalog apps only · any image |
-| 🧭 Portainer &amp; engine access | — | — | on / off |
 
 - 👤 **Every new instance is owned by its creator**, who automatically gets full control of it (everything except *Edit launch command* and *UPnP*, which stay opt-in) and can delete it. Its header shows *You own this* / *Owner: …*.
 - 🔁 **Admins can hand an instance to someone else** under its **Configuration → Owner**; the new owner gets owner access and it counts toward *their* limit.
 - 🧾 Deleting a user keeps their instances (ownership simply clears).
 - 🐳 **Container access is granted per user.** *Catalog apps only* lets them create the templates in **New instance → App from the catalog**, always with the catalog's image; *Any image* allows any container. Either way containers only see their own folder, and non-admins can't publish host ports below 1024 or the panel's own port. Owners can edit their container's settings within the same limits.
-- 🧭 **Portainer & engine access** is a separate switch: it lets a user run Portainer (or any container manager) with the engine socket — control over every container on the host, and with rootful Docker effectively the host. Give it only to people you'd trust as admin.
 - 🔒 Custom processes can only be created by admins.
 
 </details>
@@ -499,47 +475,11 @@ Every instance is kept to its own folder — on by default, managed under **Conf
 | 🔗 **Symlink-proof file access** | A server, plugin or script can create `ln -s / escape` in its folder — the panel refuses to follow links out of the instance for browsing, editing, uploads, plugins and snapshot restores (an escaping link can still be deleted). |
 | 📤 **Safe uploads** | Uploaded file names are reduced to a plain name, so `../../file` can't land outside the folder. |
 | 🧹 **Clean environment** | Instances never inherit the panel's environment variables — no `OUTPOST_*` secrets or credentials that happened to be exported. |
-| 🐳 **Containers** | Docker instances only see their mounted folder, with memory, CPU and process limits and `no-new-privileges`. |
 
 Graceful stops still work in the sandbox — signals go straight to the game (e.g. Valheim's SIGINT save). Steam games get `~/.steam/sdk64/steamclient.so` linked from their own folder. Each instance shows its status under **Configuration → Isolation**; an admin can opt a single instance out if it truly needs files elsewhere.
 
 > [!NOTE]
 > The sandbox needs **bubblewrap** (`bwrap`) — already present wherever Flatpak is installed; otherwise `sudo apt install bubblewrap` / `dnf install bubblewrap` / `pacman -S bubblewrap`. Without it (or on Windows/macOS) the other layers still apply, and the Security card says why the sandbox is unavailable.
-
-</details>
-
-<details>
-<summary><h3>🧭 Portainer &amp; the app catalog</h3></summary>
-
-**Portainer** is one click away: **New instance → Portainer**. Outpost runs `portainer/portainer-ce:lts` with its data in the instance folder, publishes `9443` (HTTPS UI) and `8000`, and adds an **Open web UI** button. Open it within 5 minutes to create Portainer's admin account, then pick the *local* environment.
-
-Portainer manages the container engine itself, so it's the one template that mounts the engine's API socket (`/var/run/docker.sock` inside the container). That gives it control over **every container on the host** — keep it admin-only and behind your network.
-
-> [!TIP]
-> On **Podman**, the API socket isn't running by default. Enable it once — `systemctl --user enable --now podman.socket` — and the Docker page will show it as available. With Docker it's `/var/run/docker.sock`. Point `OUTPOST_ENGINE_SOCKET` elsewhere if yours lives somewhere unusual.
-
-The other catalog apps work the same way: pick one, review its settings, create. A few need a value changed first (database passwords, Vaultwarden behind HTTPS) — the dialog says so.
-
-</details>
-
-<details>
-<summary><h3>🐳 Docker instances</h3></summary>
-
-The **Docker** page shows your container engine and only your container-backed instances. It works with **Docker** or **Podman** — Podman runs rootless with no daemon, which is the safest option.
-
-- ➕ **New Docker instance** *(admin)* — pick a preset (⛏️ Minecraft Java · 🪨 Bedrock · 🪖 Valheim · 🐾 Palworld · 🎯 CS2) or any image, then set ports, environment variables, the mount path, a CPU limit and an optional command. The image is pulled immediately.
-- 📦 **Only its own folder** — the instance folder is the single host folder mounted into the container (at `/data` by default). Memory limit = the instance's *Max memory*; plus a process limit and `no-new-privileges`.
-- 🖥️ **Everything else works as usual** — live console with input, start/stop/restart (signals are passed into the container), auto-restart, snapshots, File Management, UPnP and **per-container CPU, memory, network and disk metrics**.
-- ✏️ **Change settings later** under the instance's **Configuration → Container**; **Update** pulls the image tag again.
-- 👤 **Run as the panel's user** keeps files the container writes editable from File Management (turn it off for images that must start as root).
-- 📂 **Extra folders** — mount subfolders of the instance (e.g. `media` → `/media`); the container still can't see anything outside its instance.
-- 🌐 **Web interface** — mark a published port as the app's UI to get an **Open web UI** button (custom processes can do the same under **Launch**).
-- 🔌 **Engine socket** — opt-in, admin-only, for container managers like Portainer (see above).
-
-> [!WARNING]
-> Access to the Docker daemon is root-equivalent on most hosts. Admins decide per user who may run containers (catalog apps only or any image) and who may use Portainer — see **Users & permissions**. Prefer rootless Podman or rootless Docker.
-
-Pin an engine with `OUTPOST_CONTAINER_ENGINE=docker` or `podman`.
 
 </details>
 
@@ -559,7 +499,7 @@ Each instance has a **UPnP** tab that asks your router (via UPnP IGD) to forward
 > Forwarding exposes this machine to the internet, so it needs the **UPnP port forwarding** permission (never on by default). Non-admins can't forward ports below 1024 or the panel's own port.
 
 > [!TIP]
-> **Router not found?** Turn on UPnP in the router and keep the host on the same network (discovery doesn't cross VPNs or Docker bridge networks). Host firewalls often drop the router's replies — with firewalld:
+> **Router not found?** Turn on UPnP in the router and keep the host on the same network (discovery doesn't cross VPNs or isolated network bridges). Host firewalls often drop the router's replies — with firewalld:
 > `sudo firewall-cmd --permanent --add-service=upnp-client && sudo firewall-cmd --reload`.
 > You can also skip discovery by pointing `OUTPOST_UPNP_GATEWAY` at the router's description URL (e.g. `http://192.168.0.1:5000/rootDesc.xml`).
 
@@ -734,7 +674,7 @@ journalctl -u outpost -f
 
 Packages for other distros: 🏔️ `pacman -S nodejs npm git jdk21-openjdk` · 🎩 `dnf install nodejs npm git java-21-openjdk-headless` · 🦎 `zypper install nodejs22 npm22 git java-21-openjdk-headless`.
 
-Open ports: the panel's `8642` only needs to reach admins (consider HTTPS via a reverse proxy, or a VPN). On a Linux host, use **Status → Server firewall → Allow server ports** to detect UFW/firewalld and allow the ports from the instance's saved configuration. Minecraft, CS2, BeamMP and published container ports use their configured protocols. See the [one-click firewall guide](docs/firewall.md) for permissions and supported settings. Router/cloud forwarding remains separate.
+Allow the game ports and protocols listed on each instance’s Status tab in the host firewall. Keep the panel port (8642 by default) accessible to administrators. Router or cloud forwarding is configured separately.
 
 **🪟 Windows service** — with [NSSM](https://nssm.cc/download): `nssm install Outpost` → Path `C:\Program Files\nodejs\node.exe`, Startup directory = the Outpost folder, Arguments `server\dist\index.js` → `nssm start Outpost`.
 
@@ -801,7 +741,7 @@ Importing across operating systems doesn't convert platform binaries (e.g. `bedr
 ./uninstall.sh -y --purge # removes everything, including data, packages and the checkout
 ```
 
-It stops the panel and its game servers, removes `outpost.service` or the pm2 entry and the panel's firewall rule, deletes data and `update.sh` backups (typing `delete` to confirm), and offers to remove Node.js, Java, steamcmd's 32-bit libraries and the `outpost` user. git and curl are never removed without asking.
+It stops the panel and its game servers, removes `outpost.service` or the pm2 entry, deletes data and `update.sh` backups (typing `delete` to confirm), and offers to remove Node.js, Java, steamcmd's 32-bit libraries and the `outpost` user. git and curl are never removed without asking.
 </details>
 
 ---
@@ -816,12 +756,11 @@ flowchart LR
   P --> S2["🪨 bedrock_server"]
   P --> S3["🎮 Steam game binary"]
   P --> S4["⌨️ your script"]
-  P --> S5["🐳 docker / podman run"]
   P <-->|node key| N["🌐 Other Outpost nodes"]
   P -.-> X["⬇️ Mojang · PaperMC · Purpur<br/>SteamCMD · Modrinth"]
 ```
 
-- 🛡️ **Isolation** — bubblewrap sandbox per game process, symlink-aware path checks, scrubbed environments, and containers for Docker instances.
+- 🛡️ **Isolation** — bubblewrap sandbox per game process, symlink-aware path checks, scrubbed environments.
 - 🗄️ **Zero native dependencies** — SQLite via `node:sqlite`; HMAC session tokens and `scrypt` hashing via `node:crypto`.
 - ⚙️ **Plain child processes** — console output and player events stream to the browser over WebSocket; custom instances run in their own process group so scripts' children stop too.
 - 📊 **Metrics from `/proc`** on Linux (`Get-Process` on Windows). Network figures are host-wide — the OS doesn't count network bytes per process.
@@ -862,10 +801,8 @@ Nodes on older versions can still transfer instances to and from upgraded ones.
 - [x] 🚀 Custom launch executables, jars and custom script servers
 - [x] 📸 Snapshots with per-file diff &amp; restore
 - [x] 🔌 UPnP port forwarding and ♻️ auto-restart
-- [x] 🛡️ Process sandbox and 🐳 Docker/Podman instances
-- [x] 🧭 General-purpose platform: app catalog, Portainer, web UI links
+- [x] 🛡️ Game process sandbox
 - [x] ⏰ Scheduled tasks, 🔔 Discord/webhook alerts, 🔐 two-factor sign-in and an audit log
-- [x] 🧱 Host firewall (UFW / firewalld) with per-user access
 - [x] 🔫 Counter-Strike, TF2, Quake and more one-click game servers
 - [x] 🎨 Themes (XP, Vista/7, Frutiger Aero, Minecraft) with animated wallpapers
 - [x] Per-user background animations: Aurora, Starfield, Bubbles, Fireflies, Rain and Waves, with speed/intensity controls and reduced-motion support. See [Appearance](docs/appearance.md).

@@ -45,9 +45,20 @@ Uncheck copying to switch without transferring history. Old files remain in the 
 
 ## Environment exports and instance deletion
 
-Whole-environment exports include active custom snapshots and restore points by default. Import clears machine-specific backup-directory overrides and places any archived history under the destination Outpost data directory. Select an external path again after importing if desired. If a custom drive is unavailable, reconnect it to export its archives or clear **Include existing snapshots and world restore points** to export the environment without backup history.
+In **Configuration → Backups & data → Environment export**, choose all instances or a subset, then choose which contents to include. The panel database, instance files, existing snapshots, World Rewind restore points, and host support files can be selected independently. A files-only ZIP can be extracted for manual recovery. Environment import requires a ZIP with the panel database and replaces the current environment with the data in the ZIP.
+
+The ZIP streams into the browser’s download manager as Outpost reads and compresses files. Outpost prepares a consistent temporary database copy when selected. The operation queue shows the export stage and outcome. Export covers regular files in the selected locations. Back up any symlinked content from its own location.
+
+Exports include active custom snapshots and restore points by default. Import clears machine-specific backup-directory overrides and places archived history under the destination Outpost data directory. If a custom drive is unavailable, reconnect it, deselect that instance, or turn off both history options.
 
 Deleting an instance removes that instance's active snapshots and rewind tree, not the whole selected base directory or other instances' backups. Copies retained at previous locations remain separate. Factory reset replaces Outpost's data directory; external backup folders are retained on their drives. Keep your external archives and a panel environment export when you need to recover the full setup.
+
+## Rename and label snapshots
+
+Open an instance’s **Backups** page and select **Edit** on an existing ZIP
+snapshot. For a deduplicated snapshot, use **Edit details** under **Reliability**.
+Set a display name, a label, or both. Clear a field to remove it. Outpost stores
+these details with the panel database, keyed to the original snapshot.
 
 ## Verification
 

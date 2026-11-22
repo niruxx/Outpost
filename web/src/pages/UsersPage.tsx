@@ -1,12 +1,10 @@
-import { VmAccessEditor } from '../components/VmAccessEditor.js';
-import type { VmGrant } from '../api/types.js';
 import { useEffect, useState } from 'react';
 import { Layout, PageHeader } from '../components/Layout.js';
 import { Badge, Button, Card, ErrorText, Field, Input, Modal, Select } from '../components/ui.js';
 import { useToast } from '../components/Toast.js';
 import { useConfirm } from '../components/ConfirmDialog.js';
 import { api, ApiError } from '../api/client.js';
-import type { CreatablePlatform, CreationPolicy, FirewallAccess, PublicUser, Role, ServerPermission, ServerRecord } from '../api/types.js';
+import type { CreatablePlatform, CreationPolicy, PublicUser, Role, ServerPermission, ServerRecord } from '../api/types.js';
 import { GameTile, gameKindOf } from '../components/GameArt.js';
 import { useAuth } from '../state/AuthContext.js';
 import { THEMES } from '../lib/theme.js';
@@ -306,9 +304,7 @@ function EditUserModal({
   // null = follow the role's default creation policy
   const [configAccess, setConfigAccess] = useState<Record<string, Record<string, boolean>>>({});
   const [creation, setCreation] = useState<CreationPolicy | null>(null);
-  const [firewall, setFirewall] = useState<FirewallAccess>('none');
   const [storagePermissions, setStoragePermissions] = useState<StoragePermission[]>([]);
-  const [vmAccess, setVmAccess] = useState<VmGrant[]>([]);
   const [theme, setTheme] = useState<string>('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -318,9 +314,7 @@ function EditUserModal({
     if (!user) return;
     setConfigAccess(user.configAccess ?? {});
     setRole(user.role);
-    setFirewall(user.firewall ?? 'none');
     setStoragePermissions(user.storagePermissions ?? []);
-    setVmAccess(user.vmAccess ?? []);
     setTheme(user.theme ?? '');
     setPassword('');
     setAccess(Object.fromEntries((user.serverAccess ?? []).map((id) => [id, user.serverPermissions?.[id] ?? null])));
@@ -338,7 +332,7 @@ function EditUserModal({
         password: password || undefined,
         serverAccess: Object.entries(access).map(([serverId, permissions]) => ({ serverId, permissions, configAccess: configAccess[serverId] ?? {} })),
         theme: theme || null,
-        ...(role === 'admin' ? {} : { creation, firewall, storagePermissions, vmAccess }),
+        ...(role === 'admin' ? {} : { creation, storagePermissions }),
       });
       toast.success(`Updated "${user.username}"`);
       onSaved();
@@ -373,16 +367,6 @@ function EditUserModal({
         <Field label="New password (leave blank to keep current)">
           <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={8} />
         </Field>
-        {role !== 'admin' && (
-          <Field label="Host firewall">
-            <Select value={firewall} onChange={(e) => setFirewall(e.target.value as FirewallAccess)}>
-              <option value="none">No access</option>
-              <option value="view">View rules</option>
-              <option value="instances">Open & close their instances’ ports</option>
-              <option value="manage">Manage any port (except SSH and Outpost’s own)</option>
-            </Select>
-          </Field>
-        )}
         {role !== 'admin' && <CreationEditor role={role} value={creation} onChange={setCreation} owned={user?.owned ?? 0} />}
         {role !== 'admin' && <div className="space-y-3 rounded-2xl bg-surface-850 p-4">
           <p className="text-xs font-medium text-ink-300">Host storage permissions</p>
@@ -394,7 +378,6 @@ function EditUserModal({
           </label>)}</div>
           <p className="text-xs text-ink-500">Any change permission also grants disk viewing. Grant these only to trusted host operators.</p>
         </div>}
-        {role !== 'admin' && <VmAccessEditor value={vmAccess} onChange={setVmAccess} />}
         {role !== 'admin' && <AccessEditor role={role} servers={servers} access={access} onChange={setAccess} configAccess={configAccess} onConfigChange={setConfigAccess} />}
         <ErrorText>{error}</ErrorText>
         <div className="flex justify-end gap-2">
@@ -554,15 +537,9 @@ const ALL_CREATABLE: CreatablePlatform[] = ['java', 'bedrock', 'steam'];
 
 function roleCreation(role: Role): CreationPolicy {
   return role === 'viewer'
-    ? { canCreate: false, platforms: [], maxInstances: 0, maxMemoryMb: 0, containers: 'none', engineSocket: false }
-    : { canCreate: true, platforms: ALL_CREATABLE, maxInstances: 0, maxMemoryMb: 0, containers: 'none', engineSocket: false };
+    ? { canCreate: false, platforms: [], maxInstances: 0, maxMemoryMb: 0 }
+    : { canCreate: true, platforms: ALL_CREATABLE, maxInstances: 0, maxMemoryMb: 0 };
 }
-
-const CONTAINER_OPTIONS: { value: CreationPolicy['containers']; label: string; hint: string }[] = [
-  { value: 'none', label: 'No containers', hint: '' },
-  { value: 'catalog', label: '📦 Catalog apps only', hint: 'Only the templates in New instance → App from the catalog, with their images.' },
-  { value: 'any', label: '🐳 Any image', hint: 'Any container image. Containers still only see their own folder and can’t use host ports below 1024.' },
-];
 
 /** May this user create instances — which kinds, how many, how big. New instances are owned by them. */
 function CreationEditor({
@@ -580,9 +557,7 @@ function CreationEditor({
   const effective = value ?? roleCreation(role);
   const set = (patch: Partial<CreationPolicy>) => onChange({ ...effective, ...patch });
   const summary = effective.canCreate
-    ? `${effective.platforms.map((p) => PLATFORM_LABEL[p].split(' ').slice(1).join(' ')).join(', ') || 'nothing'}${
-        effective.containers === 'any' ? ', any container' : effective.containers === 'catalog' ? ', catalog apps' : ''
-      }${effective.maxInstances ? ` · up to ${effective.maxInstances}` : ' · no limit'}`
+    ? `${effective.platforms.map((p) => PLATFORM_LABEL[p].split(' ').slice(1).join(' ')).join(', ') || 'nothing'}${effective.maxInstances ? ` · up to ${effective.maxInstances}` : ' · no limit'}`
     : 'cannot create instances';
 
   return (
@@ -624,41 +599,6 @@ function CreationEditor({
                     </button>
                   );
                 })}
-              </div>
-              <div className="space-y-2">
-                <span className="text-xs font-medium text-ink-300">Containers</span>
-                <div className="flex flex-wrap gap-1.5">
-                  {CONTAINER_OPTIONS.map((o) => (
-                    <button
-                      key={o.value}
-                      type="button"
-                      onClick={() => set({ containers: o.value, engineSocket: o.value === 'none' ? false : effective.engineSocket })}
-                      className={`state-layer rounded-lg border px-2.5 py-1 text-xs font-medium ${
-                        effective.containers === o.value ? 'border-transparent bg-secondary-container text-secondary-on-container' : 'border-surface-500 text-ink-400'
-                      }`}
-                    >
-                      {effective.containers === o.value ? '✓ ' : ''}
-                      {o.label}
-                    </button>
-                  ))}
-                </div>
-                {CONTAINER_OPTIONS.find((o) => o.value === effective.containers)?.hint && (
-                  <p className="text-xs text-ink-500">{CONTAINER_OPTIONS.find((o) => o.value === effective.containers)!.hint}</p>
-                )}
-                {effective.containers !== 'none' && (
-                  <label
-                    className={`flex items-start gap-2 rounded-xl p-2.5 text-sm ${effective.engineSocket ? 'bg-error-container text-error-on-container' : 'text-ink-200'}`}
-                  >
-                    <input type="checkbox" className="mt-1" checked={effective.engineSocket} onChange={(e) => set({ engineSocket: e.target.checked })} />
-                    <span>
-                      🧭 Portainer &amp; engine access
-                      <span className="block text-xs opacity-80">
-                        Lets them run Portainer (or any container manager) with the engine socket — control over every container on this host, and
-                        with rootful Docker effectively the host itself. Only for people you'd trust with admin.
-                      </span>
-                    </span>
-                  </label>
-                )}
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Max instances (0 = no limit)">

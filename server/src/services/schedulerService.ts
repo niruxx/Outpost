@@ -20,10 +20,10 @@ export function getSchedule(serverId: string): BackupSchedule | undefined {
 
 function registerTask(schedule: BackupSchedule) {
   activeTasks.get(schedule.server_id)?.stop();
-  if (!schedule.enabled) return;
+  if (!schedule.enabled || !getServer(schedule.server_id)) return;
   const task = cron.schedule(schedule.cron_expression, async () => {
     const server = getServer(schedule.server_id);
-    if (!server) return; // deleted
+    if (!server) return;
     try {
       logger.info(`Running scheduled backup for server ${schedule.server_id}`);
       await createBackup(schedule.server_id, 'auto');
@@ -165,7 +165,7 @@ export async function runTask(task: ScheduledTask, trigger: 'schedule' | 'manual
 function registerScheduledTask(task: ScheduledTask) {
   taskJobs.get(task.id)?.stop();
   taskJobs.delete(task.id);
-  if (!task.enabled) return;
+  if (!task.enabled || !getServer(task.server_id)) return;
   const job = cron.schedule(task.cron_expression, () => {
     // Re-read so edits made since registration (and deletions) are respected.
     const current = prep('SELECT * FROM scheduled_tasks WHERE id = ?').get(task.id) as ScheduledTask | undefined;

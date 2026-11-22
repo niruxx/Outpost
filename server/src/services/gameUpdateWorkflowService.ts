@@ -314,7 +314,7 @@ async function treeRevision(id: string) { const root = instanceDir(id); assertTr
 export async function cloneForStaging(id: string, owner: string, port: number, authorize: () => void) {
     return lock([id], async () => {
         const source = getServer(id)!;
-        if (['docker', 'custom'].includes(source.platform))
+        if (source.platform === 'custom')
             throw new HttpError(400, 'Staging clones support managed Java, Bedrock and Steam installations');
         if (!Number.isInteger(port) || port < 1024 || port > 65535 || prep('SELECT id FROM servers WHERE server_port=? UNION SELECT server_id AS id FROM auxiliary_ports WHERE port=? UNION SELECT server_id AS id FROM allocations WHERE port=? AND (server_id IS NOT NULL OR expires>?)').get(port, port, port, Date.now()))
             throw new HttpError(409, 'Choose an unused staging game port');

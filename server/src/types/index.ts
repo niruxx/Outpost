@@ -13,7 +13,8 @@ export interface User {
   totp_enabled: 0 | 1;
   totp_last_step: number;
   totp_recovery: string | null;
-  firewall: FirewallAccess;
+  /** Retained on older databases for compatibility. */
+  firewall?: string;
   storage: string;
   /** UI theme applied at sign-in (set by an admin); null = the browser's own choice. */
   theme: string | null;
@@ -23,11 +24,9 @@ export interface User {
   disabled_reason: string | null;
 }
 
-/** What a user may do with the host firewall. Admins can always do everything. */
-export type FirewallAccess = 'none' | 'view' | 'instances' | 'manage';
 
 export type StoragePermission = 'view' | 'mount' | 'automount' | 'format' | 'wipe' | 'partition' | 'encrypt' | 'lvm' | 'resize' | 'raid' | 'migrate' | 'crypttab' | 'health' | 'erase';
-export type PublicUser = Omit<User, 'password_hash' | 'password_salt' | 'totp_secret' | 'totp_last_step' | 'totp_recovery' | 'storage'> & { storagePermissions: StoragePermission[]; vmAccess: import('../services/vmAccessService.js').VmGrant[] };
+export type PublicUser = Omit<User, 'password_hash' | 'password_salt' | 'totp_secret' | 'totp_last_step' | 'totp_recovery' | 'storage' | 'firewall'> & { storagePermissions: StoragePermission[] };
 
 export type TaskAction = 'command' | 'restart' | 'start' | 'stop';
 
@@ -46,7 +45,9 @@ export interface ScheduledTask {
   created_at: string;
 }
 
-export type Platform = 'java' | 'bedrock' | 'steam' | 'custom' | 'docker';
+export const SUPPORTED_PLATFORMS = ['java', 'bedrock', 'steam', 'custom'] as const;
+export type Platform = (typeof SUPPORTED_PLATFORMS)[number];
+export const isSupportedPlatform = (value: unknown): value is Platform => SUPPORTED_PLATFORMS.some((platform) => platform === value);
 export type Loader =
   | 'vanilla'
   | 'paper'
@@ -63,8 +64,7 @@ export type Loader =
   | 'bungeecord'
   | 'bedrock'
   | 'steam'
-  | 'custom'
-  | 'docker';
+  | 'custom';
 
 /** Loaders that support the Bukkit plugin API (a /plugins directory of jars). */
 export const PLUGIN_CAPABLE_LOADERS: Loader[] = ['paper', 'purpur', 'spigot'];
@@ -76,7 +76,7 @@ export const isProxyLoader = (loader: string): boolean => (PROXY_LOADERS as stri
 /** Every loader the API accepts when creating an instance. */
 export const ALL_LOADERS: Loader[] = [
   'vanilla', 'paper', 'purpur', 'spigot', 'fabric', 'quilt', 'forge', 'neoforge', 'mohist', 'spongeforge',
-  'velocity', 'waterfall', 'bungeecord', 'bedrock', 'steam', 'custom', 'docker',
+  'velocity', 'waterfall', 'bungeecord', 'bedrock', 'steam', 'custom',
 ];
 
 /** Steam-platform servers (Palworld, Valheim, etc.) have no Minecraft-specific concept of
@@ -157,8 +157,6 @@ export interface ServerRecord {
   upnp_config: string | null;
   /** 'inherit' = sandboxed when the panel's sandbox is on; 'off' = admin opt-out for this instance. */
   isolation: 'inherit' | 'off';
-  /** JSON-encoded DockerConfig (services/containerService.ts) for platform = 'docker'. */
-  docker_config: string | null;
   suspended: 0 | 1;
   suspended_reason: string | null;
   suspended_at: string | null;

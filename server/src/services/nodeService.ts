@@ -26,7 +26,7 @@ import { isRunning } from './processManager.js';
 import { forgetServerSchedules } from './schedulerService.js';
 import { appendLine } from './consoleLogService.js';
 import { publish, consoleTopic } from './wsHub.js';
-import type { ServerRecord, ServerStatus } from '../types/index.js';
+import { isSupportedPlatform, type ServerRecord, type ServerStatus } from '../types/index.js';
 
 /**
  * Multi-node support: every Outpost panel has a node key. Adding another panel here (its URL
@@ -223,7 +223,6 @@ type TransferMeta = Pick<
   | 'steam_login'
   | 'steam_extra_flags'
   | 'launch_config'
-  | 'docker_config'
 >;
 
 function setStatus(serverId: string, status: ServerStatus) {
@@ -279,7 +278,6 @@ export function startTransfer(serverId: string, nodeId: string, deleteSource: bo
     steam_login: server.steam_login.startsWith('account:') ? 'anonymous' : server.steam_login,
     steam_extra_flags: server.steam_extra_flags,
     launch_config: server.launch_config,
-    docker_config: server.docker_config,
   };
 
   void (async () => {
@@ -353,7 +351,7 @@ export async function receiveTransfer(req: Request): Promise<ServerRecord> {
   } catch {
     throw new HttpError(400, 'Invalid instance metadata');
   }
-  if (!meta?.name || !['java', 'bedrock', 'steam', 'custom', 'docker'].includes(meta.platform)) throw new HttpError(400, 'Invalid instance metadata');
+  if (!meta?.name || !isSupportedPlatform(meta.platform)) throw new HttpError(400, 'Invalid instance metadata');
   assertCapacityAdmission(meta.max_memory_mb);
   assertManualPort(meta.server_port);
 
@@ -373,7 +371,6 @@ export async function receiveTransfer(req: Request): Promise<ServerRecord> {
     steamLogin: meta.steam_login,
     steamExtraFlags: meta.steam_extra_flags,
     launchConfig: meta.launch_config ?? null,
-    dockerConfig: meta.docker_config ?? null,
   });
   setServerStatus(record.id, 'transferring');
   const job = beginJob('import', record.id, 'Receiving instance files');

@@ -12,6 +12,7 @@ import { useConfirm } from '../../components/ConfirmDialog.js';
 import { copyToClipboard, useContextMenu, type MenuItems } from '../../components/ContextMenu.js';
 import { diffLines, withContext } from '../../lib/diff.js';
 import { formatBytes } from './StatusTab.js';
+import { SnapshotMetadataDialog } from './SnapshotMetadataDialog.js';
 
 const PRESETS = [
   { label: 'Every hour', cron: '0 * * * *' },
@@ -19,12 +20,6 @@ const PRESETS = [
   { label: 'Daily at 3 AM', cron: '0 3 * * *' },
   { label: 'Weekly (Sun 3 AM)', cron: '0 3 * * 0' },
 ];
-
-/** backup-2026-10-10T03-00-00-000Z-<label>.zip → "<label>" (scheduled ones are labelled "auto"). */
-function snapshotLabel(fileName: string): string | null {
-  const m = fileName.match(/^backup-\d{4}-\d{2}-\d{2}T[\d-]+Z-(.+)\.zip$/);
-  return m ? m[1] : null;
-}
 
 // ---------------------------------------------------------------------------
 // Diff view
@@ -153,7 +148,7 @@ function SnapshotBrowser({ snapshot, restoreBlocked, onClose }: { snapshot: Back
   const matches = entries?.filter((e) => !q || e.path.toLowerCase().includes(q)) ?? [];
 
   return (
-    <Modal open onClose={onClose} title={`Restore from ${snapshotLabel(snapshot.fileName) ?? 'snapshot'} · ${new Date(snapshot.createdAt).toLocaleString()}`} size="xl">
+    <Modal open onClose={onClose} title={`Restore from ${snapshot.name || snapshot.label || 'snapshot'} · ${new Date(snapshot.createdAt).toLocaleString()}`} size="xl">
       <div className="grid min-h-[50vh] gap-4 md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
         <div className="flex min-h-0 flex-col">
           <Input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter files (e.g. server.properties)" autoFocus />
@@ -241,6 +236,7 @@ export function BackupsTab() {
   const [busyFile, setBusyFile] = useState<string | null>(null);
   const [savingSchedule, setSavingSchedule] = useState(false);
   const [browsing, setBrowsing] = useState<BackupInfo | null>(null);
+  const [editing, setEditing] = useState<{ serverId: string; snapshot: BackupInfo } | null>(null);
   const offsite = useOffsite(serverId);
 
   const canCreate = can('backups.create');
@@ -276,6 +272,7 @@ export function BackupsTab() {
   }, [load]);
 
   const snapshotUrl = (b: BackupInfo) => downloadUrl(`/servers/${serverId}/backups/${encodeURIComponent(b.fileName)}/download`);
+  const editSnapshot = (snapshot: BackupInfo) => setEditing({ serverId, snapshot });
 
   async function copyOffsite(b: BackupInfo) {
     try {
@@ -287,7 +284,8 @@ export function BackupsTab() {
   }
 
   const snapshotMenu = (b: BackupInfo) => (): MenuItems => [
-    { heading: new Date(b.createdAt).toLocaleString() },
+    { heading: b.name || new Date(b.createdAt).toLocaleString() },
+    canCreate && { label: 'Edit name and label', icon: 'edit', onSelect: () => editSnapshot(b) },
     canBrowse && { label: 'Browse files', icon: 'search', onSelect: () => setBrowsing(b) },
     canBrowse && { label: 'Download', icon: 'download', onSelect: () => window.open(snapshotUrl(b), '_blank') },
     canRestore && {
@@ -446,7 +444,7 @@ export function BackupsTab() {
         ) : (
           <div className="divide-y divide-surface-700 overflow-hidden rounded-2xl bg-surface-900">
             {backups.map((b) => {
-              const tag = snapshotLabel(b.fileName);
+              const date = new Date(b.createdAt).toLocaleString();
               return (
                 <SnapshotRow key={b.fileName} menu={snapshotMenu(b)}>
                   <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface-700 text-ink-300">
@@ -454,15 +452,21 @@ export function BackupsTab() {
                   </span>
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-sm font-medium text-ink-100">{new Date(b.createdAt).toLocaleString()}</p>
-                      {tag && <Badge tone={tag === 'auto' ? 'blue' : 'neutral'}>{tag === 'auto' ? 'Scheduled' : tag}</Badge>}
+                      <p className="min-w-0 break-words text-sm font-medium text-ink-100">{b.name || date}</p>
+                      {b.scheduled && <Badge tone="blue">Scheduled</Badge>}
+                      {b.label && <Badge tone="neutral"><span className="break-all">{b.label}</span></Badge>}
                     </div>
                     <p className="truncate text-xs text-ink-500">
-                      {formatBytes(b.sizeBytes)} · <span className="font-mono">{b.fileName}</span>
+                      {b.name && <>{date} · </>}{formatBytes(b.sizeBytes)} · <span className="font-mono">{b.fileName}</span>
                     </p>
                     <OffsiteChips state={offsite.state} fileName={b.fileName} />
                   </div>
                   <div className="flex w-full flex-wrap gap-1.5 sm:w-auto">
+                    {canCreate && (
+                      <Button aria-label="Edit snapshot name and label" title="Edit name and label" onClick={() => editSnapshot(b)}>
+                        <Icon name="edit" className="h-4 w-4" /> Edit
+                      </Button>
+                    )}
                     {canBrowse && (
                       <Button onClick={() => setBrowsing(b)} title="Browse files, compare and restore individual files">
                         <Icon name="search" className="h-4 w-4" /> Files
@@ -562,6 +566,13 @@ export function BackupsTab() {
       </Card>
 
       {browsing && <SnapshotBrowser snapshot={browsing} restoreBlocked={coreKeeper && restoreBlocked} onClose={() => setBrowsing(null)} />}
+      {canCreate && editing?.serverId === serverId && <SnapshotMetadataDialog
+        key={`${serverId}/${editing.snapshot.fileName}`}
+        snapshot={editing.snapshot}
+        endpoint={`/servers/${serverId}/backups/${encodeURIComponent(editing.snapshot.fileName)}/metadata`}
+        onClose={() => setEditing(null)}
+        onSaved={() => { setEditing(null); toast.success('Snapshot details saved'); void load(); }}
+      />}
     </div>
   );
 }

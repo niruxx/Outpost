@@ -7,12 +7,8 @@
 # Usage: run from inside a cloned Outpost checkout:
 #   ./install.sh
 #
-# Non-interactive (accepts every default — Java yes, sandbox + Docker yes, systemd no):
+# Non-interactive (accepts every default — Java yes, sandbox yes, systemd no):
 #   ./install.sh -y
-#
-# Container engine for Docker/Portainer/app instances (default: Docker):
-#   ./install.sh --engine=podman      # rootless Podman instead (no root daemon)
-#   ./install.sh --no-containers      # skip container support entirely
 #
 set -euo pipefail
 
@@ -32,20 +28,14 @@ die()   { err "$*"; exit 1; }
 heading() { printf '\n%s%s%s\n' "$BOLD" "$*" "$NC"; }
 
 NONINTERACTIVE=0
-ENGINE=""        # docker | podman | "" (ask; default docker)
-CONTAINERS=1
 WINE=0
 for arg in "$@"; do
   case "$arg" in
     -y|--yes) NONINTERACTIVE=1 ;;
-    --engine=docker|--engine=podman) ENGINE="${arg#--engine=}" ;;
-    --no-containers) CONTAINERS=0 ;;
     --wine) WINE=1 ;;
     -h|--help)
-      echo "Usage: $0 [-y|--yes] [--engine=docker|podman] [--no-containers] [--wine]"
-      echo "  -y, --yes            Non-interactive: accept every default (Java, sandbox, Docker; skips systemd)."
-      echo "  --engine=ENGINE      Container engine for Docker/Portainer/app instances: docker (default) or podman."
-      echo "  --no-containers      Don't install a container engine."
+      echo "Usage: $0 [-y|--yes] [--wine]"
+      echo "  -y, --yes            Non-interactive: accept every default (Java, sandbox; skips systemd)."
       echo "  --wine               Install Wine (for Windows-only game servers like Black Ops III) without asking."
       exit 0
       ;;
@@ -258,7 +248,7 @@ install_wine() {
 }
 
 # ---------------------------------------------------------------------------
-# Sandbox + container engine (Docker / Podman) for app, container and Portainer instances
+# Game process sandbox
 # ---------------------------------------------------------------------------
 RUN_USER="$(id -un)"
 
@@ -272,63 +262,6 @@ install_pkgs() {
   esac
 }
 
-install_docker() {
-  if command -v docker >/dev/null 2>&1; then
-    ok "Docker already installed ($(docker --version 2>/dev/null | head -1))"
-  else
-    info "Installing Docker…"
-    case "$DISTRO_FAMILY" in
-      debian)   install_pkgs docker.io ;;
-      arch)     install_pkgs docker ;;
-      # Fedora packages Docker as moby-engine (RHEL clones don't ship it — use --engine=podman there).
-      fedora)   install_pkgs moby-engine || { err "moby-engine isn't available here (RHEL/Alma/Rocky?). Re-run with --engine=podman."; return 1; } ;;
-      opensuse) install_pkgs docker ;;
-      *) err "Don't know how to install Docker on this distro."; return 1 ;;
-    esac
-  fi
-  info "Enabling and starting docker.service + docker.socket…"
-  $SUDO systemctl enable --now docker.socket docker.service
-  if [[ "$RUN_USER" != "root" ]]; then
-    if id -nG "$RUN_USER" | tr ' ' '\n' | grep -qx docker; then
-      ok "$RUN_USER is already in the docker group"
-    else
-      warn "Adding $RUN_USER to the docker group so Outpost can reach the Docker daemon."
-      warn "Membership of the docker group is root-equivalent on this machine — rootless Podman (--engine=podman) avoids that."
-      $SUDO usermod -aG docker "$RUN_USER"
-      DOCKER_GROUP_ADDED=1
-    fi
-  fi
-  ok "Docker is ready"
-}
-
-install_podman() {
-  if command -v podman >/dev/null 2>&1; then
-    ok "Podman already installed ($(podman --version 2>/dev/null | head -1))"
-  else
-    info "Installing Podman…"
-    case "$DISTRO_FAMILY" in
-      debian)   install_pkgs podman uidmap slirp4netns ;;
-      *)        install_pkgs podman || { err "Couldn't install Podman on this distro."; return 1; } ;;
-    esac
-  fi
-  if [[ "$RUN_USER" == "root" ]]; then
-    info "Running as root — enabling the system-wide podman.socket…"
-    $SUDO systemctl enable --now podman.socket
-  else
-    # Rootless Podman needs subordinate uid/gid ranges for the user (Arch doesn't add them by default).
-    if ! grep -q "^$RUN_USER:" /etc/subuid 2>/dev/null || ! grep -q "^$RUN_USER:" /etc/subgid 2>/dev/null; then
-      info "Adding subordinate uid/gid ranges for $RUN_USER (needed by rootless Podman)…"
-      $SUDO usermod --add-subuids 100000-165535 --add-subgids 100000-165535 "$RUN_USER"
-      podman system migrate >/dev/null 2>&1 || true
-    fi
-    info "Enabling $RUN_USER's podman.socket (the Docker-compatible API Portainer talks to)…"
-    systemctl --user enable --now podman.socket || warn "Couldn't enable podman.socket for $RUN_USER — run 'systemctl --user enable --now podman.socket' from a login session."
-    # Lingering keeps the user's services (podman.socket, and the containers) running without an open login session.
-    $SUDO loginctl enable-linger "$RUN_USER" && ok "Enabled lingering for $RUN_USER (user services run without a login session)"
-  fi
-  ok "Podman is ready"
-}
-
 install_sandbox() {
   if command -v bwrap >/dev/null 2>&1; then
     ok "bubblewrap already installed ($(bwrap --version 2>/dev/null))"
@@ -338,8 +271,6 @@ install_sandbox() {
   fi
 }
 
-PORTAINER_IMAGE="docker.io/portainer/portainer-ce:lts"
-DOCKER_GROUP_ADDED=0
 
 heading "Step 1/6 — Prerequisites"
 
@@ -412,63 +343,12 @@ fi
 # ---------------------------------------------------------------------------
 # Sandbox + containers
 # ---------------------------------------------------------------------------
-heading "Step 2/6 — Sandbox & containers"
+heading "Step 2/6 — Game process sandbox"
 
 if confirm "Install bubblewrap, the sandbox that keeps every instance inside its own folder?" y; then
   install_sandbox
 else
   warn "Skipping bubblewrap — instances will run without the process sandbox."
-fi
-
-# The Firewall page drives UFW or firewalld, which need root. Let the panel's user run just that
-# tool through sudo without a password (nothing else).
-FW_BIN="$(command -v ufw 2>/dev/null || command -v firewall-cmd 2>/dev/null || true)"
-if [[ -z "$FW_BIN" ]]; then
-  for candidate in /usr/sbin/ufw /sbin/ufw /usr/bin/firewall-cmd /usr/sbin/firewall-cmd; do
-    [[ -x "$candidate" ]] && FW_BIN="$candidate" && break
-  done
-fi
-if [[ -n "$FW_BIN" && "$RUN_USER" != "root" ]] \
-  && confirm "Let Outpost manage the firewall ($(basename "$FW_BIN")) from its Firewall page? (adds a sudoers rule for that one command)" n; then
-  SUDOERS_FILE="/etc/sudoers.d/outpost-firewall"
-  SUDOERS_TMP="$(mktemp)"
-  echo "$RUN_USER ALL=(root) NOPASSWD: $FW_BIN" >"$SUDOERS_TMP"
-  if $SUDO visudo -cf "$SUDOERS_TMP" >/dev/null; then
-    $SUDO install -m 0440 -o root -g root "$SUDOERS_TMP" "$SUDOERS_FILE"
-    ok "Outpost can now run $FW_BIN (rule in $SUDOERS_FILE)"
-  else
-    warn "Couldn't validate the sudoers rule — skipping. Add it yourself: $RUN_USER ALL=(root) NOPASSWD: $FW_BIN"
-  fi
-  rm -f "$SUDOERS_TMP"
-fi
-
-if [[ "$CONTAINERS" == "1" ]] && confirm "Install a container engine for Docker, Portainer and app-catalog instances?" y; then
-  if [[ -z "$ENGINE" ]]; then
-    if command -v podman >/dev/null 2>&1 && ! command -v docker >/dev/null 2>&1; then
-      ENGINE=podman
-    elif [[ "$NONINTERACTIVE" == "1" || ! -t 0 ]]; then
-      ENGINE=docker
-    else
-      read -r -p "Which engine — docker or podman (rootless, no root daemon)? [docker] " ENGINE || ENGINE=""
-      ENGINE="${ENGINE:-docker}"
-    fi
-  fi
-  case "$ENGINE" in
-    docker) install_docker || warn "Docker setup didn't finish — see above." ;;
-    podman) install_podman || warn "Podman setup didn't finish — see above." ;;
-    *) warn "Unknown engine '$ENGINE' — skipping container setup." ; ENGINE="" ;;
-  esac
-
-  if [[ -n "$ENGINE" ]] && command -v "$ENGINE" >/dev/null 2>&1 && confirm "Pre-download the Portainer image so one-click Portainer instances start immediately?" y; then
-    if [[ "$ENGINE" == "docker" ]]; then
-      $SUDO docker pull "$PORTAINER_IMAGE" && ok "Portainer image ready" || warn "Couldn't pull $PORTAINER_IMAGE — it'll be pulled when you create a Portainer instance."
-    else
-      podman pull "$PORTAINER_IMAGE" && ok "Portainer image ready" || warn "Couldn't pull $PORTAINER_IMAGE — it'll be pulled when you create a Portainer instance."
-    fi
-  fi
-else
-  ENGINE=""
-  info "Skipping container support. Re-run with --engine=docker or --engine=podman to add it later."
 fi
 
 # ---------------------------------------------------------------------------
@@ -560,7 +440,6 @@ Restart=on-failure
 User=$RUN_USER
 Group=$RUN_GROUP
 Environment=PORT=$SERVICE_PORT
-$( [[ "$ENGINE" == "podman" && "$RUN_USER" != "root" ]] && echo "Environment=XDG_RUNTIME_DIR=/run/user/$(id -u "$RUN_USER")" )
 
 [Install]
 WantedBy=multi-user.target
@@ -602,16 +481,9 @@ heading "Step 6/6 — Done"
 echo "Outpost is installed at: $PROJECT_DIR"
 echo "Panel URL (once running):  http://<this-machine's-ip>:${SERVICE_PORT:-${VERIFY_PORT:-8642}}"
 echo
-if [[ -n "$ENGINE" ]]; then
-  echo "Containers:                $ENGINE ($( [[ "$ENGINE" == docker ]] && echo 'docker.service + docker.socket enabled' || echo "podman.socket enabled for $RUN_USER" ))"
-fi
 command -v bwrap >/dev/null 2>&1 && echo "Sandbox:                   bubblewrap $(bwrap --version 2>/dev/null | awk '{print $2}')"
 echo
 echo "Reminders:"
-if [[ "$DOCKER_GROUP_ADDED" == "1" ]]; then
-  echo "  - $RUN_USER was added to the docker group: log out and back in (and restart Outpost if it's"
-  echo "    already running) before Docker/Portainer instances can start."
-fi
 echo "  - The panel's own port only needs to be reachable by admins — consider a reverse proxy/VPN for it."
-echo "  - Each instance needs its own port opened to its users (e.g. 25565/tcp Minecraft, 9443/tcp Portainer)."
-echo "  - See the README for firewall commands (ufw/firewalld) and moving data outside the checkout."
+echo "  - Allow the game ports your players need in the host firewall."
+echo "  - See the README for moving data outside the checkout."

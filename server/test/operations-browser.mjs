@@ -4,8 +4,7 @@ import path from 'node:path';
 import { once } from 'node:events';
 import { runBrowser } from './browserHarness.mjs';
 const app = express(); app.use(express.json());
-const uuid = '01234567-89ab-cdef-0123-456789abcdef';
-const user = { id: 'browser-owner', username: 'owner', role: 'admin' }; let deleted = false, install = null, createdVm = null, defaultJava = '/usr/lib/jvm/java-17/bin/java';
+const user = { id: 'browser-owner', username: 'owner', role: 'admin' }; let install = null, defaultJava = '/usr/lib/jvm/java-17/bin/java';
 const info = { hostname: 'Fixture host', platform: 'linux', cpus: 8, totalMemoryMb: 65536, freeMemoryMb: 50000, reservedMemoryMb: 1024 };
 app.get('/api/auth/status', (_req, res) => res.json({ setupRequired: false }));
 app.get('/api/auth/me', (_req, res) => res.json({ user }));
@@ -17,16 +16,6 @@ app.get('/api/operations/curseforge', (_req, res) => res.json({ packs: [{ id: 12
 app.get('/api/terminal', (_req, res) => res.json({ available: false, error: 'Native backend missing in fixture', platform: 'linux', serviceUser: 'outpost', isRoot: false, idleMinutes: 30, maxSessionsPerAdmin: 2 }));
 app.get('/api/terminal/dependencies', (_req, res) => res.json({ plan: { platform: 'linux', family: 'debian', requirements: ['node-pty optional dependency', 'Python 3, make, C++ compiler'], systemCommands: [{ file: '/usr/bin/apt-get', args: ['install', '-y', 'python3', 'build-essential'] }], repairCommands: ['npm install --include=optional', 'npm rebuild node-pty'], canInstallSystemTools: true, notes: 'Root/sudo is required for OS packages.', projectRoot: '/opt/outpost' }, job: install ? { state: 'failed', stage: 'Simulated repair', output: '', error: 'Fixture: no installation performed' } : null }));
 app.post('/api/terminal/dependencies/install', (req, res) => { install = req.body; res.status(202).json({ job: { state: 'failed', stage: 'Simulated repair', output: '', error: 'Fixture: no installation performed' } }); });
-app.get('/api/libvirt/vms', (_req, res) => res.json({ machines: deleted ? [] : [{ uuid, name: 'VM entry fixture', state: 'shut off', cpus: 2, memoryMb: 1024, maxMemoryMb: 4096, persistent: true, autostart: false, permissions: ['view', 'power', 'console', 'configure', 'snapshots'] }], connection: 'qemu:///system' }));
-app.delete(`/api/libvirt/vms/${uuid}`, (req, res) => { assert.equal(req.body.confirmName, 'VM entry fixture'); assert.equal(req.body.removeSnapshotMetadata, false); deleted = true; res.json({ ok: true }); });
-app.get(`/api/libvirt/vms/${uuid}/snapshots`, (_req, res) => res.json({ snapshots: [] }));
-app.get('/api/libvirt/infrastructure', (_req, res) => res.json({ pools: [{ name: 'default', active: true, info: 'State: running', volumes: [] }], networks: [{ name: 'default', info: 'Active: yes', xml: '<network/>' }] }));
-app.post('/api/libvirt/vms/create', (req, res) => { createdVm = req.body; res.status(201).json({ uuid }); });
-app.get('/api/libvirt/images', (_req, res) => res.json({ directory: '/images', images: [{ name: 'linux.iso', path: '/images/linux.iso' }] }));
-app.get(`/api/libvirt/vms/${uuid}/devices`, (_req, res) => res.json({ disks: [{ target: 'vda', source: '/images/boot.qcow2', device: 'disk', boot: 1 }, { target: 'sda', source: '/images/linux.iso', device: 'cdrom', boot: null }], interfaces: [{ mac: '52:54:00:12:34:56', network: 'default', type: 'network', model: 'virtio', link: 'up', boot: null }] }));
-const deviceChanges = [];
-for (const operation of ['media', 'boot', 'interface', 'networks']) app.post(`/api/libvirt/vms/${uuid}/${operation}`, (req, res) => { deviceChanges.push({ operation, ...req.body }); res.json({ ok: true }); });
-app.get('/api/libvirt/migrations', (_req, res) => res.json({ jobs: [] }));
 const javaState = () => ({ supported: true, family: 'debian', current: defaultJava, choices: ['/usr/lib/jvm/java-17/bin/java', '/usr/lib/jvm/java-21/bin/java'], error: null });
 app.get('/api/java/system-default', (_req, res) => res.json(javaState()));
 app.put('/api/java/system-default', (req, res) => { assert.equal(req.body.choice, '/usr/lib/jvm/java-21/bin/java'); defaultJava = req.body.choice; res.json(javaState()); });
@@ -36,10 +25,12 @@ app.use('/api', (_req, res) => res.status(503).json({ error: 'Outside browser fi
 app.use(express.static(path.resolve('web/dist'))); app.get('*', (_req, res) => res.sendFile(path.resolve('web/dist/index.html')));
 const server = app.listen(0, '127.0.0.1'); await once(server, 'listening'); const origin = `http://127.0.0.1:${server.address().port}`;
 try {
-  await runBrowser(origin, async ({ evaluate, navigate, text, click, until }) => {
+  await runBrowser(origin, async ({ evaluate, navigate, text, click, until, viewport }) => {
+    await viewport(480, 900);
     await navigate('/'); await text('Your instances');
-    await evaluate("document.querySelector('button[aria-label=\"Open navigation\"]').click()");
+    await evaluate("document.querySelector('button[aria-label=\"Main menu\"]').click()");
     await text('Configuration');
+    assert.equal(await evaluate("!!document.querySelector('a[href=\"/docker\"], a[href=\"/libvirt\"], a[href=\"/firewall\"]')"), false);
     // HTTP LAN origins do not expose randomUUID. Exercise sidebar navigation in that environment.
     await evaluate("Object.defineProperty(crypto, 'randomUUID', { value: undefined, configurable: true })");
     await click('Configuration'); await text('Appearance'); await text('System');
@@ -50,31 +41,13 @@ try {
     await click('My Steam accounts'); await text('Saved Steam user');
     await click('CurseForge modpacks'); await text('Install a CurseForge server modpack'); await click('Search'); await text('Fixture CurseForge pack');
     await navigate('/host-console'); await text('Host console dependencies'); await text('Python 3, make, C++ compiler'); await click('Install / repair automatically'); await text('Fixture: no installation performed'); assert.deepEqual(install, { installSystemTools: false });
-    await navigate('/libvirt'); await text('VM entry fixture'); await click('New virtual machine'); await text('Installer ISO path on hypervisor');
-    await until(() => evaluate("!![...document.querySelectorAll('option')].find(e => e.textContent === 'default')"), 'VM creation resources');
-    await evaluate(`for (const [label, value] of [['VM name', 'browser-vm'], ['Installer ISO path on hypervisor', '/images/linux.iso']]) { const input = [...document.querySelectorAll('input')].find(e => e.closest('label')?.textContent.includes(label)); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, value); input.dispatchEvent(new Event('input', { bubbles: true })); }`);
-    await click('Create virtual machine'); await until(() => createdVm !== null, 'VM creation submission');
-    assert.deepEqual(createdVm, { name: 'browser-vm', cpus: 2, memoryMb: 2048, diskMb: 20480, pool: 'default', network: 'default', iso: '/images/linux.iso', start: true, autostart: false, model: 'virtio', mac: '', link: 'up', boot: 'hd', extraVolume: '' });
-    await until(() => evaluate("!document.querySelector('[role=dialog]')"), 'VM creation closed');
-    await text('Disks, installation media and boot'); await text('52:54:00:12:34:56');
-    await click('Eject ISO'); await until(() => deviceChanges.some(d => d.operation === 'media'), 'ISO ejection');
-    assert.deepEqual(deviceChanges.find(d => d.operation === 'media'), { operation: 'media', target: 'sda', iso: '' });
-    await until(() => evaluate("![...document.querySelectorAll('button')].find(b => b.textContent === 'Boot from this device').matches(':disabled')"), 'media operation complete');
-    await click('Boot from this device'); await until(() => deviceChanges.some(d => d.operation === 'boot'), 'disk boot setting');
-    assert.deepEqual(deviceChanges.find(d => d.operation === 'boot'), { operation: 'boot', target: 'vda' });
-    await until(() => evaluate("![...document.querySelectorAll('button')].find(b => b.textContent === 'Save interface').matches(':disabled')"), 'device save ready');
-    await click('Save interface'); await until(() => deviceChanges.some(d => d.operation === 'interface'), 'interface customization');
-    await click('Delete VM entry'); await text('Type VM entry fixture to confirm');
-    await evaluate(`const input = [...document.querySelectorAll('input')].find(e => e.closest('label')?.textContent.includes('Type VM entry fixture')); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, 'VM entry fixture'); input.dispatchEvent(new Event('input', { bubbles: true }));`);
-    await until(() => evaluate("![...document.querySelectorAll('button')].find(b => b.textContent === 'Delete entry and retain disks').disabled"), 'VM name confirmation');
-    await click('Delete entry and retain disks'); await text('No virtual machines found'); assert.equal(deleted, true);
     await navigate('/operations'); await text('Provision an instance');
     assert.equal(await evaluate('location.pathname'), '/configuration/operations');
-    await click('Configuration'); await text('Default Java environment');
+    await click('Configuration'); await click('Host & runtimes'); await text('Default Java environment');
     await until(() => evaluate("[...document.querySelectorAll('select')].some(e => e.closest('label')?.textContent.includes('Installed system Java'))"), 'system Java choices loaded');
     await evaluate(`const select = [...document.querySelectorAll('select')].find(e => e.closest('label')?.textContent.includes('Installed system Java')); select.value = '/usr/lib/jvm/java-21/bin/java'; select.dispatchEvent(new Event('change', { bubbles: true }));`);
     await click('Set system default'); await text('Change the host’s default Java?'); await click('Confirm');
     await until(() => defaultJava.endsWith('java-21/bin/java'), 'system Java submission');
   });
-  console.log('Browser operations tabs, Steam/CurseForge UI, automatic dependency popup/repair submission and confirmed VM entry deletion passed with simulated services');
+  console.log('Browser operations tabs, Steam/CurseForge UI, automatic dependency popup/repair submission and system Java selection passed with simulated services');
 } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }

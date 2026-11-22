@@ -82,9 +82,7 @@ const GROUP_LABEL: Record<Group, string | null> = { workspace: null, manage: 'Ma
 function useDestinations(): Destination[] {
   const { user } = useAuth();
   const admin = user?.role === 'admin';
-  const vms = admin || !!user?.vmAccess?.length;
   const storage = admin || !!user?.storagePermissions?.length;
-  const firewall = admin || (!!user?.firewall && user.firewall !== 'none');
   const list: (Destination | false)[] = [
     { to: '/', end: true, label: 'Instances', icon: 'instances', group: 'workspace', tone: 'blue' },
     { to: '/dashboard', label: 'Dashboard', icon: 'grid', group: 'workspace', tone: 'teal' },
@@ -92,17 +90,13 @@ function useDestinations(): Destination[] {
     { to: '/compatibility', label: 'Compatibility', icon: 'checklist', group: 'workspace', tone: 'green' },
     { to: '/jobs', label: 'Job center', icon: 'clock', group: 'workspace', tone: 'yellow' },
     { to: '/files', label: 'File Management', icon: 'folder', group: 'workspace', tone: 'yellow' },
-    { to: '/docker', label: 'Docker', icon: 'container', group: 'workspace', tone: 'teal' },
-    vms && { to: '/libvirt', end: true, label: 'Virtual Machines', icon: 'monitor', group: 'workspace', tone: 'violet' },
     admin && { to: '/users', label: 'Users', icon: 'users', group: 'manage', tone: 'blue' },
     admin && { to: '/activity', label: 'Activity', icon: 'eye', group: 'manage', tone: 'green' },
     admin && { to: '/audit', label: 'Audit Log', icon: 'checklist', group: 'manage', tone: 'yellow' },
-    firewall && { to: '/firewall', label: 'Firewall', icon: 'shieldCheck', group: 'manage', tone: 'red' },
     storage && { to: '/storage', label: 'Storage', icon: 'storage', group: 'system', tone: 'teal' },
     admin && { to: '/host', label: 'Host', icon: 'monitor', group: 'system', tone: 'green' },
     admin && { to: '/host-files', label: 'Host Files', icon: 'folder', group: 'system', tone: 'yellow' },
     admin && { to: '/host-console', label: 'Host Console', icon: 'console', group: 'system', tone: 'violet' },
-    admin && { to: '/libvirt/configuration', label: 'Libvirt Configuration', icon: 'monitor', group: 'system', tone: 'violet' },
     { to: '/configuration', label: 'Configuration', icon: 'configuration', group: 'system', tone: 'blue' },
   ];
   return list.filter((d): d is Destination => !!d);

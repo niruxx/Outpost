@@ -267,9 +267,6 @@ export function getAddonSupport(server: ServerRecord): AddonSupport {
     return { supported: false, reason: 'Outpost doesn’t know this game’s mod format. Manage its files directly from File Management.' };
   }
 
-  if (server.platform === 'docker') {
-    return { supported: false, reason: 'Docker instances manage their own software — add plugins or mods through the image’s own options (often environment variables) or by placing files in File Management.' };
-  }
   return { supported: false, reason: 'This instance type doesn’t support plugins.' };
 }
 

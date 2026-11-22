@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { api, downloadUrl } from '../../api/client.js';
 import { useServerDetail } from './ServerContext.js';
-import { Button, Card, Input, ErrorText } from '../../components/ui.js';
+import { Badge, Button, Card, Input, ErrorText } from '../../components/ui.js';
 import { useConfirm } from '../../components/ConfirmDialog.js';
+import type { SnapshotMetadata } from '../../api/types.js';
+import { SnapshotMetadataDialog } from './SnapshotMetadataDialog.js';
 type Health = {
     enabled: boolean;
     cpu: number;
@@ -41,13 +43,13 @@ type Data = {
             weekly: number;
             monthly: number;
         };
-        manifests: {
+        manifests: (SnapshotMetadata & {
             id: string;
             at: number;
             fileCount: number;
             logicalBytes: number;
             addedBytes: number;
-        }[];
+        })[];
     };
     verification: {
         name: string;
@@ -80,6 +82,7 @@ export function ReliabilityTab() {
     const [policy, setPolicy] = useState({ daily: 7, weekly: 4, monthly: 6 });
     const [zip, setZip] = useState('');
     const [restoreTest, setRestoreTest] = useState(true);
+    const [editing, setEditing] = useState<(SnapshotMetadata & { id: string; serverId: string }) | null>(null);
     const [when, setWhen] = useState('');
     const [downtime, setDowntime] = useState(60);
     const [warning, setWarning] = useState(60);
@@ -149,13 +152,38 @@ export function ReliabilityTab() {
       <div className="flex flex-wrap gap-3">{(['daily', 'weekly', 'monthly'] as const).map(k => <label key={k}>{k} buckets<Input type="number" min={k === 'daily' ? 1 : 0} max={k === 'daily' ? 365 : k === 'weekly' ? 104 : 120} value={policy[k]} onChange={e => setPolicy({ ...policy, [k]: +e.target.value })}/></label>)}</div><Button disabled={busy || !can('backups.create')} onClick={() => action('/backup-policy', policy, 'put')}>Save retention</Button> <Button disabled={busy || !can('backups.create')} onClick={() => action('/deduplicated')}>Create deduplicated snapshot</Button>
       <label className="flex gap-2"><input type="checkbox" checked={restoreTest} onChange={e => setRestoreTest(e.target.checked)}/>Include disposable restore test</label>
       <div className="flex flex-wrap gap-2"><Input aria-label="ZIP backup filename" placeholder="Existing ZIP backup filename" value={zip} onChange={e => setZip(e.target.value)}/><Button disabled={busy || !zip || !can('backups.create')} onClick={() => action('/verify', { kind: 'zip', name: zip, restoreTest })}>Verify ZIP backup</Button></div>
-      {data.backups.manifests.map(m => <div key={m.id} className="flex flex-wrap items-center gap-2 rounded border border-surface-700 p-2 text-sm"><span className="min-w-0 flex-1">{new Date(m.at).toLocaleString()} · {m.fileCount} files · {size(m.logicalBytes)} ({size(m.addedBytes)} added)</span><Button disabled={busy || !can('backups.create')} onClick={() => action('/verify', { kind: 'deduplicated', name: m.id, restoreTest })}>Verify</Button><Button disabled={busy || !can('backups.restore')} onClick={async () => { if (await confirm({ title: 'Restore snapshot', message: 'Replace the stopped instance with this snapshot? The displaced files will be retained in a recovery directory.', confirmLabel: 'Restore', tone: 'danger' }))
-        await action(`/deduplicated/${m.id}/restore`, { confirm: true }); }}>Restore</Button></div>)}
+      {data.backups.manifests.map(m => (
+        <div key={m.id} className="flex flex-wrap items-center gap-2 rounded border border-surface-700 p-2 text-sm">
+          <div className="min-w-0 flex-1 basis-40">
+            {(m.name || m.label) && <div className="mb-1 flex flex-wrap items-center gap-2">
+              {m.name && <p className="min-w-0 break-words font-medium text-ink-100">{m.name}</p>}
+              {m.label && <Badge tone="neutral"><span className="break-all">{m.label}</span></Badge>}
+            </div>}
+            <p>{new Date(m.at).toLocaleString()} · {m.fileCount} files · {size(m.logicalBytes)} ({size(m.addedBytes)} added)</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {can('backups.create') && <Button disabled={busy} onClick={() => setEditing({ ...m, serverId })}>Edit details</Button>}
+            <Button disabled={busy || !can('backups.create')} onClick={() => action('/verify', { kind: 'deduplicated', name: m.id, restoreTest })}>Verify</Button>
+            <Button disabled={busy || !can('backups.restore')} onClick={async () => {
+              if (await confirm({ title: 'Restore snapshot', message: 'Replace the stopped instance with this snapshot? The displaced files will be retained in a recovery directory.', confirmLabel: 'Restore', tone: 'danger' })) {
+                await action(`/deduplicated/${m.id}/restore`, { confirm: true });
+              }
+            }}>Restore</Button>
+          </div>
+        </div>
+      ))}
       {data.recovery && <p className="text-sm">Previous instance retained beside the instance directory as <code>{data.recovery.directory}</code>.</p>}
       {data.verification.map((v, i) => <p className="break-all text-sm" key={i}>{v.ok ? '✓' : '✗'} {v.name} · {new Date(v.at).toLocaleString()} · {v.note ?? v.error}</p>)}
     </Card>
     <Card className="space-y-3 p-4"><h2 className="text-lg font-semibold">Update readiness and troubleshooting</h2><Button disabled={busy || !can('update')} onClick={() => action('/preflight')}>Run update preflight</Button>{data.preflight && <><ul>{data.preflight.checks.map(c => <li key={c.name}>{c.ok ? '✓' : '✗'} {c.name}: {c.detail}</li>)}</ul><h3>Recovery steps</h3><ol className="list-inside list-decimal">{data.preflight.recovery.map(s => <li key={s}>{s}</li>)}</ol></>}
       {can('files.read') && can('console') && <a className="inline-block rounded bg-accent-600 px-3 py-2 text-sm text-white" href={downloadUrl(prefix + '/bundle')}>Download troubleshooting bundle</a>}<p className="text-xs text-ink-400">Credentials are redacted and sensitive files are excluded. Review logs before sharing; game/mod output can contain personal or unexpected sensitive information.</p>
     </Card>
+    {can('backups.create') && editing?.serverId === serverId && <SnapshotMetadataDialog
+        key={`${serverId}/${editing.id}`}
+        snapshot={editing}
+        endpoint={`${prefix}/deduplicated/${editing.id}/metadata`}
+        onClose={() => setEditing(null)}
+        onSaved={() => { setEditing(null); setNotice('Snapshot details saved.'); void load(); }}
+    />}
   </div>;
 }

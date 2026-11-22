@@ -10,12 +10,12 @@ import { resetAdminMode } from './adminMode.js';
  *  "New instance" button never silently disappears. The server still enforces the real policy. */
 function roleFallbackCreation(role: Role): EffectiveCreation {
   if (role === 'admin') {
-    return { canCreate: true, platforms: ['java', 'bedrock', 'steam'], maxInstances: 0, maxMemoryMb: 0, containers: 'any', engineSocket: true, allowedPlatforms: ['java', 'bedrock', 'steam', 'custom', 'docker'], owned: 0, fromRole: true };
+    return { canCreate: true, platforms: ['java', 'bedrock', 'steam'], maxInstances: 0, maxMemoryMb: 0, allowedPlatforms: ['java', 'bedrock', 'steam', 'custom'], owned: 0, fromRole: true };
   }
   if (role === 'moderator') {
-    return { canCreate: true, platforms: ['java', 'bedrock', 'steam'], maxInstances: 0, maxMemoryMb: 0, containers: 'none', engineSocket: false, allowedPlatforms: ['java', 'bedrock', 'steam'], owned: 0, fromRole: true };
+    return { canCreate: true, platforms: ['java', 'bedrock', 'steam'], maxInstances: 0, maxMemoryMb: 0, allowedPlatforms: ['java', 'bedrock', 'steam'], owned: 0, fromRole: true };
   }
-  return { canCreate: false, platforms: [], maxInstances: 0, maxMemoryMb: 0, containers: 'none', engineSocket: false, allowedPlatforms: [], owned: 0, fromRole: true };
+  return { canCreate: false, platforms: [], maxInstances: 0, maxMemoryMb: 0, allowedPlatforms: [], owned: 0, fromRole: true };
 }
 
 interface AuthState {

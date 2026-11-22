@@ -1,4 +1,3 @@
-import { setVmGrants, vmGrants } from '../services/vmAccessService.js';
 import { Router } from 'express';
 import { asyncHandler, HttpError } from '../utils/asyncHandler.js';
 import { requireAuth, requireRole } from '../auth/middleware.js';
@@ -23,8 +22,6 @@ import {
   setCreationPolicy,
   CREATABLE_PLATFORMS,
   getPublicUser,
-  FIREWALL_ACCESS,
-  setFirewallAccess,
   THEME_IDS,
   setUserTheme,
   STORAGE_PERMISSIONS,
@@ -46,7 +43,6 @@ usersRouter.get(
   asyncHandler(async (_req, res) => {
     const users = listUsers().map((u) => ({
       ...u,
-      vmAccess: vmGrants(u.id),
       serverAccess: getUserServerAccess(u.id),
       serverPermissions: Object.fromEntries(getUserServerAccessDetailed(u.id).map((a) => [a.serverId, a.permissions])),
       configAccess: Object.fromEntries(getUserServerAccessDetailed(u.id).map((a) => [a.serverId, a.configAccess ?? {}])),
@@ -82,7 +78,6 @@ usersRouter.patch(
   asyncHandler(async (req, res) => {
     const target = getUserById(req.params.id);
     if (!target) throw new HttpError(404, 'User not found');
-    if (req.body?.vmAccess !== undefined) setVmGrants(target.id, req.body.vmAccess);
     const { role, password, serverAccess } = req.body ?? {};
     if (req.body?.storagePermissions !== undefined) {
       const permissions = req.body.storagePermissions;
@@ -122,10 +117,6 @@ usersRouter.patch(
       const theme = req.body.theme;
       if (theme !== null && !THEME_IDS.includes(theme)) throw new HttpError(400, `theme must be null or one of ${THEME_IDS.join(', ')}`);
       setUserTheme(target.id, theme);
-    }
-    if (req.body?.firewall !== undefined) {
-      if (!FIREWALL_ACCESS.includes(req.body.firewall)) throw new HttpError(400, `firewall must be one of ${FIREWALL_ACCESS.join(', ')}`);
-      setFirewallAccess(target.id, req.body.firewall);
     }
     if (req.body && 'creation' in req.body) {
       // null = follow the role's default; an object = this user's own creation policy.

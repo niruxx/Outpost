@@ -8,7 +8,6 @@ import { getServer, setUpnpConfig } from './serverService.js';
 import { appendLine } from './consoleLogService.js';
 import { findPresetFor } from './steamGames.js';
 import { launchConfigOf } from './launchConfig.js';
-import { dockerConfigOf } from './containerService.js';
 import type { ServerRecord } from '../types/index.js';
 
 /**
@@ -336,7 +335,6 @@ export function defaultProtocol(server: ServerRecord): UpnpProtocol {
   if (server.platform === 'java') return 'TCP';
   if (server.platform === 'bedrock') return 'UDP';
   if (server.platform === 'custom') return (launchConfigOf(server).protocol ?? 'tcp').toUpperCase() as UpnpProtocol;
-  if (server.platform === 'docker') return (dockerConfigOf(server)?.ports[0]?.protocol ?? 'tcp').toUpperCase() as UpnpProtocol;
   return (findPresetFor(server)?.portProtocol ?? 'udp').toUpperCase() as UpnpProtocol;
 }
 

@@ -23,8 +23,6 @@
     "test:beamng-earth": "npm run build --workspace=server && node server/test/beamng-earth.mjs",
     "test:beamng-earth:ui": "npm run build && node server/test/beamng-earth-ui.mjs",
     "test:beamng-earth:live": "npm run build --workspace=server && node server/test/beammp-live.mjs --earth",
-    "test:firewall-instances": "npm run build --workspace=server && node server/test/firewall-instances.mjs",
-    "test:firewall-instances:ui": "npm run build && node server/test/firewall-instances-ui.mjs",
     "test:instance-ui": "npm run build --workspace=web && node server/test/instance-ui.mjs",
     "test:ui": "npm run build && node server/test/ui-consistency.mjs && node server/test/ui-state.mjs && node server/test/page-layout-review.mjs",
     "test:operation-queue": "npm run build && node server/test/operation-queue.mjs",

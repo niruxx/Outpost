@@ -308,7 +308,6 @@ function DuplicateCard() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   if (!server) return null;
-  if (server.platform === 'docker') return null;
   const blocked = running ? 'Stop the instance first so its files are copied consistently.' : server.status === 'installing' ? 'Wait for the install to finish.' : null;
 
   async function duplicate() {

@@ -6,7 +6,7 @@ import { setVisibleInterval } from '../lib/perf.js';
 import { beginOperation, clearOperations, operationActive, operationsSnapshot, subscribeOperations, updateOperation, type Operation, type OperationState } from '../lib/operationQueue.js';
 
 interface Job { id: string; operation_id?: string | null; server_id: string | null; kind: string; status: string; stage: string; progress: number | null; created_at: number; updated_at: number }
-const titles: Record<string, string> = { backup: 'Save backup', snapshot: 'Save snapshot', 'snapshot-restore': 'Restore snapshot', 'content-download': 'Download content', 'file-upload': 'Upload file', download: 'Download file', antivirus: 'Antivirus scan', 'antivirus-upload': 'Upload antivirus check', install: 'Install instance', update: 'Update instance', import: 'Import instance', transfer: 'Transfer instance' };
+const titles: Record<string, string> = { backup: 'Save backup', 'environment-export': 'Export Outpost environment', snapshot: 'Save snapshot', 'snapshot-restore': 'Restore snapshot', 'content-download': 'Download content', 'file-upload': 'Upload file', download: 'Download file', antivirus: 'Antivirus scan', 'antivirus-upload': 'Upload antivirus check', install: 'Install instance', update: 'Update instance', import: 'Import instance', transfer: 'Transfer instance' };
 const linkFor = (job: Job) => !job.server_id ? '/jobs' : `/instances/${job.server_id}/${job.kind.startsWith('antivirus') ? 'configuration?section=antivirus' : job.kind === 'file-upload' || job.kind === 'download' ? 'files' : job.kind.includes('snapshot') ? 'rewind' : job.kind.includes('backup') ? 'backups' : 'console'}`;
 
 export function OperationQueue() {

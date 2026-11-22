@@ -49,7 +49,6 @@ CREATE TABLE IF NOT EXISTS users (
   totp_enabled BOOLEAN NOT NULL DEFAULT 0,
   totp_last_step INTEGER NOT NULL DEFAULT 0, -- last accepted time step, so a code can't be replayed
   totp_recovery TEXT, -- JSON array of SHA-256 hashes of unused recovery codes
-  firewall TEXT NOT NULL DEFAULT 'none', -- host firewall access: none | view | instances | manage (admins: always manage)
   storage TEXT NOT NULL DEFAULT '[]', -- JSON host storage permissions; admins have all by default
   theme TEXT, -- UI theme applied when this user signs in (an admin's choice); NULL = whatever their browser last used
   wallpaper_preferences TEXT -- Per-account wallpaper style, motion, speed and intensity
@@ -100,7 +99,6 @@ CREATE TABLE IF NOT EXISTS servers (
   restart_max_attempts INTEGER NOT NULL DEFAULT 0, -- 0 = unlimited
   upnp_config TEXT, -- JSON UpnpConfig: router port-mapping rules
   isolation TEXT NOT NULL DEFAULT 'inherit', -- inherit | off (admin opt-out of the process sandbox)
-  docker_config TEXT, -- JSON DockerConfig for platform = 'docker' -- JSON LaunchConfig: executable/args/env/stop/restart overrides (required for platform = 'custom')
   suspended BOOLEAN NOT NULL DEFAULT 0,
   suspended_reason TEXT,
   suspended_at TEXT,
@@ -242,13 +240,6 @@ CREATE TABLE IF NOT EXISTS audit_log (
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   ip TEXT, -- the client's address (and X-Forwarded-For, when a proxy sent one)
   user_agent TEXT -- the client's browser / tool
-);
-CREATE TABLE IF NOT EXISTS vm_access (
-  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  uri TEXT NOT NULL,
-  uuid TEXT NOT NULL,
-  permissions TEXT NOT NULL,
-  PRIMARY KEY (user_id, uri, uuid)
 );
 CREATE INDEX IF NOT EXISTS audit_log_created_at ON audit_log (created_at);
 CREATE INDEX IF NOT EXISTS audit_log_user ON audit_log (user_id, id);

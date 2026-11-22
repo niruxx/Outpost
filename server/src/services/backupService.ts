@@ -10,11 +10,18 @@ import { scanIngestedPath } from './antivirusService.js';
 import { beginJob, progressJob, finishJob } from './jobService.js';
 import { getServer } from './serverService.js';
 import { CORE_KEEPER_DATA, coreKeeperData, isCoreKeeper } from './coreKeeper.js';
+import { deleteSnapshotMetadata, snapshotMetadata, updateSnapshotMetadata, type SnapshotMetadata } from './snapshotMetadataService.js';
 
-export interface BackupInfo {
+export interface BackupInfo extends SnapshotMetadata {
   fileName: string;
   sizeBytes: number;
   createdAt: string;
+  scheduled: boolean;
+}
+
+function defaultBackupDetails(fileName: string) {
+  const tag = /^backup-\d{4}-\d{2}-\d{2}T[\d-]+Z-(.+)\.zip$/.exec(fileName)?.[1];
+  return { name: null, label: tag && tag !== 'auto' ? tag : null, scheduled: tag === 'auto' };
 }
 
 function timestampSlug(): string {
@@ -70,21 +77,34 @@ export async function createBackup(serverId: string, label?: string): Promise<Ba
     logger.info(`Created backup for server ${serverId}: ${fileName} (${stat.size} bytes)`);
     // Copy it off-site (in the background) when destinations are set up.
     void import('./offsiteService.js').then((o) => o.enqueueCopy(serverId, fileName)).catch(() => {});
-    return { fileName, sizeBytes: stat.size, createdAt: new Date().toISOString() };
+    return { fileName, sizeBytes: stat.size, createdAt: new Date().toISOString(), ...defaultBackupDetails(fileName) };
   } catch (err) { finishJob(job, err); throw err; } finally { unlock?.(); release(); }
 }
 
 export function listBackups(serverId: string): BackupInfo[] {
   const dir = backupDir(serverId);
   if (!fs.existsSync(dir)) return [];
+  const details = snapshotMetadata(serverId, 'zip');
   return fs
     .readdirSync(dir)
     .filter((f) => f.endsWith('.zip'))
     .map((fileName) => {
       const stat = fs.statSync(path.join(dir, fileName));
-      return { fileName, sizeBytes: stat.size, createdAt: stat.mtime.toISOString() };
+      return { fileName, sizeBytes: stat.size, createdAt: stat.mtime.toISOString(), ...defaultBackupDetails(fileName), ...details.get(fileName) };
     })
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+export function editZipSnapshot(serverId: string, fileName: string, input: unknown) {
+  if (!fileName.endsWith('.zip')) throw new HttpError(404, 'Snapshot not found.');
+  const archive = resolveBackupPath(serverId, fileName);
+  const stat = fs.lstatSync(archive);
+  if (!stat.isFile()) throw new HttpError(404, 'Snapshot not found.');
+  const defaults = defaultBackupDetails(fileName);
+  return {
+    fileName, sizeBytes: stat.size, createdAt: stat.mtime.toISOString(), scheduled: defaults.scheduled,
+    ...updateSnapshotMetadata(serverId, 'zip', fileName, input, defaults),
+  };
 }
 
 export function resolveBackupPath(serverId: string, fileName: string): string {
@@ -99,6 +119,7 @@ export function resolveBackupPath(serverId: string, fileName: string): string {
 export function deleteBackup(serverId: string, fileName: string): void {
   const filePath = resolveBackupPath(serverId, fileName);
   fs.rmSync(filePath);
+  deleteSnapshotMetadata(serverId, 'zip', fileName);
 }
 
 /** Restores a backup by wiping the current instance directory and extracting the archive in its place. */
@@ -162,6 +183,7 @@ export function enforceRetention(serverId: string, retentionCount: number): void
   const toDelete = backups.slice(retentionCount);
   for (const b of toDelete) {
     fs.rmSync(path.join(backupDir(serverId), b.fileName), { force: true });
+    deleteSnapshotMetadata(serverId, 'zip', b.fileName);
     logger.info(`Pruned old backup ${b.fileName} for server ${serverId} (retention ${retentionCount})`);
   }
 }

@@ -313,7 +313,6 @@ xml_escape() { printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>
 if [[ "$RUN_MODE" == "agent" ]]; then
   mkdir -p "$HOME/Library/LaunchAgents" "$LOG_DIR"
   AGENT_PATH="$(dirname "$NODE_BIN"):$HOME/.local/bin:$LOCAL_TOOLS_PREFIX/bin:$LOCAL_TOOLS_PREFIX/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
-  [[ -d /Applications/Docker.app/Contents/Resources/bin ]] && AGENT_PATH="$AGENT_PATH:/Applications/Docker.app/Contents/Resources/bin"
 
   PROGRAM_ARGS=""
   if [[ "$KEEP_AWAKE" == "1" ]]; then

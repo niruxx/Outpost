@@ -19,7 +19,7 @@ import type { ServerRecord } from '../types/index.js';
  *  - Bedrock: new server releases (worlds and settings are preserved).
  *  - Steam: new public builds (installed buildid vs Steam's).
  *  - Vanilla: only when "allow new Minecraft versions" is on — a version jump upgrades the world.
- * Spigot (always rebuilt), custom and Docker instances aren't auto-updated.
+ * Spigot (always rebuilt), custom instances aren't auto-updated.
  */
 
 export interface AutoUpdateConfig {
@@ -63,7 +63,6 @@ function defaultWarnCommand(server: ServerRecord): string {
 
 export function autoUpdateSupport(server: ServerRecord): { supported: boolean; reason: string | null } {
   if (server.platform === 'custom') return { supported: false, reason: 'Custom instances run your own files.' };
-  if (server.platform === 'docker') return { supported: false, reason: 'Container instances update by pulling their image (Update tab).' };
   if (server.loader === 'spigot') return { supported: false, reason: 'Spigot has no build numbers to compare — rebuild it from the Update tab.' };
   if (server.modpack) return { supported: false, reason: 'Modpack instances stay pinned to their pack version.' };
   if (server.platform === 'steam' && !server.steam_app_id) return { supported: false, reason: 'No Steam App ID recorded.' };

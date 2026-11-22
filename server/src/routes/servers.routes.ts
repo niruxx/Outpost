@@ -23,7 +23,6 @@ import {
   listServers,
   setServerJar,
   setServerStatus,
-  setDockerConfig,
   setIsolation,
   setLaunchConfig,
   setServerSuspension,
@@ -82,11 +81,9 @@ import { wantsWindowsBuild, wineStatus } from '../services/wineService.js';
 import { instancePortProtocol } from '../services/portProtocol.js';
 import { STEAM_GAME_PRESETS, findPreset, findPresetById, findPresetFor } from '../services/steamGames.js';
 import { latestQuery } from '../services/browserStatsService.js';
-import { ALL_LOADERS, isMinecraftPlatform, isProxyLoader, type Loader, type Platform, type ServerRecord } from '../types/index.js';
+import { ALL_LOADERS, isMinecraftPlatform, isProxyLoader, isSupportedPlatform, type Loader, type Platform, type ServerRecord } from '../types/index.js';
 import { sanitizeLaunchConfig, launchConfigOf, launchVariables, resolveExecutable, ensureExecutable } from '../services/launchConfig.js';
 import { getOnlinePlayers } from '../services/playerService.js';
-import { dockerConfigOf, enforceContainerPolicy, getEngineStatus, pullImage, sanitizeDockerConfig } from '../services/containerService.js';
-import { findTemplate } from '../services/catalogService.js';
 import { isHistoryRange, metricsHistory } from '../services/metricsHistoryService.js';
 
 export const serversRouter = Router();
@@ -104,25 +101,6 @@ serversRouter.use(requireAuth);
  */
 async function runServerInstall(server: ServerRecord, afterInstall?: () => void, startAfterInstall = false): Promise<void> {
   const job = beginJob('install', server.id);
-  if (server.platform === 'docker') {
-    // "Installing" a Docker instance = pulling its image.
-    try {
-      progressJob(job, 'Pulling container image', null);
-      publish(consoleTopic(server.id), { type: 'install_progress', pct: 5, message: `Pulling ${server.version}` });
-      await pullImage(server.version, (line) => appendLine(server.id, line));
-      appendLine(server.id, '[Outpost] Image ready — the instance can start');
-      setServerStatus(server.id, 'stopped');
-      finishJob(job);
-      publish(consoleTopic(server.id), { type: 'status', status: 'stopped' });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      appendLine(server.id, `[Outpost] Image pull failed: ${message}`, 'stderr');
-      setServerStatus(server.id, 'install_failed');
-      finishJob(job, err);
-      publish(consoleTopic(server.id), { type: 'status', status: 'install_failed', error: message });
-    }
-    return;
-  }
   try {
     const result = isManagedBeamMP(server) ? await installBeamMP(
       server,
@@ -223,7 +201,7 @@ serversRouter.get(
   '/catalog/versions',
   asyncHandler(async (req, res) => {
     const loader = req.query.loader as Loader;
-    if (!ALL_LOADERS.includes(loader) || loader === 'custom' || loader === 'docker') {
+    if (!ALL_LOADERS.includes(loader) || loader === 'custom') {
       throw new HttpError(400, 'Unknown server type');
     }
     const versions = await listAvailableVersions(loader);
@@ -311,7 +289,6 @@ export async function createInstance(req: Request, res: Response) {
         steamExtraFlags: inst.steamExtraFlags,
         customExecutable: inst.customExecutable ?? undefined,
         launch: inst.launch,
-        docker: inst.docker ?? undefined,
         ...given,
       };
       fromTemplate = { tpl, vars, inst };
@@ -366,17 +343,17 @@ export async function createInstance(req: Request, res: Response) {
 
     if (typeof name !== 'string' || !name.trim()) throw new HttpError(400, 'Server name is required');
 
+    if (!isSupportedPlatform(platform)) throw new HttpError(400, 'Invalid platform');
+
     // Account-level creation policy: may this user create instances, of this kind, this big, this many?
     const creation = getEffectiveCreation(req.auth!.sub, req.auth!.role);
     if (!creation.canCreate) throw new HttpError(403, "Your account can't create instances — ask an admin");
-    if (typeof platform === 'string' && !creation.allowedPlatforms.includes(platform)) {
+    if (!creation.allowedPlatforms.includes(platform)) {
       throw new HttpError(
         403,
         platform === 'custom'
           ? 'Only admins can create custom instances'
-          : platform === 'docker'
-            ? "Your account can't create container instances — an admin can allow catalog apps or any image under Users"
-            : `Your account can't create ${platform} instances`
+          : `Your account can't create ${platform} instances`
       );
     }
     if (creation.maxInstances && creation.owned >= creation.maxInstances) {
@@ -385,11 +362,10 @@ export async function createInstance(req: Request, res: Response) {
     if (creation.maxMemoryMb && (Number(maxMemoryMb) || 2048) > creation.maxMemoryMb) {
       throw new HttpError(400, `Max memory is limited to ${creation.maxMemoryMb} MB per instance for your account`);
     }
-    if (!['java', 'bedrock', 'steam', 'custom', 'docker'].includes(platform)) throw new HttpError(400, 'Invalid platform');
     if (!ALL_LOADERS.includes(loader)) {
       throw new HttpError(400, 'Invalid loader');
     }
-    if (platform !== 'docker' && (typeof version !== 'string' || !version)) throw new HttpError(400, 'Version is required');
+    if (typeof version !== 'string' || !version) throw new HttpError(400, 'Version is required');
     if (platform === 'java' && acceptEula !== true) {
       throw new HttpError(400, "You must accept Mojang's EULA to create a Java server");
     }
@@ -401,18 +377,6 @@ export async function createInstance(req: Request, res: Response) {
       let launch = sanitizeLaunchConfig(req.body?.launch ?? {}, { isAdmin: true, platform: 'custom' });
       if (launch.installer === 'beammp') launch = normalizeBeamMPLaunch(launch);
       launchConfig = JSON.stringify(launch);
-    }
-
-    // Container instances follow the user's container permission (none / catalog apps / any image,
-    // plus engine-socket access for Portainer); admins can do anything.
-    let dockerConfig: string | null = null;
-    let dockerImage: string | null = null;
-    if (platform === 'docker') {
-      const engine = getEngineStatus(true);
-      if (!engine.available) throw new HttpError(400, `${engine.error}${engine.hint ? ` — ${engine.hint}` : ''}`);
-      const cfg = enforceContainerPolicy(sanitizeDockerConfig(req.body?.docker), creation, req.auth!.role === 'admin', findTemplate);
-      dockerConfig = JSON.stringify(cfg);
-      dockerImage = cfg.image;
     }
 
     let preset: ReturnType<typeof findPreset> | undefined;
@@ -438,7 +402,7 @@ export async function createInstance(req: Request, res: Response) {
     if (platform === 'steam' && req.body?.wine === true) {
       launchConfig = JSON.stringify({ wine: { mode: 'always' } });
     }
-    if (fromTemplate?.inst.launch && platform !== 'custom' && platform !== 'docker') {
+    if (fromTemplate?.inst.launch && platform !== 'custom') {
       const cfg = sanitizeLaunchConfig(fromTemplate.inst.launch, { isAdmin: req.auth!.role === 'admin', platform: platform as Platform });
       launchConfig = Object.keys(cfg).length ? JSON.stringify(cfg) : null;
     }
@@ -446,7 +410,7 @@ export async function createInstance(req: Request, res: Response) {
     if (typeof steamLogin === 'string' && steamLogin.startsWith('account:')) ownSteamAccount(req.auth!.sub, steamLogin.slice(8));
     const desiredProtocol = platform === 'java' ? 'tcp' : preset?.portProtocol ?? 'udp';
     const allocation = req.body?.allocationPoolId ? reserveAllocation(String(req.body.allocationPoolId), desiredProtocol) : null;
-    const chosenPort = allocation?.port ?? ((dockerConfig ? JSON.parse(dockerConfig).ports[0].host : 0) || Number(serverPort) || preset?.defaultPort || (platform === 'bedrock' ? 19132 : 25565));
+    const chosenPort = allocation?.port ?? (Number(serverPort) || preset?.defaultPort || (platform === 'bedrock' ? 19132 : 25565));
     const capacityId=req.auth!.role==='admin'?req.get('X-Outpost-Capacity-Lease'):undefined;
     assertCapacityAdmission(Number(maxMemoryMb)||2048,capacityId,platform,chosenPort);
     if (!allocation) assertManualPort(chosenPort,undefined,capacityId);
@@ -455,7 +419,7 @@ export async function createInstance(req: Request, res: Response) {
       name: name.trim(),
       platform: platform as Platform,
       loader: loader as Loader,
-      version: dockerImage ?? version,
+      version,
       minMemoryMb: Number(minMemoryMb) || 1024,
       maxMemoryMb: Number(maxMemoryMb) || 2048,
       serverPort:
@@ -468,7 +432,6 @@ export async function createInstance(req: Request, res: Response) {
       steamLogin: platform === 'steam' && typeof steamLogin === 'string' && steamLogin.trim() ? steamLogin.trim() : 'anonymous',
       steamExtraFlags: platform === 'steam' && typeof steamExtraFlags === 'string' ? steamExtraFlags.trim() : '',
       launchConfig,
-      dockerConfig,
     });
 
     if(capacityId){try{commitCapacity(capacityId,record.id);const budget=capacityLease(capacityId).resources;saveLimits(record,{cpuPercent:budget.cpuPercent||null,diskMb:Math.max(100,budget.diskMb)});}catch(error){deleteServerRecord(record.id);throw error;}}
@@ -610,7 +573,7 @@ serversRouter.get(
     const primary = await getPrimaryAddress();
     const protocol = instancePortProtocol(server);
     const host = wildcard ? primary ?? '127.0.0.1' : bind;
-    const web = server.platform === 'docker' ? dockerConfigOf(server)?.webUi : server.platform === 'custom' ? launchConfigOf(server).webUi : undefined;
+    const web = server.platform === 'custom' ? launchConfigOf(server).webUi : undefined;
     res.json({
       webUrl: web ? `${web.scheme}://${host}:${web.port}${web.path}` : null,
       host: wildcard ? primary ?? '127.0.0.1' : bind,
@@ -663,37 +626,6 @@ serversRouter.put(
       previewError = err instanceof Error ? err.message : String(err);
     }
     res.json({ config, preview, previewError, server: updated });
-  })
-);
-
-/** Container settings for a Docker instance (admin-only to change: they decide what runs on the host). */
-serversRouter.get(
-  '/:serverId/docker',
-  requireServerAccess(),
-  asyncHandler(async (req, res) => {
-    const server = getServer(req.params.serverId);
-    if (!server) throw new HttpError(404, 'Server not found');
-    if (server.platform !== 'docker') throw new HttpError(400, 'Not a Docker instance');
-    res.json({ config: dockerConfigOf(server), engine: getEngineStatus() });
-  })
-);
-
-serversRouter.put(
-  '/:serverId/docker',
-  requireServerAccess(),
-  asyncHandler(async (req, res) => {
-    const server = getServer(req.params.serverId);
-    if (!server) throw new HttpError(404, 'Server not found');
-    if (server.platform !== 'docker') throw new HttpError(400, 'Not a Docker instance');
-    // Owners / users with Configuration rights may edit, within their container permission.
-    if (req.auth!.role !== 'admin') requirePermission(req, 'settings');
-    const policy = getEffectiveCreation(req.auth!.sub, req.auth!.role);
-    const config = enforceContainerPolicy(sanitizeDockerConfig(req.body?.config), policy, req.auth!.role === 'admin', findTemplate);
-    setDockerConfig(server.id, JSON.stringify(config), config.image);
-    updateServerRecord(server.id, { serverPort: config.ports[0].host });
-    appendLine(server.id, `[Outpost] Container settings changed by ${req.auth!.username} — they apply on the next start`, 'system');
-    logAudit(req.auth!.sub, req.auth!.username, 'server.docker.update', server.id, config.image);
-    res.json({ config, server: getServer(server.id) });
   })
 );
 
@@ -873,7 +805,6 @@ serversRouter.post(
     const isAdmin = req.auth!.role === 'admin';
     if (!isAdmin && source.created_by !== req.auth!.sub) throw new HttpError(403, 'Only admins and the instance’s owner can duplicate it');
     if (source.suspended) throw new HttpError(409, 'Suspended instances can’t be duplicated');
-    if (source.platform === 'docker') throw new HttpError(400, 'Container instances can’t be duplicated yet — their host ports and volumes would clash. Create a new one from the same image instead.');
     if (source.status === 'installing') throw new HttpError(409, 'Wait for the instance to finish installing');
     if (isRunning(source.id)) throw new HttpError(409, 'Stop the instance before duplicating it, so its files are copied in a consistent state');
 

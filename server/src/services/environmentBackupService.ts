@@ -10,9 +10,7 @@ import { isRunning } from './processManager.js';
 import { logger } from '../utils/logger.js';
 import { HttpError } from '../utils/asyncHandler.js';
 import { DatabaseSync } from 'node:sqlite';
-import { acquireBackupStorage, backupDir, backupStorageInfo, rewindDir } from './backupStorageService.js';
-import { holdCoreKeeperBackup } from './backupService.js';
-import { isCoreKeeper } from './coreKeeper.js';
+import { legacyEnvironmentExportOptions, previewEnvironmentExport, streamEnvironmentExport } from './environmentExportService.js';
 
 function timestampSlug(): string {
   return new Date().toISOString().replace(/[:.]/g, '-');
@@ -35,65 +33,21 @@ async function renameWithRetry(from: string, to: string, attempts = 5): Promise<
   }
 }
 
-/**
- * Zips the entire data directory (database, every server's files, and all backups) to a
- * temp file outside of DATA_DIR (so the zip never tries to include itself). Caller is
- * responsible for streaming it to the client and deleting it afterward.
- */
 export function environmentExportPreview(includeHistory: boolean) {
-  const servers = listServers();
-  const blockers = servers.flatMap((server) => {
-    if (isCoreKeeper(server) && (!['stopped', 'crashed'].includes(server.status) || isRunning(server.id))) {
-      return [`Stop ${server.name} and wait for Core Keeper to finish saving.`];
-    }
-    if (includeHistory) {
-      const storage = backupStorageInfo(server.id);
-      if (storage.changing) return [`${server.name}: backup storage is being moved.`];
-      if (!storage.available) return [`${server.name}: ${storage.error}`];
-    }
-    return [];
-  });
-  return { blockers, instances: servers.map(({ id, name }) => ({ id, name })) };
+  return previewEnvironmentExport(legacyEnvironmentExportOptions(includeHistory));
 }
 
+/** File-based caller compatibility. Browser exports stream directly to the HTTP response. */
 export async function exportEnvironment(includeHistory = true): Promise<{ filePath: string; fileName: string }> {
   const fileName = `outpost-environment-${timestampSlug()}.zip`;
   const filePath = path.join(os.tmpdir(), `${randomUUID()}-${fileName}`);
-  const release: (() => void)[] = [];
   try {
-    const servers = listServers();
-    for (const server of servers.filter(isCoreKeeper)) {
-      const unlock = await holdCoreKeeperBackup(server.id);
-      if (unlock) release.push(unlock);
-    }
-    if (includeHistory) for (const server of servers) release.push(acquireBackupStorage(server.id));
-    const zip = new AdmZip();
-    const history = ['backups', 'rewind'];
-    for (const server of servers) {
-      if (!server.backup_directory) continue;
-      const relative = path.relative(DATA_DIR, path.join(server.backup_directory, server.id));
-      if (relative && !relative.startsWith('..') && !path.isAbsolute(relative)) history.push(relative.split(path.sep).join('/'));
-    }
-    zip.addLocalFolder(DATA_DIR, '', (name) => includeHistory || !history.some((dir) => {
-      const entry = name.split(path.sep).join('/');
-      return entry === dir || entry.startsWith(dir + '/');
-    }));
-    for (const server of servers.filter((s) => includeHistory && s.backup_directory)) {
-      // Export active external archives in the portable default layout, replacing old copies.
-      zip.deleteFile(`backups/${server.id}/`);
-      zip.deleteFile(`rewind/${server.id}/`);
-      const relative = path.relative(DATA_DIR, path.join(server.backup_directory!, server.id));
-      if (!relative.startsWith('..') && !path.isAbsolute(relative)) zip.deleteFile(`${relative.split(path.sep).join('/')}/`);
-      const snapshots = backupDir(server.id), rewind = rewindDir(server.id);
-      if (fs.existsSync(snapshots)) zip.addLocalFolder(snapshots, `backups/${server.id}`);
-      if (fs.existsSync(rewind)) zip.addLocalFolder(rewind, `rewind/${server.id}`);
-    }
-    await zip.writeZipPromise(filePath);
+    await streamEnvironmentExport(legacyEnvironmentExportOptions(includeHistory),
+      () => fs.createWriteStream(filePath, { flags: 'wx', mode: 0o600 }), new AbortController().signal);
   } catch (err) {
     fs.rmSync(filePath, { force: true });
     throw err;
-  } finally { for (const done of release) done(); }
-  logger.info(`Exported environment backup: ${filePath} (${fs.statSync(filePath).size} bytes)`);
+  }
   return { filePath, fileName };
 }
 

@@ -6,7 +6,6 @@
 #   - stops Outpost and any game servers it launched
 #   - removes the outpost (or pre-rename multicraft) systemd service, or its pm2 entry
 #   - removes Outpost's containers and, optionally, the container engine and sandbox it installed
-#   - removes the firewall rule for the panel port, if one was added
 #   - deletes Outpost's data (database, every server's files, backups, steamcmd)
 #     and update.sh's pre-update archives                                           [asks first]
 #   - deletes build output and node_modules from the checkout
@@ -195,7 +194,7 @@ ok "Data directory: $DATA_DIR$([[ -d "$DATA_DIR" ]] || echo ' (not present)')"
 # ---------------------------------------------------------------------------
 # Step 1 — stop everything and remove the service
 # ---------------------------------------------------------------------------
-heading "Step 1/6 — Stopping Outpost and removing the service"
+heading "Step 1/5 — Stopping Outpost and removing the service"
 
 if [[ "$SERVICE_PRESENT" == "1" ]]; then
   if confirm "Stop, disable and remove $SERVICE_NAME.service?" y; then
@@ -276,32 +275,9 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Step 2 — firewall rule for the panel port
+# Step 2 — data
 # ---------------------------------------------------------------------------
-heading "Step 2/6 — Firewall"
-
-FIREWALL_TOUCHED=0
-if command -v ufw >/dev/null 2>&1 && $SUDO ufw status 2>/dev/null | grep -qE "^${PANEL_PORT}/tcp[[:space:]]"; then
-  FIREWALL_TOUCHED=1
-  if confirm "Remove the ufw rule allowing the panel port ${PANEL_PORT}/tcp?" y; then
-    $SUDO ufw delete allow "${PANEL_PORT}/tcp" >/dev/null && ok "ufw rule removed" || warn "Couldn't remove the ufw rule — remove it with 'sudo ufw status numbered' / 'sudo ufw delete <n>'."
-  fi
-fi
-if command -v firewall-cmd >/dev/null 2>&1 && $SUDO firewall-cmd --state >/dev/null 2>&1 \
-   && $SUDO firewall-cmd --permanent --query-port="${PANEL_PORT}/tcp" >/dev/null 2>&1; then
-  FIREWALL_TOUCHED=1
-  if confirm "Remove the firewalld rule opening the panel port ${PANEL_PORT}/tcp?" y; then
-    $SUDO firewall-cmd --permanent --remove-port="${PANEL_PORT}/tcp" >/dev/null && $SUDO firewall-cmd --reload >/dev/null \
-      && ok "firewalld rule removed" || warn "Couldn't remove the firewalld rule."
-  fi
-fi
-[[ "$FIREWALL_TOUCHED" == "0" ]] && ok "No firewall rule found for the panel port ${PANEL_PORT}/tcp"
-warn "Ports you opened for individual game servers (e.g. 25565/tcp, 19132/udp) aren't tracked — remove those rules yourself."
-
-# ---------------------------------------------------------------------------
-# Step 3 — data
-# ---------------------------------------------------------------------------
-heading "Step 3/6 — Data (database, servers, worlds, backups)"
+heading "Step 2/5 — Data (database, servers, worlds, backups)"
 
 # Leftovers from the panel's environment import/reset feature: <data>-<action>-<timestamp>.
 DATA_SIBLINGS=()
@@ -338,9 +314,9 @@ if [[ -d "$UPDATE_BACKUPS" ]]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Step 4 — build output, dependencies and temp files
+# Step 3 — build output, dependencies and temp files
 # ---------------------------------------------------------------------------
-heading "Step 4/6 — Build output and dependencies"
+heading "Step 3/5 — Build output and dependencies"
 
 if confirm "Delete node_modules and build output (server/dist, web/dist) from the checkout?" y; then
   for p in node_modules server/node_modules web/node_modules server/dist web/dist; do
@@ -356,9 +332,9 @@ done
 ok "Removed installer/updater temp logs"
 
 # ---------------------------------------------------------------------------
-# Step 5 — system packages
+# Step 4 — system packages
 # ---------------------------------------------------------------------------
-heading "Step 5/6 — System packages"
+heading "Step 4/5 — System packages"
 
 pkg_installed() {
   case "$DISTRO_FAMILY" in
@@ -468,47 +444,6 @@ else
     fi
   fi
 
-  # --- Containers: Outpost's leftovers first, then (opt-in) the engine install.sh set up ---
-  for engine in docker podman; do
-    command -v "$engine" >/dev/null 2>&1 || continue
-    # Containers are --rm and stop with their instance; anything left was orphaned by a panel restart.
-    leftovers="$( { $engine ps -aq --filter label=outpost.instance; $engine ps -aq --filter label=multicraft.instance; } 2>/dev/null | sort -u | tr '\n' ' ')"
-    if [[ -n "${leftovers// /}" ]] && confirm "Remove containers Outpost started with $engine ($leftovers)?" y; then
-      # shellcheck disable=SC2086
-      $engine rm -f $leftovers >/dev/null 2>&1 && ok "Removed Outpost's containers"
-    fi
-    if $engine image inspect docker.io/portainer/portainer-ce:lts >/dev/null 2>&1 && confirm "Remove the Portainer image install.sh pre-downloaded?" "$PURGE_DEFAULT"; then
-      $engine rmi docker.io/portainer/portainer-ce:lts >/dev/null 2>&1 && ok "Removed the Portainer image" || warn "Couldn't remove the Portainer image (still in use?)"
-    fi
-  done
-
-  case "$DISTRO_FAMILY" in
-    debian)   DOCKER_PKGS=(docker.io) ;;
-    fedora)   DOCKER_PKGS=(moby-engine) ;;
-    *)        DOCKER_PKGS=(docker) ;;
-  esac
-  if [[ -n "$(installed_of "${DOCKER_PKGS[@]}")" ]] && confirm "Remove Docker (and stop docker.service/docker.socket)? Other containers on this machine stop working." "$PURGE_DEFAULT"; then
-    $SUDO systemctl disable --now docker.socket docker.service >/dev/null 2>&1 || true
-    if pkg_remove "${DOCKER_PKGS[@]}"; then
-      ok "Docker removed"
-      PKG_CHANGED=1
-      if [[ "$EUID" -ne 0 ]] && id -nG "$(id -un)" | tr ' ' '\n' | grep -qx docker; then
-        $SUDO gpasswd -d "$(id -un)" docker >/dev/null 2>&1 && ok "Removed $(id -un) from the docker group"
-      fi
-    else
-      warn "Docker wasn't removed."
-    fi
-  fi
-  if [[ -n "$(installed_of podman)" ]] && confirm "Remove Podman (and its user API socket)? Other containers on this machine stop working." "$PURGE_DEFAULT"; then
-    systemctl --user disable --now podman.socket >/dev/null 2>&1 || true
-    $SUDO systemctl disable --now podman.socket >/dev/null 2>&1 || true
-    pkg_remove podman && { ok "Podman removed"; PKG_CHANGED=1; } || warn "Podman wasn't removed."
-    if [[ "$EUID" -ne 0 ]] && loginctl show-user "$(id -un)" -p Linger 2>/dev/null | grep -q yes \
-       && confirm "Turn off lingering for $(id -un)? (install.sh enabled it for podman.socket; other user services may rely on it)" n; then
-      $SUDO loginctl disable-linger "$(id -un)" && ok "Lingering disabled"
-    fi
-  fi
-
   # --- bubblewrap: the instance sandbox. Flatpak depends on it, so never by default. ---
   if [[ -n "$(installed_of bubblewrap)" ]]; then
     if command -v flatpak >/dev/null 2>&1; then
@@ -529,9 +464,9 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Step 6 — dedicated user and the checkout itself
+# Step 5 — dedicated user and the checkout itself
 # ---------------------------------------------------------------------------
-heading "Step 6/6 — Leftovers"
+heading "Step 5/5 — Leftovers"
 
 # The README's systemd guide creates a dedicated system user ('outpost', or 'multicraft' before the rename).
 for SYS_USER in outpost multicraft; do

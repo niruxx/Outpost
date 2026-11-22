@@ -24,23 +24,17 @@
 
   <g font-family="'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
     <text x="244" y="148" font-size="64" font-weight="600" fill="#f1f4ea" letter-spacing="-1">Outpost</text>
-    <text x="246" y="190" font-size="22" fill="#c2c9bb">Self-hosted control panel for servers, apps, containers &amp; games</text>
+    <text x="246" y="190" font-size="22" fill="#c2c9bb">Self-hosted control panel for dedicated game servers</text>
 
     <!-- chips -->
     <g font-size="15" font-weight="600">
-      <g transform="translate(246 216)">
-        <rect width="118" height="32" rx="10" fill="#3a4b37"/><text x="59" y="21" text-anchor="middle" fill="#d5e8ce">📦 Apps</text>
-      </g>
-      <g transform="translate(374 216)">
-        <rect width="92" height="32" rx="10" fill="#1f4d55"/><text x="46" y="21" text-anchor="middle" fill="#bcebf4">🐳 Docker</text>
-      </g>
-      <g transform="translate(476 216)">
+      <g transform="translate(360 216)">
         <rect width="104" height="32" rx="10" fill="#32362f"/><text x="52" y="21" text-anchor="middle" fill="#e1e4da">⌨ Custom</text>
       </g>
-      <g transform="translate(590 216)">
+      <g transform="translate(246 216)">
         <rect width="104" height="32" rx="10" fill="#32362f"/><text x="52" y="21" text-anchor="middle" fill="#e1e4da">🎮 Games</text>
       </g>
-      <g transform="translate(704 216)">
+      <g transform="translate(474 216)">
         <rect width="118" height="32" rx="10" fill="#32362f"/><text x="59" y="21" text-anchor="middle" fill="#e1e4da">📸 Snapshots</text>
       </g>
     </g>

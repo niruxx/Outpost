@@ -34,7 +34,6 @@ const FAMILIES = [
   { id: 'webhook', label: 'Notifications' },
   { id: 'node', label: 'Nodes' },
   { id: 'environment', label: 'Environment backups' },
-  { id: 'firewall', label: 'Firewall' },
   { id: 'audit', label: 'Audit log & system logs' },
 ];
 

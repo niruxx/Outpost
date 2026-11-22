@@ -20,7 +20,7 @@ export function IsolationCard() {
       .catch(() => {});
   }, [isAdmin]);
 
-  if (!server || server.platform === 'docker') return null;
+  if (!server) return null;
 
   const optedOut = server.isolation === 'off';
   const active = !!sandbox?.available && !!sandbox.enabled && !optedOut;

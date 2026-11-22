@@ -6,15 +6,14 @@ import { prep } from '../db/db.js';
 import { HttpError } from '../utils/asyncHandler.js';
 import { instanceDir, safeJoinReal } from '../utils/paths.js';
 import { launchConfigOf, type LaunchConfig } from './launchConfig.js';
-import { dockerConfigOf } from './containerService.js';
 import { autoUpdateOf } from './autoUpdateService.js';
 import { rconConfigOf } from './rconService.js';
 import { findPresetFor } from './steamGames.js';
-import { ALL_LOADERS, type Loader, type ServerRecord } from '../types/index.js';
+import { ALL_LOADERS, isSupportedPlatform, type Loader, type ServerRecord } from '../types/index.js';
 
 /**
  * Server templates ("eggs"): a portable JSON description of how to create an instance — game and
- * version, memory, launch settings, container config, automatic updates, RCON, and small config files
+ * version, memory, launch settings, automatic updates, RCON, and small config files
  * — with variables the person creating from it fills in. Exported from any instance (secrets
  * stripped), imported from a file, and used from the New instance dialog.
  */
@@ -50,7 +49,6 @@ export interface TemplateInstance {
   /** Custom Steam App IDs: the server executable (relative path). */
   customExecutable?: string | null;
   launch?: LaunchConfig;
-  docker?: Record<string, unknown> | null;
   autoUpdate?: Record<string, unknown> | null;
   rcon?: { enabled: boolean; protocol: string; port: number; useForConsole: boolean } | null;
 }
@@ -91,7 +89,7 @@ export function validateTemplate(input: unknown): OutpostTemplate {
   const name = str(raw.name, 80).trim();
   if (!name) throw new HttpError(400, 'Template needs a name');
   const inst = (raw.instance ?? {}) as Record<string, any>;
-  if (!['java', 'bedrock', 'steam', 'custom', 'docker'].includes(inst.platform)) throw new HttpError(400, 'Template has an unknown platform');
+  if (!isSupportedPlatform(inst.platform)) throw new HttpError(400, 'Template has an unknown platform');
   if (!ALL_LOADERS.includes(inst.loader as Loader)) throw new HttpError(400, 'Template has an unknown server type');
 
   const variables: TemplateVariable[] = [];
@@ -137,7 +135,6 @@ export function validateTemplate(input: unknown): OutpostTemplate {
       steamExtraFlags: str(inst.steamExtraFlags, 500),
       customExecutable: typeof inst.customExecutable === 'string' ? inst.customExecutable.slice(0, 300) : null,
       launch: inst.launch && typeof inst.launch === 'object' ? (inst.launch as LaunchConfig) : undefined,
-      docker: inst.docker && typeof inst.docker === 'object' ? inst.docker : null,
       autoUpdate: inst.autoUpdate && typeof inst.autoUpdate === 'object' ? inst.autoUpdate : null,
       rcon:
         inst.rcon && typeof inst.rcon === 'object'
@@ -172,7 +169,6 @@ export function exportTemplate(server: ServerRecord, opts: { name?: string; desc
   if (launch.wine?.binary) launch.wine = { ...launch.wine, binary: undefined };
   delete launch.javaPath; // a path on this host
 
-  const docker = dockerConfigOf(server);
   const au = autoUpdateOf(server);
   const rcon = rconConfigOf(server);
   const dir = instanceDir(server.id);
@@ -215,7 +211,6 @@ export function exportTemplate(server: ServerRecord, opts: { name?: string; desc
       steamExtraFlags: server.steam_extra_flags,
       customExecutable: server.platform === 'steam' && !findPresetFor(server) ? server.jar_file : null,
       launch: Object.keys(launch).length ? launch : undefined,
-      docker: docker ? { ...docker, env: docker.env.map((e) => (SECRET_KEY.test(e.key) ? { key: e.key, value: '' } : e)) } : null,
       autoUpdate: au.enabled ? { enabled: true, schedule: au.schedule, warnMinutes: au.warnMinutes, warnCommand: au.warnCommand, backupFirst: au.backupFirst, notifyOnly: au.notifyOnly } : null,
       rcon: rcon ? { enabled: rcon.enabled, protocol: rcon.protocol, port: rcon.port, useForConsole: rcon.useForConsole } : null,
     },
@@ -233,7 +228,7 @@ export function listTemplates(): StoredTemplate[] {
     { id: BEAMMP_TEMPLATE_ID, name: 'BeamMP Server', description: beammpTemplate().description, platform: 'custom', createdBy: null, createdAt: '' },
     { id: BEAMNG_EARTH_TEMPLATE_ID, name: 'BeamNG.Earth Server', description: beamngEarthTemplate().description, platform: 'custom', createdBy: null, createdAt: '' },
   ] : [];
-  return builtin.concat((prep('SELECT id, name, description, platform, created_by, created_at FROM templates ORDER BY name COLLATE NOCASE').all() as any[]).map((r) => ({
+  return builtin.concat((prep('SELECT id, name, description, platform, created_by, created_at FROM templates ORDER BY name COLLATE NOCASE').all() as any[]).filter((r) => isSupportedPlatform(r.platform)).map((r) => ({
     id: r.id,
     name: r.name,
     description: r.description,
@@ -246,8 +241,8 @@ export function listTemplates(): StoredTemplate[] {
 export function getTemplate(id: string): OutpostTemplate | null {
   if (id === BEAMMP_TEMPLATE_ID) return process.platform === 'win32' || process.platform === 'linux' ? beammpTemplate() : null;
   if (id === BEAMNG_EARTH_TEMPLATE_ID) return process.platform === 'win32' || process.platform === 'linux' ? beamngEarthTemplate() : null;
-  const row = prep('SELECT data FROM templates WHERE id = ?').get(id) as { data: string } | undefined;
-  if (!row) return null;
+  const row = prep('SELECT data, platform FROM templates WHERE id = ?').get(id) as { data: string; platform: string } | undefined;
+  if (!row || !isSupportedPlatform(row.platform)) return null;
   return validateTemplate(JSON.parse(row.data));
 }
 

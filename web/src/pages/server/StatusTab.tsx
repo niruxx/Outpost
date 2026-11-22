@@ -10,7 +10,6 @@ import { Icon, type IconName } from '../../components/icons.js';
 import { CHART, Sparkline, tint, type ChartPoint } from '../../components/charts.js';
 import { BrowserStatsCard } from './BrowserStats.js';
 import { StatusOverview } from './StatusOverview.js';
-import { FirewallCard } from './FirewallCard.js';
 import { BeamngEarthCard } from './BeamngEarthCard.js';
 import { beammpInfo } from '../../lib/beammp.js';
 import { t } from '../../i18n/index.js';
@@ -338,7 +337,6 @@ export function StatusTab() {
 
       <StatusOverview lines={lines} connected={connected} />
       <ConnectionCard />
-      <FirewallCard key={serverId} />
       <BeamngEarthCard key={`earth-${serverId}`} />
       <BrowserStatsCard />
 
@@ -424,9 +422,7 @@ export function StatusTab() {
       </div>
 
       <p className="text-xs text-ink-500">
-        {server?.platform === 'docker'
-          ? 'Network and disk figures are this container’s own.'
-          : "Network figures are the whole machine's traffic — the OS doesn't count network bytes per process. Disk figures are this instance's processes only."} {connected ? 'Live.' : 'Reconnecting…'}
+        Network figures are the whole machine's traffic — the OS doesn't count network bytes per process. Disk figures are this instance's processes only. {connected ? 'Live.' : 'Reconnecting…'}
       </p>
     </div>
   );

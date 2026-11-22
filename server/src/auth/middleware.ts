@@ -56,15 +56,15 @@ export function requireServerAccess(paramName = 'serverId') {
   return (req: Request, res: Response, next: NextFunction) => {
     if (!req.auth) return res.status(401).json({ error: 'Authentication required' });
     const serverId = req.params[paramName];
-    if (req.auth.role === 'admin') return next();
-    if (!userHasServerAccess(req.auth.sub, serverId)) {
+    if (req.auth.role !== 'admin' && !userHasServerAccess(req.auth.sub, serverId)) {
       logAudit(req.auth.sub, req.auth.username, 'access.denied', serverId, `${req.method} ${req.originalUrl.split('?')[0]} (no access to this instance)`);
       return res.status(403).json({ error: 'You do not have access to this server' });
     }
     // Suspended instances are locked to everyone but admins — files, console, backups, plugins,
     // everything server-scoped goes through this check.
     const server = getServer(serverId);
-    if (server?.suspended) {
+    if (!server) return res.status(404).json({ error: 'Instance not found' });
+    if (req.auth.role !== 'admin' && server.suspended) {
       return res.status(423).json({ error: suspendedMessage(server.suspended_reason), suspended: true });
     }
     next();

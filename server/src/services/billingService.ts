@@ -174,7 +174,7 @@ export async function acceptBillingEvent(req: Request, connection: Connection, e
                 const owner = existing ? getUserById(existing.user_id) : createUser(`bill_${sha256(connection.id + ':' + customerId).slice(0, 24)}`, crypto.randomBytes(32).toString('base64url'), 'moderator');
                 if (!owner || owner.disabled || owner.role === 'admin')
                     throw new HttpError(409, 'Billing customer account is unavailable');
-                setCreationPolicy(owner.id, { canCreate: false, platforms: [], maxInstances: 0, maxMemoryMb: 0, containers: 'none', engineSocket: false });
+                setCreationPolicy(owner.id, { canCreate: false, platforms: [], maxInstances: 0, maxMemoryMb: 0 });
                 prep('INSERT INTO billing_services(connection_id,external_id,user_id,plan_id,state,expires,data) VALUES (?,?,?,?,?,?,?)').run(connection.id, externalId, owner.id, plan.id, 'provisioning', until, JSON.stringify({ customerId, createdAt: Date.now() }));
                 const synthetic = Object.create(req) as Request;
                 synthetic.auth = { sub: actor.id, username: actor.username, role: 'admin', iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 600 };

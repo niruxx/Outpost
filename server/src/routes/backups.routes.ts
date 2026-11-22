@@ -5,6 +5,7 @@ import {
   compareSnapshotFile,
   createBackup,
   deleteBackup,
+  editZipSnapshot,
   listBackups,
   listSnapshotEntries,
   resolveBackupPath,
@@ -16,6 +17,7 @@ import { logAudit } from '../services/userService.js';
 import { getUserById } from '../services/userService.js';
 import { backupStorageInfo, setBackupStorage } from '../services/backupStorageService.js';
 import { getServer } from '../services/serverService.js';
+import { authorizeFiles } from './fileWorkspace.routes.js';
 
 /** Snapshots (zip backups of the instance folder), their schedule, and restore — whole or per file. */
 export const backupsRouter = Router({ mergeParams: true });
@@ -94,6 +96,15 @@ backupsRouter.get(
     res.download(filePath, req.params.fileName);
   })
 );
+
+backupsRouter.patch('/:fileName/metadata', asyncHandler(async (req, res) => {
+  authorizeFiles(req, null);
+  requirePermission(req, 'backups.create');
+  const { serverId, fileName } = req.params;
+  const backup = editZipSnapshot(serverId, fileName, req.body);
+  logAudit(req.auth!.sub, req.auth!.username, 'backup.metadata', serverId, fileName);
+  res.json({ backup });
+}));
 
 backupsRouter.get(
   '/:fileName/entries',

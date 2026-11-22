@@ -8,7 +8,7 @@ Open **Administration → Host Console** as an administrator, select an OS accou
 - **Root** on Unix uses `su - root` when Outpost already runs as root; otherwise it uses `sudo -i -u root`. The host's sudo policy decides whether access is allowed and may prompt for the OS password inside the terminal.
 - **Named operating system user** uses `su - <user>` when Outpost is root, or `sudo -i -u <user>` otherwise. This is a host OS username, not an Outpost username.
 
-Outpost does not grant sudo rights, store OS passwords, change sudoers, or elevate Windows through UAC. Root/named-user selectors are unavailable on Windows. The account's home directory is used rather than a game instance's directory. This console manages the machine or container where Outpost runs; it does not enter a remote libvirt hypervisor automatically.
+Outpost does not grant sudo rights, store OS passwords, change sudoers, or elevate Windows through UAC. Root/named-user selectors are unavailable on Windows. The account's home directory is used rather than a game instance's directory. The console opens on the host where Outpost runs.
 
 ## Missing dependencies and automatic repair
 

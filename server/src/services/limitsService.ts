@@ -12,7 +12,6 @@ import type { ServerRecord } from '../types/index.js';
  *  - CPU (percent of one core: 150 = one and a half cores), memory (hard cap, MB) and process count
  *    are enforced by the kernel on Linux: the instance runs inside a systemd scope
  *    (`systemd-run --scope -p CPUQuota=… -p MemoryMax=… -p TasksMax=…`), outside the sandbox.
- *    Container instances get the same values as docker/podman --cpus/--memory/--pids-limit.
  *  - Disk (MB of the instance folder) is checked every few minutes: going over warns in the
  *    console and by webhook, blocks starts and uploads, and can stop the server.
  */
@@ -70,7 +69,7 @@ export function saveLimits(server: ServerRecord, input: Record<string, unknown>)
 
 export interface LimitSupport {
   available: boolean;
-  method: 'systemd' | 'container' | 'none';
+  method: 'systemd' | 'none';
   reason: string | null;
 }
 
@@ -99,13 +98,11 @@ export function hostLimitSupport(): LimitSupport {
 }
 
 export function limitSupportFor(server: ServerRecord): LimitSupport {
-  if (server.platform === 'docker') return { available: true, method: 'container', reason: null };
   return hostLimitSupport();
 }
 
 /** Wraps a launch in a systemd scope carrying the instance's limits. Returns notes for the console. */
 export function wrapWithLimits(server: ServerRecord, target: { cmd: string; args: string[] }): { cmd: string; args: string[]; notes: string[] } {
-  if (server.platform === 'docker') return { ...target, notes: [] };
   const l = limitsOf(server);
   if (!l.cpuPercent && !l.memoryMb && !l.tasks) return { ...target, notes: [] };
   const support = hostLimitSupport();
@@ -125,12 +122,6 @@ export function scopeArgs(l: Limits, opts: { root: boolean; unit: string }, targ
   if (l.memoryMb) props.push('-p', `MemoryMax=${l.memoryMb}M`, '-p', 'MemorySwapMax=0');
   if (l.tasks) props.push('-p', `TasksMax=${l.tasks}`);
   return [...(opts.root ? [] : ['--user']), '--scope', '--quiet', '--collect', `--unit=${opts.unit}`, ...props, '--', target.cmd, ...target.args];
-}
-
-/** Container instances: the limits as docker/podman flags (replacing the defaults). */
-export function containerLimitArgs(server: ServerRecord): { memoryMb: number | null; cpus: number | null; pids: number | null } {
-  const l = limitsOf(server);
-  return { memoryMb: l.memoryMb, cpus: l.cpuPercent ? l.cpuPercent / 100 : null, pids: l.tasks };
 }
 
 // ---------------------------------------------------------------------------

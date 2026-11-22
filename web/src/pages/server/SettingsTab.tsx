@@ -11,7 +11,6 @@ import type { PropertyEntry, RestartPolicy } from '../../api/types.js';
 import { Button, Card, ErrorText, Field, Input, Select } from '../../components/ui.js';
 import { InstanceAdminCards } from './AdminCards.js';
 import { LaunchCard } from './LaunchCard.js';
-import { DockerCard } from './DockerCard.js';
 import { IsolationCard } from './IsolationCard.js';
 import { RconCard } from './RconCard.js';
 import { TemplateCard } from './TemplateCard.js';
@@ -295,11 +294,11 @@ export function SettingsTab() {
     { id: 'antivirus', label: 'Malware protection', icon: 'shieldCheck', description: 'Protected uploads, instance scan reports and security holds.', content: <AntivirusPanel serverId={server.id} /> },
     {
       id: 'runtime',
-      label: server.platform === 'docker' ? 'Container & limits' : 'Launch & limits',
+      label: 'Launch & limits',
       icon: 'cpu',
       description: 'How the process is started, what it can reach and how much it may use.',
       content: <>
-        {server.platform === 'docker' ? <DockerCard /> : <LaunchCard />}
+        <LaunchCard />
         <LimitsCard />
         <IsolationCard />
       </>,
@@ -310,8 +309,8 @@ export function SettingsTab() {
       icon: 'network',
       description: 'Remote console, databases and the public status page.',
       content: <>
-        {server.platform !== 'docker' && server.platform !== 'bedrock' && <RconCard />}
-        {server.platform !== 'docker' && <DatabasesCard />}
+        {server.platform !== 'bedrock' && <RconCard />}
+        <DatabasesCard />
         <StatusPageCard />
       </>,
     },

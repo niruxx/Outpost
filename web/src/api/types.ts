@@ -1,15 +1,6 @@
 export type Role = 'admin' | 'moderator' | 'viewer';
 export type StoragePermission = 'view' | 'mount' | 'automount' | 'format' | 'wipe' | 'partition' | 'encrypt' | 'lvm' | 'resize' | 'raid' | 'migrate' | 'crypttab' | 'health' | 'erase';
 
-export type VmPermission = 'view' | 'power' | 'console' | 'configure' | 'snapshots';
-export interface VmGrant { uri: string; uuid: string; permissions: VmPermission[] }
-export interface LibvirtSettings { enabled: boolean; uri: string }
-export interface VirtualMachine {
-  uuid: string; name: string; state: string; cpus: number; memoryMb: number;
-  maxMemoryMb: number; autostart: boolean; persistent: boolean; permissions: VmPermission[];
-}
-export type VmAction = 'start' | 'shutdown' | 'reboot' | 'suspend' | 'resume' | 'destroy';
-
 export type ServerPermission =
   | 'power'
   | 'console'
@@ -29,12 +20,9 @@ export interface PublicUser {
   username: string;
   role: Role;
   storagePermissions?: StoragePermission[];
-  vmAccess?: VmGrant[];
   created_at: string;
   /** Two-factor sign-in is on for this account. */
   totp_enabled?: 0 | 1;
-  /** Host firewall access (admins can always manage). */
-  firewall?: FirewallAccess;
   /** Theme applied when this user signs in (an admin's choice); null = their own browser's choice. */
   theme?: string | null;
   wallpaper_preferences?: string | null;
@@ -60,20 +48,16 @@ export interface CreationPolicy {
   maxInstances: number;
   /** 0 = no limit */
   maxMemoryMb: number;
-  /** Container instances: none, catalog apps only, or any image. */
-  containers: 'none' | 'catalog' | 'any';
-  /** May mount the container engine socket (Portainer). */
-  engineSocket: boolean;
 }
 
 export interface EffectiveCreation extends CreationPolicy {
-  /** Every platform this user can create (admins also get custom + docker). */
+  /** Every platform this user can create (admins also get custom). */
   allowedPlatforms: string[];
   owned: number;
   fromRole: boolean;
 }
 
-export type Platform = 'java' | 'bedrock' | 'steam' | 'custom' | 'docker';
+export type Platform = 'java' | 'bedrock' | 'steam' | 'custom';
 export type Loader =
   | 'vanilla'
   | 'paper'
@@ -90,8 +74,7 @@ export type Loader =
   | 'bungeecord'
   | 'bedrock'
   | 'steam'
-  | 'custom'
-  | 'docker';
+  | 'custom';
 
 export const MODDED_LOADERS: Loader[] = ['fabric', 'quilt', 'forge', 'neoforge', 'mohist', 'spongeforge'];
 
@@ -171,7 +154,6 @@ export interface ServerRecord {
   restart_max_attempts: number;
   upnp_config: string | null;
   isolation: 'inherit' | 'off';
-  docker_config: string | null;
   suspended: 0 | 1;
   suspended_reason: string | null;
   suspended_at: string | null;
@@ -289,10 +271,16 @@ export interface FileEntry {
   modifiedAt: string;
 }
 
-export interface BackupInfo {
+export interface SnapshotMetadata {
+  name: string | null;
+  label: string | null;
+}
+
+export interface BackupInfo extends SnapshotMetadata {
   fileName: string;
   sizeBytes: number;
   createdAt: string;
+  scheduled: boolean;
 }
 
 export interface SnapshotEntry {
@@ -638,59 +626,10 @@ export interface UpnpGatewayInfo {
   error: string | null;
 }
 
-export interface PortMapping {
-  host: number;
-  container: number;
-  protocol: 'tcp' | 'udp';
-}
-
-export interface DockerConfig {
-  image: string;
-  ports: PortMapping[];
-  env: { key: string; value: string }[];
-  dataPath: string;
-  cpus: number | null;
-  command: string;
-  runAsPanelUser: boolean;
-  volumes: { subdir: string; containerPath: string }[];
-  webUi: WebUi | null;
-  mountEngineSocket: boolean;
-  category: 'game' | 'app' | 'container';
-  icon: string | null;
-  template: string | null;
-}
-
 export interface WebUi {
   port: number;
   scheme: 'http' | 'https';
   path: string;
-}
-
-export interface EngineStatus {
-  available: boolean;
-  engine: 'docker' | 'podman' | null;
-  version: string | null;
-  rootless: boolean;
-  error: string | null;
-  hint: string | null;
-}
-
-export interface DockerOverview {
-  engine: EngineStatus;
-  counts: { containers: number; running: number; images: number } | null;
-  containers: NativeContainer[];
-  socket: { path: string | null; hint: string | null } | null;
-}
-
-export interface NativeContainer {
-  id: string; name: string; status: string; state: string; image: string; ports: string;
-  instanceId: string | null; composeProject: string | null;
-  instance: { id: string; name: string; supervised: boolean } | null;
-}
-export interface NativeContainerDetails extends NativeContainer {
-  createdAt: string | null; startedAt: string | null; finishedAt: string | null; autoRemove: boolean;
-  restartPolicy: string; memoryMb: number | null; cpus: number | null; command: string[];
-  mounts: { type: string; source: string; destination: string; writable: boolean }[]; networks: string[];
 }
 
 export interface SandboxStatus {
@@ -796,64 +735,6 @@ export interface AuditEntry {
 export interface TwoFactorStatus {
   enabled: boolean;
   recoveryCodesLeft: number;
-}
-
-export type FirewallAccess = 'none' | 'view' | 'instances' | 'manage';
-
-export interface FirewallRule {
-  id: string;
-  action: 'allow' | 'deny' | 'reject' | 'limit';
-  port: string | null;
-  protocol: 'tcp' | 'udp' | 'any';
-  source: string | null;
-  label: string | null;
-  comment: string | null;
-  direction: 'in' | 'out';
-}
-
-export interface FirewallStatus {
-  available: boolean;
-  backend: 'ufw' | 'firewalld' | null;
-  reason: string | null;
-  sudoersHint: string | null;
-  active: boolean;
-  defaults: string | null;
-  zone: string | null;
-  rules: FirewallRule[];
-  protectedPorts: { port: number; protocol: 'tcp'; why: string }[];
-  canToggle: boolean;
-}
-
-export interface FirewallInstancePort {
-  serverId: string;
-  name: string;
-  port: number;
-  protocol: 'tcp' | 'udp';
-  open: boolean;
-  source?: string;
-}
-
-export interface InstanceFirewallPort {
-  serverId: string;
-  name: string;
-  port: number;
-  protocol: 'tcp' | 'udp';
-  source: string;
-  configured: boolean;
-}
-
-export interface InstanceFirewallInfo {
-  status: FirewallStatus;
-  access: FirewallAccess;
-  ports: InstanceFirewallPort[];
-}
-
-export interface InstanceFirewallResult {
-  status: FirewallStatus;
-  ports: InstanceFirewallPort[];
-  added: { port: number; protocol: 'tcp' | 'udp' }[];
-  existing: { port: number; protocol: 'tcp' | 'udp' }[];
-  failed: { port: number; protocol: 'tcp' | 'udp'; error: string }[];
 }
 
 /** One open panel tab, as reported by its presence pings. */

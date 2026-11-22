@@ -25,14 +25,11 @@ import { InstancesPage } from './pages/InstancesPage.js';
 import { InstancePage } from './pages/InstancePage.js';
 import { ConfigurationPage } from './pages/ConfigurationPage.js';
 import { FileManagerPage } from './pages/FileManagerPage.js';
-import { DockerPage } from './pages/DockerPage.js';
-import { LibvirtPage } from './pages/LibvirtPage.js';
 import { StoragePage } from './pages/StoragePage.js';
 import { UsersPage } from './pages/UsersPage.js';
 import { AuditPage } from './pages/AuditPage.js';
 import { ActivityPage } from './pages/ActivityPage.js';
 import { ActivityTracker } from './components/ActivityTracker.js';
-import { FirewallPage } from './pages/FirewallPage.js';
 import { ServicesPage } from './pages/ServicesPage.js';
 import { SoftwarePage } from './pages/SoftwarePage.js';
 import { HostOverviewPage } from './pages/HostOverviewPage.js';
@@ -112,7 +109,6 @@ function AppRoutes() {
       <Route path="/jobs" element={<RequireAuth><JobsPage /></RequireAuth>} />
       <Route path="/operations" element={<Navigate to="/configuration/operations" replace />} />
       <Route path="/configuration/operations" element={<RequireAuth><OperationsPage /></RequireAuth>} />
-      <Route path="/libvirt/*" element={<RequireAuth><LibvirtPage /></RequireAuth>} />
       <Route path="/storage" element={<RequireAuth><StoragePage /></RequireAuth>} />
       <Route path="/host-console" element={<RequireAuth><RequireAdmin><Suspense fallback={<FullScreenLoader />}><HostTerminalPage /></Suspense></RequireAdmin></RequireAuth>} />
       <Route
@@ -120,14 +116,6 @@ function AppRoutes() {
         element={
           <RequireAuth>
             <ConfigurationPage />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/docker"
-        element={
-          <RequireAuth>
-            <DockerPage />
           </RequireAuth>
         }
       />
@@ -157,14 +145,6 @@ function AppRoutes() {
             <RequireAdmin>
               <UsersPage />
             </RequireAdmin>
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/firewall"
-        element={
-          <RequireAuth>
-            <FirewallPage />
           </RequireAuth>
         }
       />

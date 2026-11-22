@@ -69,6 +69,13 @@ catch (e) {
     next(e);
 } });
 reliabilityRouter.post('/deduplicated', asyncHandler(async (req, res) => { permission(req, 'backups.create'); const result = await backups.createDedup(req.params.serverId); logAudit(req.auth!.sub, req.auth!.username, 'backup.deduplicated', req.params.serverId, result.id); res.status(201).json(result); }));
+reliabilityRouter.patch('/deduplicated/:id/metadata', asyncHandler(async (req, res) => {
+    permission(req, 'backups.create');
+    const { serverId, id } = req.params;
+    const updated = backups.editDeduplicatedSnapshot(serverId, id, req.body);
+    logAudit(req.auth!.sub, req.auth!.username, 'backup.metadata', serverId, id);
+    res.json(updated);
+}));
 reliabilityRouter.post('/verify', asyncHandler(async (req, res) => {
     permission(req, 'backups.create');
     permission(req, 'files.read');

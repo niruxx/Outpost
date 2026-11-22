@@ -32,7 +32,7 @@ The data root defaults to `server/data`; `DATA_DIR`, `OUTPOST_DATA_DIR` or the l
 
 The OS service runs the Outpost panel. Use the browser at `http://localhost:8642` to create individual instances and use their Start, Stop, Restart, Console, Files and Backups controls. New instance launches use persistent supervisors, so panel updates and restarts leave their game processes running and reconnect their consoles. Older running instances need one stop/start to adopt supervision. See [persistent instances](persistent-instances.md) for service configuration, backup behavior and limitations. Never run a foreground panel and a background panel against the same data directory at once.
 
-On macOS the current supported installation target is Minecraft Java. Containers, SteamCMD/Wine and broader host features remain planned; visible menu entries are not a compatibility guarantee. Choose a Minecraft version and let Outpost select the matching managed Java runtime, or select one in the instance's Java settings. Java 16 is legacy and may not be available for every architecture.
+On macOS the current supported installation target is Minecraft Java. SteamCMD/Wine and broader host features remain planned; visible menu entries are not a compatibility guarantee. Choose a Minecraft version and let Outpost select the matching managed Java runtime, or select one in the instance's Java settings. Java 16 is legacy and may not be available for every architecture.
 
 ## macOS (launchd, per login user)
 
@@ -167,12 +167,29 @@ the ZIP into their client’s `CoreKeeper_Data/StreamingAssets/Mods` folder. See
 the [dedicated server modding guide](https://github.com/CoreKeeperMods/Core-Keeper-Docs/blob/main/playing-with-mods/installing-mods/on-dedicated-servers.md)
 for player setup and packages that need manual installation.
 
+### Worlds and characters
+
+Open **Worlds & characters** on the Core Keeper instance. Stop the server before
+downloading or changing world files. You can import a numbered `.world.gzip` into
+an unused slot, choose an existing or new slot for the next start, or remove an
+inactive slot. World info belongs to its original slot. Outpost creates a full
+instance backup before a change, and removed files go to File Management’s
+recycle bin.
+
+Core Keeper keeps characters on players’ devices. In **Character save editor**,
+open a numbered plain JSON file from the player’s `saves` directory to edit
+coins, saved maximum health, inventory slots, skill XP, and talent allocations.
+The editor works in the browser and downloads a separate copy with the original
+slot filename. Keep the original and close the game before replacing the save.
+See the [Core Keeper save format reference](https://corekeeper.atma.gg/en/Save_data)
+for locations and Steam Cloud behavior.
+
 ## Choosing a backup
 
-In **Configuration → Backups & data**, choose **Whole environment** for panel
-accounts, settings, and all instance files. Clear **Include existing snapshots
-and world restore points** to omit stored backup history from the archive. Use
-**Single instance** to open a specific instance’s **Backups** page.
+In **Configuration → Backups & data**, choose **Environment export** to stream a ZIP
+to your browser. Choose all or selected instances and pick the panel database,
+game files, snapshots, world restore points, and host support files independently.
+Use **Single instance backup** to open a specific instance’s **Backups** page.
 
 Choose **Full instance ZIP** for a downloadable archive with file browsing and
 off-site copy options, or **Deduplicated backup** to reuse unchanged files.

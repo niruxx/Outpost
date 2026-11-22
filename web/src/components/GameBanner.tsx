@@ -8,23 +8,20 @@ import { BannerImage } from './BannerImage.js';
  * terrain, a radar grid, mountain ridges, container stacks…), not any game's key art or logo.
  * Shapes are seeded from the kind, so an instance always gets the same picture.
  */
-type Scene = 'blocks' | 'pixel' | 'tactical' | 'arena' | 'wilds' | 'sandbox' | 'containers' | 'data' | 'network' | 'terminal' | 'steam';
+type Scene = 'blocks' | 'pixel' | 'tactical' | 'arena' | 'wilds' | 'sandbox' | 'terminal' | 'steam';
 
 const TACTICAL = new Set(['730', '740', '232330', '90', '581330', '403240', '233780']);
 const ARENA = new Set(['545990', '2200', '232370', '232290', '232250', '222860', '232130', '629800', '349090']);
 const WILDS = new Set(['258550', '376030', '294420', '2278520', '1829350', '1110390', '343050', '443030', '223350', '2465200', '896660', '2394010', '380870']);
 const SANDBOX = new Set(['4020', '298740', '1690800']);
 
-const GROUNDED = new Set<Scene>(['blocks', 'pixel', 'wilds', 'containers']);
+const GROUNDED = new Set<Scene>(['blocks', 'pixel', 'wilds']);
 
 export function sceneOf(kind: GameKind): Scene {
   if (kind === 'minecraft-java' || kind === 'minecraft-bedrock') return 'blocks';
   if (kind === 'terraria') return 'pixel';
   if (kind === 'quake') return 'arena';
-  if (kind === 'docker' || kind === 'app:manager') return 'containers';
-  if (kind === 'custom' || kind === 'app:template' || kind === 'app:app') return 'terminal';
-  if (kind === 'app:database' || kind === 'app:cache' || kind === 'app:vault') return 'data';
-  if (kind.startsWith('app:')) return 'network';
+  if (kind === 'custom' || kind === 'app:template') return 'terminal';
   const appId = kindAppId(kind);
   if (appId && TACTICAL.has(appId)) return 'tactical';
   if (appId && ARENA.has(appId)) return 'arena';
@@ -247,101 +244,8 @@ function Sandbox({ rand, accent, bg, u }: SceneProps) {
   );
 }
 
-function Containers({ rand, accent, bg, u }: SceneProps) {
-  const boxes: ReactNode[] = [];
-  const colors = [accent, shade(accent, -0.25), shade(accent, 0.25), shade(accent, -0.45)];
-  for (let col = 0; col < 8; col++) {
-    const stack = 1 + Math.floor(rand() * 2);
-    for (let r = 0; r < stack; r++) {
-      const x = W * 0.4 + col * 76;
-      const y = H - 52 - (r + 1) * 38;
-      const fill = colors[Math.floor(rand() * colors.length)];
-      boxes.push(
-        <g key={`${col}-${r}`} opacity={0.85}>
-          <rect x={x} y={y} width={72} height={34} rx={3} fill={fill} opacity={0.55} />
-          {Array.from({ length: 5 }, (_, k) => <path key={k} d={`M${x + 10 + k * 13} ${y + 5}v24`} stroke="#000" strokeOpacity={0.18} strokeWidth={2} />)}
-        </g>,
-      );
-    }
-  }
-  const wave = (y: number, amp: number) => {
-    let d = `M0 ${y}`;
-    for (let x = 0; x <= W; x += 60) d += ` Q${x + 30} ${y - amp} ${x + 60} ${y}`;
-    return `${d} V${H} H0 Z`;
-  };
-  return (
-    <>
-      <defs>
-        <linearGradient id={u('bg')} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor={shade(bg[0], 0.12)} />
-          <stop offset="1" stopColor={shade(bg[1], -0.2)} />
-        </linearGradient>
-      </defs>
-      <rect width={W} height={H} fill={`url(#${u('bg')})`} />
-      {boxes}
-      <path d={wave(H - 44, 8)} fill={accent} opacity={0.18} />
-      <path d={wave(H - 26, 12)} fill={accent} opacity={0.28} />
-    </>
-  );
-}
 
-function DataScene({ rand, accent, bg, u }: SceneProps) {
-  const dots: ReactNode[] = [];
-  for (let x = 20; x < W; x += 28) {
-    for (let y = 20; y < H; y += 28) {
-      const fade = Math.max(0, (x - W * 0.25) / (W * 0.75));
-      if (rand() < 0.75) dots.push(<circle key={`${x}-${y}`} cx={x} cy={y} r={2.2} fill={accent} opacity={fade * (0.15 + rand() * 0.55)} />);
-    }
-  }
-  return (
-    <>
-      <defs>
-        <linearGradient id={u('bg')} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor={shade(bg[1], -0.2)} />
-          <stop offset="1" stopColor={shade(bg[0], 0.1)} />
-        </linearGradient>
-      </defs>
-      <rect width={W} height={H} fill={`url(#${u('bg')})`} />
-      {dots}
-      {[0, 1, 2].map((i) => {
-        const x = W * 0.6 + i * 90;
-        const y = 80 + (i % 2) * 30;
-        return (
-          <g key={i} fill="none" stroke={accent} strokeOpacity={0.6} strokeWidth="2">
-            <ellipse cx={x} cy={y} rx={34} ry={10} />
-            <path d={`M${x - 34} ${y}v90a34 10 0 0 0 68 0v-90`} />
-            <path d={`M${x - 34} ${y + 45}a34 10 0 0 0 68 0`} />
-          </g>
-        );
-      })}
-    </>
-  );
-}
 
-function Network({ rand, accent, bg, u }: SceneProps) {
-  const cx = W * 0.7;
-  const cy = H * 0.62;
-  const r = 170;
-  let pulse = `M0 ${H * 0.5}`;
-  for (let x = 0; x < W * 0.6; x += 40) pulse += ` L${x + 20} ${H * 0.5 + (rand() < 0.25 ? (rand() - 0.5) * 120 : 0)} L${x + 40} ${H * 0.5}`;
-  return (
-    <>
-      <defs>
-        <linearGradient id={u('bg')} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor={shade(bg[1], -0.2)} />
-          <stop offset="1" stopColor={shade(bg[0], 0.12)} />
-        </linearGradient>
-      </defs>
-      <rect width={W} height={H} fill={`url(#${u('bg')})`} />
-      <g fill="none" stroke={accent} strokeOpacity="0.4" strokeWidth="1.5">
-        <circle cx={cx} cy={cy} r={r} />
-        {[0.35, 0.7].map((k) => <ellipse key={k} cx={cx} cy={cy} rx={r * k} ry={r} />)}
-        {[-0.5, 0, 0.5].map((k) => <ellipse key={k} cx={cx} cy={cy + k * r} rx={r * Math.sqrt(1 - k * k)} ry={r * 0.12} />)}
-      </g>
-      <path d={pulse} fill="none" stroke={accent} strokeOpacity="0.55" strokeWidth="2" strokeLinejoin="round" />
-    </>
-  );
-}
 
 function Terminal({ rand, accent, bg, u }: SceneProps) {
   const lines = Array.from({ length: 9 }, (_, i) => {
@@ -408,9 +312,6 @@ export const GameBanner = memo(function GameBanner({ kind, seed, className = '',
       case 'arena': return <Arena rand={rand} accent={accent} bg={bg} u={u} />;
       case 'wilds': return <Wilds rand={rand} accent={accent} bg={bg} u={u} />;
       case 'sandbox': return <Sandbox rand={rand} accent={accent} bg={bg} u={u} />;
-      case 'containers': return <Containers rand={rand} accent={accent} bg={bg} u={u} />;
-      case 'data': return <DataScene rand={rand} accent={accent} bg={bg} u={u} />;
-      case 'network': return <Network rand={rand} accent={accent} bg={bg} u={u} />;
       case 'terminal': return <Terminal rand={rand} accent={accent} bg={bg} u={u} />;
       default: return <SteamScene accent={accent} bg={bg} u={u} />;
     }

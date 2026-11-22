@@ -28,7 +28,7 @@ interface FullTemplate {
   files: { path: string }[];
 }
 
-const PLATFORM: Record<string, string> = { java: 'Minecraft: Java', bedrock: 'Minecraft: Bedrock', steam: 'Steam', custom: 'Custom process', docker: 'Container' };
+const PLATFORM: Record<string, string> = { java: 'Minecraft: Java', bedrock: 'Minecraft: Bedrock', steam: 'Steam', custom: 'Custom process' };
 
 /** New instance → From a template: pick one, fill in its variables, create. */
 export function CreateFromTemplateModal({ open, onClose, onCreated, initialTemplateId }: { open: boolean; onClose: () => void; onCreated: (s: ServerRecord) => void; initialTemplateId?: string }) {
@@ -130,11 +130,9 @@ export function CreateFromTemplateModal({ open, onClose, onCreated, initialTempl
                 <Field label="Instance name">
                   <Input value={name} onChange={(e) => setName(e.target.value)} />
                 </Field>
-                {tpl.instance.platform !== 'docker' && (
-                  <Field label="Port">
-                    <Input type="number" min={1} max={65535} value={port} onChange={(e) => setPort(e.target.value)} />
-                  </Field>
-                )}
+                <Field label="Port">
+                  <Input type="number" min={1} max={65535} value={port} onChange={(e) => setPort(e.target.value)} />
+                </Field>
               </div>
               {tpl.variables.length > 0 && (
                 <div className="grid gap-3 sm:grid-cols-2">

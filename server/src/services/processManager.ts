@@ -16,7 +16,6 @@ import { flushStats, recordStats } from './metricsHistoryService.js';
 import { addonLaunchEnv } from './pluginService.js';
 import { upnpOnStart, upnpOnStop } from './upnpService.js';
 import { minimalEnv, sandboxApplies, wrapInSandbox } from './sandboxService.js';
-import { buildContainerLaunch, killContainer, sampleContainer } from './containerService.js';
 import { handleLogLine, resetOnlinePlayers } from './playerService.js';
 import { publish, consoleTopic } from './wsHub.js';
 import * as consoleLog from './consoleLogService.js';
@@ -268,11 +267,6 @@ export async function buildLaunch(server: ServerRecord): Promise<LaunchPlan> {
   let wine: LaunchPlan['wine'];
   const notes: string[] = [];
 
-  if (server.platform === 'docker') {
-    ({ cmd, args } = buildContainerLaunch(server));
-    return { cmd, args, useShell: false, detached: false, cwd: instanceDir(server.id), env, display: [cmd, ...args].join(' ') };
-  }
-
   if (server.platform === 'java') {
     let javaPath: string | null;
     if (config.javaPath) javaPath = expand(config.javaPath);
@@ -380,7 +374,7 @@ function resolveReadyRegex(server: ServerRecord, config: LaunchConfig): RegExp |
   }
   if (server.platform === 'java') return server.loader === 'bungeecord' || server.loader === 'waterfall' ? BUNGEE_READY_RE : JAVA_READY_RE;
   if (server.platform === 'bedrock') return BEDROCK_READY_RE;
-  if (server.platform === 'custom' || server.platform === 'docker') return null;
+  if (server.platform === 'custom') return null;
   return findPresetFor(server)?.readyRegex ?? null;
 }
 
@@ -393,19 +387,16 @@ function resolveStopStrategy(server: ServerRecord, config: LaunchConfig): StopPl
   if (stop?.kind === 'script') return { kind: 'script', command: stop.command };
   if (server.platform === 'java') return isProxyLoader(server.loader) ? PROXY_STOP : JAVA_STOP;
   if (server.platform === 'bedrock') return BEDROCK_STOP;
-  if (server.platform === 'custom' || server.platform === 'docker') return CUSTOM_STEAM_STOP; // docker: proxied to the container
+  if (server.platform === 'custom') return CUSTOM_STEAM_STOP;
   return findPresetFor(server)?.stopStrategy ?? CUSTOM_STEAM_STOP;
 }
 
 /** Sends a signal to the instance — to its whole process group when it was spawned detached. */
 function signalInstance(instance: RunningInstance, signal: NodeJS.Signals) {
   if ('detach' in instance.child) {
-    if (instance.server.platform === 'docker' && signal === 'SIGKILL') killContainer(instance.server);
     instance.child.kill(signal); return;
   }
   const pid = instance.child.pid;
-  // The attached CLI proxies catchable signals into the container, but SIGKILL can't be proxied.
-  if (instance.server.platform === 'docker' && signal === 'SIGKILL') killContainer(instance.server);
   // Signalling bwrap itself would kill the sandbox and orphan the game — target the game.
   if (instance.sandboxed && instance.innerPid && !instance.groupKill) {
     try {
@@ -597,8 +588,7 @@ export async function startServer(serverId: string, options: { auto?: boolean; w
   if (plan.wine) appendLog(serverId, '[Outpost] Running under Wine', 'system');
 
   appendLog(serverId, `[Outpost] Host environment: ${process.platform} (${process.arch})`, 'system');
-  // Containers map files to their own users, so ownership only means something for host processes.
-  const foreign = server.platform === 'docker' ? { count: 0, examples: [] } : foreignOwnedPaths(dir);
+  const foreign = foreignOwnedPaths(dir);
   if (foreign.count) {
     appendLog(
       serverId,
@@ -618,9 +608,7 @@ export async function startServer(serverId: string, options: { auto?: boolean; w
   setServerStatus(serverId, 'starting');
   publish(consoleTopic(serverId), { type: 'status', status: 'starting' });
 
-  // The docker/podman *client* needs the panel's full environment (XDG_RUNTIME_DIR, DOCKER_HOST…);
-  // the container itself only receives the variables in its config.
-  const baseEnv = server.platform === 'docker' ? ({ ...process.env } as Record<string, string>) : minimalEnv();
+  const baseEnv = minimalEnv();
   const env = { ...buildLaunchEnv(server, dir, baseEnv), ...plan.env } as Record<string, string>;
   const sandboxed = sandboxApplies(server);
   const sandboxTarget = sandboxed ? wrapInSandbox(server, { cmd: plan.cmd, args: plan.args, cwd: plan.cwd, env }) : { cmd: plan.cmd, args: plan.args };
@@ -719,35 +707,9 @@ function attachRuntime(server: ServerRecord, config: LaunchConfig, cwd: string, 
     if (!wasManual) maybeScheduleAutoRestart(serverId, code !== 0, Date.now() - instance.startedAt);
   });
 
-  let prevContainer: { at: number; netRx: number | null; netTx: number | null; read: number | null; write: number | null; baseRx: number | null; baseTx: number | null } | null = null;
   instance.statsTimer = setInterval(async () => {
     if (!child.pid) return;
-    let stats: ProcessStats;
-    if (server.platform === 'docker') {
-      // Container processes aren't children of the CLI — ask the engine (per-container network included).
-      const s = await sampleContainer(server);
-      if (!s) return;
-      const now = Date.now();
-      const secs = prevContainer ? (now - prevContainer.at) / 1000 : 0;
-      const rate = (cur: number | null, prev: number | null | undefined) => (cur === null || prev == null || secs <= 0 ? null : Math.max(0, Math.round((cur - prev) / secs)));
-      const baseRx = prevContainer?.baseRx ?? s.netRx;
-      const baseTx = prevContainer?.baseTx ?? s.netTx;
-      stats = {
-        memoryMb: s.memoryMb,
-        cpuPercent: s.cpuPercent,
-        diskReadBytes: s.blockRead,
-        diskWriteBytes: s.blockWrite,
-        diskReadRate: rate(s.blockRead, prevContainer?.read),
-        diskWriteRate: rate(s.blockWrite, prevContainer?.write),
-        netRxBytes: s.netRx,
-        netTxBytes: s.netTx,
-        netRxRate: rate(s.netRx, prevContainer?.netRx),
-        netTxRate: rate(s.netTx, prevContainer?.netTx),
-      };
-      prevContainer = { at: now, netRx: s.netRx, netTx: s.netTx, read: s.blockRead, write: s.blockWrite, baseRx, baseTx };
-    } else {
-      stats = await readProcessStats(child.pid);
-    }
+    const stats = await readProcessStats(child.pid);
     instance.lastStats = stats;
     publish(consoleTopic(serverId), { type: 'stats', ...stats });
     recordStats(serverId, stats);

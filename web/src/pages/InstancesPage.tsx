@@ -34,8 +34,6 @@ const VIEWS: { mode: ViewMode; icon: IconName; label: string }[] = [
 const FILTERS: { id: 'all' | InstanceCategory; label: string }[] = [
   { id: 'all', label: 'All' },
   { id: 'game', label: '🎮 Games' },
-  { id: 'app', label: '📦 Apps' },
-  { id: 'container', label: '🐳 Containers' },
   { id: 'custom', label: '⌨️ Custom' },
 ];
 const FILTER_KEY = 'outpost_instances_filter';
@@ -230,7 +228,6 @@ function Badge({ server }: { server: ServerRecord }) {
 
 function subtitle(server: ServerRecord) {
   const kind = gameKindOf(server);
-  if (server.platform === 'docker') return `${gameLabel(kind)} · ${server.version.replace(/^docker\.io\/(library\/)?/, '')} · port ${server.server_port}`;
   const version = server.platform === 'java' || server.platform === 'bedrock' ? ` · ${server.loader} ${server.version}` : '';
   return `${gameLabel(kind)}${version} · port ${server.server_port}`;
 }
@@ -639,7 +636,7 @@ export function InstancesPage() {
       <div className="ui-dashboard mx-auto max-w-7xl px-4 py-6 sm:px-8 sm:py-8">
         <PageHeader
           title="Instances"
-          subtitle="Games, apps, containers and services on this host — at a glance."
+          subtitle="Manage game servers and custom processes on this host."
           action={
             canCreate && (
               <div className="flex items-center gap-3">
@@ -744,14 +741,14 @@ export function InstancesPage() {
         ) : servers.length === 0 ? (
           <Card className="p-12 text-center">
             <div className="mx-auto mb-4 flex w-fit gap-2">
-              {(['app:web', 'app:database', 'minecraft-java', 'app:manager', 'custom'] as const).map((k, i) => (
+              {(['valheim', 'minecraft-bedrock', 'minecraft-java', 'terraria', 'custom'] as const).map((k, i) => (
                 <motion.div key={k} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.08, ease: EMPHASIZED }}>
                   <GameTile kind={k} className="h-12 w-12" />
                 </motion.div>
               ))}
             </div>
             <p className="mb-1 text-base font-medium text-ink-100">{t('No instances yet')}</p>
-            <p className="mb-5 text-sm text-ink-400">{t('Run a game server, a web app, a database, Portainer or any container — in a couple of clicks.')}</p>
+            <p className="mb-5 text-sm text-ink-400">{t('Set up a dedicated game server or run a custom process.')}</p>
             {canCreate && !atQuota && (
               <Button variant="primary" onClick={() => setCreateOpen(true)}>
                 Create your first instance

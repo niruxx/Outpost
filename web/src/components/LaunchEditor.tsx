@@ -13,7 +13,6 @@ const DEFAULTS: Record<Platform, { executable: string; args: string; stop: strin
   bedrock: { executable: 'bedrock_server', args: 'extra server args', stop: 'console "stop"' },
   steam: { executable: "the game's server binary", args: "the game's default launch args", stop: "the game's own stop method" },
   custom: { executable: '', args: 'none', stop: 'SIGTERM' },
-  docker: { executable: 'the image', args: 'the image default', stop: 'SIGTERM to the container' },
 };
 
 function Collapse({ open, children }: { open: boolean; children: React.ReactNode }) {

@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import { readBannerArtwork } from './bannerService.js';
 import { prep } from '../db/db.js';
 import { instanceDir } from '../utils/paths.js';
-import type { Loader, Platform, RestartPolicy, ServerRecord, ServerStatus } from '../types/index.js';
+import { isSupportedPlatform, type Loader, type Platform, type RestartPolicy, type ServerRecord, type ServerStatus } from '../types/index.js';
 
 export interface CreateServerInput {
   name: string;
@@ -22,17 +22,17 @@ export interface CreateServerInput {
   steamLogin?: string;
   steamExtraFlags?: string;
   launchConfig?: string | null;
-  dockerConfig?: string | null;
 }
 
 export function createServerRecord(input: CreateServerInput): ServerRecord {
+  if (!isSupportedPlatform(input.platform)) throw new Error('Unsupported instance platform');
   const id = crypto.randomUUID();
   fs.mkdirSync(instanceDir(id), { recursive: true });
   fs.mkdirSync(backupDir(id), { recursive: true });
   prep(
     `INSERT INTO servers
-      (id, name, platform, loader, version, min_memory_mb, max_memory_mb, server_port, extra_java_args, extra_args, status, created_by, steam_app_id, steam_preset, steam_login, steam_extra_flags, launch_config, docker_config)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'installing', ?, ?, ?, ?, ?, ?, ?)`
+      (id, name, platform, loader, version, min_memory_mb, max_memory_mb, server_port, extra_java_args, extra_args, status, created_by, steam_app_id, steam_preset, steam_login, steam_extra_flags, launch_config)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'installing', ?, ?, ?, ?, ?, ?)`
   ).run(
     id,
     input.name,
@@ -49,16 +49,14 @@ export function createServerRecord(input: CreateServerInput): ServerRecord {
     input.steamPreset ?? null,
     input.steamLogin ?? 'anonymous',
     input.steamExtraFlags ?? '',
-    input.launchConfig ?? null,
-    input.dockerConfig ?? null
+    input.launchConfig ?? null
   );
   return getServer(id)!;
 }
 
 /** Settings a duplicate carries over. Left out on purpose: backup location, restore points, RCON
  *  (its password and port), auto-update, status page, UPnP rules, suspension — per-instance state
- *  that would clash or that the copy should set up for itself. Docker isn't duplicated (host ports
- *  and volumes). The copy starts in 'installing' while its files are copied. */
+ *  that would clash or that the copy should set up for itself. The copy starts in 'installing' while its files are copied. */
 const DUPLICATED_COLUMNS = [
   'platform', 'loader', 'version', 'build', 'jar_file', 'min_memory_mb', 'max_memory_mb', 'extra_java_args', 'extra_args',
   'steam_app_id', 'steam_preset', 'workshop', 'modpack', 'limits', 'game_settings', 'steam_login', 'steam_extra_flags',
@@ -80,11 +78,11 @@ export function duplicateServerRecord(source: ServerRecord, input: { name: strin
 
 export function getServer(id: string): ServerRecord | undefined {
   const server = prep('SELECT * FROM servers WHERE id = ?').get(id) as ServerRecord | undefined;
-  return server ? { ...server, banner: readBannerArtwork(id) } : undefined;
+  return server && isSupportedPlatform(server.platform) ? { ...server, banner: readBannerArtwork(id) } : undefined;
 }
 
 export function listServers(): ServerRecord[] {
-  return (prep('SELECT * FROM servers ORDER BY created_at ASC').all() as unknown as ServerRecord[]).map((s) => ({ ...s, banner: readBannerArtwork(s.id) }));
+  return (prep('SELECT * FROM servers ORDER BY created_at ASC').all() as unknown as ServerRecord[]).filter((s) => isSupportedPlatform(s.platform)).map((s) => ({ ...s, banner: readBannerArtwork(s.id) }));
 }
 
 export function setServerStatus(id: string, status: ServerStatus) {
@@ -212,8 +210,4 @@ export function setUpnpConfig(id: string, config: string | null) {
 
 export function setIsolation(id: string, isolation: 'inherit' | 'off') {
   prep('UPDATE servers SET isolation = ? WHERE id = ?').run(isolation, id);
-}
-
-export function setDockerConfig(id: string, config: string, image: string) {
-  prep('UPDATE servers SET docker_config = ?, version = ? WHERE id = ?').run(config, image, id);
 }

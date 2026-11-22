@@ -5,34 +5,15 @@ import type { ServerRecord } from '../api/types.js';
 import { Modal } from './ui.js';
 import { GameTile, type GameKind } from './GameArt.js';
 import { CreateServerModal } from './CreateServerModal.js';
-import { CreateContainerModal } from './CreateContainerModal.js';
 import { CreateFromTemplateModal } from './CreateFromTemplateModal.js';
 import { api } from '../api/client.js';
 import { EMPHASIZED } from './motion.js';
 import { useAuth } from '../state/AuthContext.js';
 
-type Choice = 'game' | 'app' | 'portainer' | 'container' | 'custom' | 'template' | 'earth';
+type Choice = 'game' | 'custom' | 'template' | 'earth';
 
 const CHOICES: { id: Choice; title: string; description: string; kind: GameKind }[] = [
   { id: 'earth', title: 'BeamNG.Earth server', description: 'Create a real-world multiplayer server with BeamMP, the Earth mod and its server plugin installed automatically.', kind: 'custom' },
-  {
-    id: 'app',
-    title: 'App from the catalog',
-    description: 'Web apps, databases, media servers and tools — Nginx, PostgreSQL, Jellyfin, Uptime Kuma…',
-    kind: 'app:app',
-  },
-  {
-    id: 'portainer',
-    title: 'Portainer',
-    description: 'A full container-management UI for this host, set up in one click.',
-    kind: 'app:manager',
-  },
-  {
-    id: 'container',
-    title: 'Docker container',
-    description: 'Run any image from Docker Hub, GHCR or your own registry.',
-    kind: 'docker',
-  },
   {
     id: 'game',
     title: 'Game server',
@@ -48,7 +29,7 @@ const CHOICES: { id: Choice; title: string; description: string; kind: GameKind 
   {
     id: 'custom',
     title: 'Custom process',
-    description: 'Any Linux binary or shell script, with your own start, stop and restart commands.',
+    description: 'Run a game server with your own executable, launch arguments, and stop command.',
     kind: 'custom',
   },
 ];
@@ -58,13 +39,10 @@ export function NewInstanceModal({
   open,
   onClose,
   onCreated,
-  only,
 }: {
   open: boolean;
   onClose: () => void;
   onCreated: (s: ServerRecord) => void;
-  /** Restrict the choices (e.g. the Docker page only offers container kinds). */
-  only?: Choice[];
 }) {
   const { user, creation } = useAuth();
   const isAdmin = user?.role === 'admin';
@@ -80,26 +58,19 @@ export function NewInstanceModal({
       .catch(() => { setTemplateCount(0); setHasEarth(false); });
   }, [open]);
 
-  const containers = isAdmin ? 'any' : creation?.canCreate ? creation.containers : 'none';
   const available: Record<Choice, boolean> = {
     earth: isAdmin && hasEarth,
     game: canGame,
-    app: containers !== 'none',
-    portainer: containers !== 'none' && (isAdmin || !!creation?.engineSocket),
-    container: containers === 'any',
     custom: isAdmin,
     template: templateCount > 0 && (isAdmin || !!creation?.canCreate),
   };
   const reason: Record<Choice, string> = {
     earth: !isAdmin ? 'An administrator must create BeamNG.Earth servers' : 'Requires a supported Windows or Linux host',
     game: 'Your account can’t create game servers',
-    app: 'Ask an admin for container access',
-    portainer: 'Needs Portainer (container engine) access — ask an admin',
-    container: containers === 'catalog' ? 'Your account runs catalog apps only' : 'Ask an admin for container access',
     custom: 'Admins only — it runs code directly on the host',
     template: templateCount === 0 ? 'No templates yet — import one under Configuration' : 'Your account can’t create instances',
   };
-  const options = CHOICES.filter((c) => (!only || only.includes(c.id)) && (c.id !== 'template' || templateCount > 0 || isAdmin)).map((c) => ({ ...c, available: available[c.id] }));
+  const options = CHOICES.filter((c) => c.id !== 'template' || templateCount > 0 || isAdmin).map((c) => ({ ...c, available: available[c.id] }));
 
   // A single available option skips the picker.
   const usable = options.filter((o) => o.available);
@@ -143,13 +114,6 @@ export function NewInstanceModal({
 
       <CreateServerModal open={open && (effective === 'game' || effective === 'custom')} mode={effective === 'custom' ? 'custom' : 'game'} onClose={close} onCreated={onCreated} />
       <CreateFromTemplateModal open={open && (effective === 'template' || effective === 'earth')} initialTemplateId={effective === 'earth' ? 'builtin-beamng-earth' : undefined} onClose={close} onCreated={onCreated} />
-      <CreateContainerModal
-        open={open && (effective === 'app' || effective === 'portainer' || effective === 'container')}
-        initialTemplate={effective === 'portainer' ? 'portainer' : effective === 'container' ? 'blank' : undefined}
-        sections={effective === 'app' ? ['Platform tools', 'Web & apps', 'Databases', 'Media & files', 'Games'] : undefined}
-        onClose={close}
-        onCreated={onCreated}
-      />
     </>
   );
 }

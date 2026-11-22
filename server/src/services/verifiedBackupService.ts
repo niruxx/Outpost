@@ -12,6 +12,7 @@ import { beginJob, progressJob, finishJob } from './jobService.js';
 import { scanIngestedPath } from './antivirusService.js';
 import { readWorkflow, writeWorkflow, boundedNumber } from './workflowStore.js';
 import { resolveBackupPath } from './backupService.js';
+import { deleteSnapshotMetadata, emptySnapshotMetadata, snapshotMetadata, updateSnapshotMetadata } from './snapshotMetadataService.js';
 interface Entry {
     path: string;
     hash: string;
@@ -54,6 +55,7 @@ export function saveBackupPolicy(id: string, input: Record<string, unknown>) {
 }
 export function backupEstimate(id: string) {
     const manifests = dedupList(id);
+    const details = snapshotMetadata(id, 'deduplicated');
     let storedBytes = 0;
     const blobs = path.join(root(id), 'blobs');
     if (fs.existsSync(blobs))
@@ -61,7 +63,12 @@ export function backupEstimate(id: string) {
             if (/^[a-f0-9]{64}$/.test(name))
                 storedBytes += fs.statSync(blob(id, name)).size;
     const logicalBytes = manifests.reduce((n, m) => n + m.logicalBytes, 0);
-    return { storedBytes, logicalBytes, savedBytes: Math.max(0, logicalBytes - storedBytes), snapshots: manifests.length, policy: backupPolicy(id), manifests: manifests.map(m => ({ ...m, files: undefined, fileCount: m.files.length })) };
+    return { storedBytes, logicalBytes, savedBytes: Math.max(0, logicalBytes - storedBytes), snapshots: manifests.length, policy: backupPolicy(id), manifests: manifests.map(m => ({ ...m, files: undefined, fileCount: m.files.length, ...(details.get(m.id) ?? emptySnapshotMetadata) })) };
+}
+export function editDeduplicatedSnapshot(id: string, snapshot: string, input: unknown) {
+    const file = manifestPath(id, snapshot);
+    if (!fs.lstatSync(file, { throwIfNoEntry: false })?.isFile()) throw new HttpError(404, 'Snapshot not found.');
+    return { id: snapshot, ...updateSnapshotMetadata(id, 'deduplicated', snapshot, input) };
 }
 function walk(dir: string, relative = '', files: string[] = []): string[] {
     if (files.length > 100000)
@@ -133,7 +140,7 @@ export async function createDedup(id: string) {
         await fsp.writeFile(`${target}.tmp`, JSON.stringify(m), { mode: 0o600 });
         await fsp.rename(`${target}.tmp`, target);
         enforceDedupRetention(id);
-        return { ...m, files: undefined, fileCount: files.length };
+        return { ...m, files: undefined, fileCount: files.length, ...emptySnapshotMetadata };
     });
 }
 export function enforceDedupRetention(id: string) {
@@ -149,9 +156,12 @@ export function enforceDedupRetention(id: string) {
             }
         }
     }
-    for (const m of manifests)
-        if (!keep.has(m.id))
+    for (const m of manifests) {
+        if (!keep.has(m.id)) {
             fs.unlinkSync(manifestPath(id, m.id));
+            deleteSnapshotMetadata(id, 'deduplicated', m.id);
+        }
+    }
     const referenced = new Set(manifests.filter(m => keep.has(m.id)).flatMap(m => m.files.map(f => f.hash)));
     const blobs = path.join(root(id), 'blobs');
     if (fs.existsSync(blobs))
