@@ -8,6 +8,7 @@ import { getServer } from './serverService.js';
 import { getUserById, getServerPermissions, userHasServerAccess } from './userService.js';
 import { listPlugins, getAddonSupport, addonArtifactFile, deletePlugin, setPluginEnabled } from './pluginService.js';
 import { inspectAddonMetadata, text, type AddonMetadata, type AddonDependency } from './addonMetadataService.js';
+import { inspectCoreKeeperMod } from './coreKeeperMods.js';
 import { confined, recycleBatch } from './fileWorkspaceService.js';
 import { hashFile } from './verifiedBackupService.js';
 import { isRunning } from './processManager.js';
@@ -215,6 +216,8 @@ export async function installedAddons(server: ServerRecord, force = false): Prom
                     metadata = inspectAddonMetadata(target, server.loader);
                 else if (support.profile.kind === 'bedrock')
                     metadata = packMetadata(target);
+                else if (support.profile.kind === 'core_keeper')
+                    metadata = inspectCoreKeeperMod(target, metadata);
                 if (st.isFile()) {
                     if (cache.size >= 4096)
                         cache.clear();

@@ -45,7 +45,7 @@ Uncheck copying to switch without transferring history. Old files remain in the 
 
 ## Environment exports and instance deletion
 
-Whole-environment exports include the active custom snapshots and restore points in the archive's portable default layout. Import clears machine-specific backup-directory overrides and restores those archives under the destination Outpost data directory. Select an external path again after importing if desired. Export fails if an active custom drive is unavailable, rather than silently omitting its archives.
+Whole-environment exports include active custom snapshots and restore points by default. Import clears machine-specific backup-directory overrides and places any archived history under the destination Outpost data directory. Select an external path again after importing if desired. If a custom drive is unavailable, reconnect it to export its archives or clear **Include existing snapshots and world restore points** to export the environment without backup history.
 
 Deleting an instance removes that instance's active snapshots and rewind tree, not the whole selected base directory or other instances' backups. Copies retained at previous locations remain separate. Factory reset replaces Outpost's data directory; external backup folders are retained on their drives. Keep your external archives and a panel environment export when you need to recover the full setup.
 

@@ -7,7 +7,7 @@ import { Link } from 'react-router-dom';
 import type { AddonInventory, AddonAction, InstalledAddon } from '../../api/addons.js';
 import { AddonActionModal } from '../../components/AddonActionModal.js';
 import { useServerDetail } from './ServerContext.js';
-import { api, ApiError } from '../../api/client.js';
+import { api, ApiError, downloadUrl } from '../../api/client.js';
 import type { AddonSupport, InstalledPlugin, ServerRecord } from '../../api/types.js';
 import { isProxyLoader, PLUGIN_CAPABLE_LOADERS } from '../../api/types.js';
 import { useToast } from '../../components/Toast.js';
@@ -44,7 +44,9 @@ export function PluginsTab() {
   const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const currentInstance=useRef(serverId),sequence=useRef(0);currentInstance.current=serverId;
-  const stopped=!!server&&['stopped','crashed','install_failed'].includes(server.status);
+  const coreKeeper = server?.steam_preset === 'core_keeper';
+  const [replaceCoreKeeper, setReplaceCoreKeeper] = useState(false);
+  const stopped=!!server&&(coreKeeper ? ['stopped','crashed'] : ['stopped','crashed','install_failed']).includes(server.status);
 
   const load = useCallback(async () => {
     if(currentInstance.current!==serverId)return;const seq=++sequence.current;
@@ -61,7 +63,7 @@ export function PluginsTab() {
   }, [serverId]);
 
   useEffect(() => {
-    setSupport(null);setPlugins(null);setInventory(null);setAction(null);setQuery('');setFilter('all');setBrowsing(false);void load();return()=>{sequence.current++;};
+    setSupport(null);setPlugins(null);setInventory(null);setAction(null);setQuery('');setFilter('all');setBrowsing(false);setReplaceCoreKeeper(false);void load();return()=>{sequence.current++;};
   }, [load]);
 
   if (!support || plugins === null || (inventory && inventory.serverId !== serverId)) {
@@ -89,18 +91,20 @@ export function PluginsTab() {
   async function upload(files: FileList | null) {
     if (!files?.length) return;
     const form = new FormData();
+    if (coreKeeper && replaceCoreKeeper) form.append('replace', 'true');
     Array.from(files).forEach((f) => form.append('files', f));
     setUploading(true);
     try {
       const res = await api.upload<{ installed: string[]; plugins: InstalledPlugin[] }>(`/servers/${serverId}/plugins/upload`, form, setUploadProgress);
       if(currentInstance.current===serverId){setPlugins(res.plugins);await load();}
-      toast.success(`Installed ${res.installed.join(', ')}`);
+      toast.success(coreKeeper ? `Installed ${res.installed.length} mod(s)` : `Installed ${res.installed.join(', ')}`);
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : 'Upload failed');
     } finally {
       setUploading(false);
       setUploadProgress(null);
       if (fileInput.current) fileInput.current.value = '';
+      setReplaceCoreKeeper(false);
     }
   }
 
@@ -127,13 +131,33 @@ export function PluginsTab() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h2 className="text-xl font-normal text-ink-50">Installed {profile.label.toLowerCase()} ({plugins.length})</h2>
-          <p className="mt-1 text-sm text-ink-400">
-            Stored in <span className="font-mono text-ink-300">{profile.folder}</span>
+          <p className="mt-1 break-words text-sm text-ink-400">
+            Stored in <span className="break-all font-mono text-ink-300">{profile.folder}</span>
           </p>
         </div>
         {actions}
       </div>
 
+      {coreKeeper && (
+        <Card className="space-y-3 p-4">
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-3 text-sm">
+            <a className="text-accent-400 underline" href="https://mod.io/g/corekeeper" target="_blank" rel="noreferrer">Browse mod.io</a>
+            <a className="text-accent-400 underline" href="https://steamcommunity.com/app/1621690/workshop/" target="_blank" rel="noreferrer">Browse Steam Workshop</a>
+            {can('files.read') && plugins.some((mod) => mod.enabled) && (
+              <a className="inline-flex items-center gap-2 text-accent-400 underline" href={downloadUrl(`/servers/${serverId}/plugins/core-keeper-pack`)} download>
+                <Icon name="download" className="h-4 w-4" /> Download enabled mods
+              </a>
+            )}
+          </div>
+          {canWrite && (
+            <label className="flex items-start gap-2 text-sm text-ink-300">
+              <input className="mt-1" type="checkbox" checked={replaceCoreKeeper} disabled={!stopped || uploading} onChange={(e) => setReplaceCoreKeeper(e.target.checked)} />
+              <span>Replace installed versions on upload. Outpost takes a full instance backup first.</span>
+            </label>
+          )}
+          <p className="text-xs text-ink-400">Players can use the downloaded ZIP to match the server’s enabled mod versions. Restart the server after making changes.</p>
+        </Card>
+      )}
       {!stopped&&<Notice tone="info">The installed list and detail pages are available while running. Stop the instance and finish background jobs before changing add-ons.</Notice>}
       {!canWrite&&<Notice tone="info">Managing installed add-ons requires plugins permission.</Notice>}
       <UploadTracker progress={uploadProgress} />
@@ -189,7 +213,7 @@ export function PluginsTab() {
       </Card>
 
       {inventory?.warnings.map((w,i)=><Notice key={i} tone="warning">{w}</Notice>)}
-      <p className="text-xs text-ink-400">Dependency cleanup uses declared manifests and recorded installation ownership. Shared and explicitly kept mods are retained. Untracked dependencies are kept unless selected for review.</p>
+      {inventory?.dependencyCleanup && <p className="text-xs text-ink-400">Dependency cleanup uses declared manifests and recorded installation ownership. Shared and explicitly kept mods are retained. Untracked dependencies are kept unless selected for review.</p>}
       {action&&<AddonActionModal key={serverId+action.item.id+action.action} serverId={serverId} item={action.item} action={action.action} dependencyCleanup={inventory?.dependencyCleanup??false} onClose={()=>setAction(null)} onApplied={r=>{setAction(null);toast.success(r.action==='remove'?'Uninstalled '+r.removed.map(i=>i.name).join(', '):'Add-on state updated');void load();}}/>}
       {profile.catalog && (
         <PluginSearchModal

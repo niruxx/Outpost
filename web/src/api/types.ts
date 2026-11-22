@@ -415,7 +415,7 @@ export interface ProxyCandidate {
 }
 
 export interface AddonProfile {
-  kind: 'bukkit' | 'datapack' | 'bedrock' | 'bepinex' | 'pak';
+  kind: 'bukkit' | 'datapack' | 'bedrock' | 'bepinex' | 'pak' | 'mod' | 'gmod' | 'beammp' | 'core_keeper';
   label: string;
   singular: string;
   folder: string;

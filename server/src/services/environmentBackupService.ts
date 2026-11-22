@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import AdmZip from 'adm-zip';
 import { DATA_DIR } from '../utils/paths.js';
 import { closeDatabase } from '../db/db.js';
@@ -9,7 +10,7 @@ import { isRunning } from './processManager.js';
 import { logger } from '../utils/logger.js';
 import { HttpError } from '../utils/asyncHandler.js';
 import { DatabaseSync } from 'node:sqlite';
-import { acquireBackupStorage, backupDir, rewindDir } from './backupStorageService.js';
+import { acquireBackupStorage, backupDir, backupStorageInfo, rewindDir } from './backupStorageService.js';
 import { holdCoreKeeperBackup } from './backupService.js';
 import { isCoreKeeper } from './coreKeeper.js';
 
@@ -39,9 +40,25 @@ async function renameWithRetry(from: string, to: string, attempts = 5): Promise<
  * temp file outside of DATA_DIR (so the zip never tries to include itself). Caller is
  * responsible for streaming it to the client and deleting it afterward.
  */
-export async function exportEnvironment(): Promise<{ filePath: string; fileName: string }> {
+export function environmentExportPreview(includeHistory: boolean) {
+  const servers = listServers();
+  const blockers = servers.flatMap((server) => {
+    if (isCoreKeeper(server) && (!['stopped', 'crashed'].includes(server.status) || isRunning(server.id))) {
+      return [`Stop ${server.name} and wait for Core Keeper to finish saving.`];
+    }
+    if (includeHistory) {
+      const storage = backupStorageInfo(server.id);
+      if (storage.changing) return [`${server.name}: backup storage is being moved.`];
+      if (!storage.available) return [`${server.name}: ${storage.error}`];
+    }
+    return [];
+  });
+  return { blockers, instances: servers.map(({ id, name }) => ({ id, name })) };
+}
+
+export async function exportEnvironment(includeHistory = true): Promise<{ filePath: string; fileName: string }> {
   const fileName = `outpost-environment-${timestampSlug()}.zip`;
-  const filePath = path.join(os.tmpdir(), fileName);
+  const filePath = path.join(os.tmpdir(), `${randomUUID()}-${fileName}`);
   const release: (() => void)[] = [];
   try {
     const servers = listServers();
@@ -49,10 +66,19 @@ export async function exportEnvironment(): Promise<{ filePath: string; fileName:
       const unlock = await holdCoreKeeperBackup(server.id);
       if (unlock) release.push(unlock);
     }
-    for (const server of servers) release.push(acquireBackupStorage(server.id));
+    if (includeHistory) for (const server of servers) release.push(acquireBackupStorage(server.id));
     const zip = new AdmZip();
-    zip.addLocalFolder(DATA_DIR, '');
-    for (const server of servers.filter((s) => s.backup_directory)) {
+    const history = ['backups', 'rewind'];
+    for (const server of servers) {
+      if (!server.backup_directory) continue;
+      const relative = path.relative(DATA_DIR, path.join(server.backup_directory, server.id));
+      if (relative && !relative.startsWith('..') && !path.isAbsolute(relative)) history.push(relative.split(path.sep).join('/'));
+    }
+    zip.addLocalFolder(DATA_DIR, '', (name) => includeHistory || !history.some((dir) => {
+      const entry = name.split(path.sep).join('/');
+      return entry === dir || entry.startsWith(dir + '/');
+    }));
+    for (const server of servers.filter((s) => includeHistory && s.backup_directory)) {
       // Export active external archives in the portable default layout, replacing old copies.
       zip.deleteFile(`backups/${server.id}/`);
       zip.deleteFile(`rewind/${server.id}/`);
@@ -63,6 +89,9 @@ export async function exportEnvironment(): Promise<{ filePath: string; fileName:
       if (fs.existsSync(rewind)) zip.addLocalFolder(rewind, `rewind/${server.id}`);
     }
     await zip.writeZipPromise(filePath);
+  } catch (err) {
+    fs.rmSync(filePath, { force: true });
+    throw err;
   } finally { for (const done of release) done(); }
   logger.info(`Exported environment backup: ${filePath} (${fs.statSync(filePath).size} bytes)`);
   return { filePath, fileName };

@@ -528,8 +528,8 @@ function configurationSections(isAdmin: boolean): Section[] {
     data: {
       description: 'Off-site storage, templates, panel backups and how long logs are kept.',
       content: <>
-        <OffsiteCard />
         <EnvironmentBackupCard />
+        <OffsiteCard />
         <TemplatesCard isAdmin />
         <AuditRetentionCard />
         <ConsoleLogRetentionCard />

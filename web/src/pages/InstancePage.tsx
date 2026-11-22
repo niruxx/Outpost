@@ -104,7 +104,7 @@ function InstanceNav({ server, onNavigate }: { server: ServerRecord; onNavigate:
       {world && <NavItem to="operator" icon="shield" label="Operators" onClick={onNavigate} />}
       {world && <NavItem to="whitelist" icon="checklist" label="Whitelist" onClick={onNavigate} />}
       {addons && <NavItem to="plugins" icon="plugin" label={addonNavLabel(server)} onClick={onNavigate} />}
-      {server.platform === 'steam' && <NavItem to="workshop" icon="box" label="Workshop" onClick={onNavigate} />}
+      {server.platform === 'steam' && server.steam_preset !== 'core_keeper' && <NavItem to="workshop" icon="box" label="Workshop" onClick={onNavigate} />}
       {proxy && <NavItem to="network" icon="node" label="Network" onClick={onNavigate} />}
       {isCs2 && <NavItem to="cs2" icon="bolt" label="CS2" onClick={onNavigate} />}
       {server.platform === 'steam' && !['cs2', 'tf2', 'gmod'].includes(server.steam_preset ?? '') && !( !server.steam_preset && ['730', '232250', '4020'].includes(server.steam_app_id ?? '')) && <NavItem to="game-settings" icon="configuration" label="Game settings" onClick={onNavigate} />}

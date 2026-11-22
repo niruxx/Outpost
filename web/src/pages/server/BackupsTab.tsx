@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { OffsiteChips, OffsiteRestoreCard, useOffsite } from './OffsiteBackups.js';
 import { BackupStorageCard } from './BackupStorageCard.js';
 import { useServerDetail } from './ServerContext.js';
@@ -92,7 +93,7 @@ function DiffView({ current, snapshot }: { current: SnapshotFileSide; snapshot: 
 
 const MAX_LISTED = 400;
 
-function SnapshotBrowser({ snapshot, onClose }: { snapshot: BackupInfo; onClose: () => void }) {
+function SnapshotBrowser({ snapshot, restoreBlocked, onClose }: { snapshot: BackupInfo; restoreBlocked: boolean; onClose: () => void }) {
   const { serverId, can, running } = useServerDetail();
   const toast = useToast();
   const confirm = useConfirm();
@@ -123,7 +124,7 @@ function SnapshotBrowser({ snapshot, onClose }: { snapshot: BackupInfo; onClose:
   }
 
   async function restoreFile() {
-    if (!selected) return;
+    if (!selected || restoreBlocked) return;
     const ok = await confirm({
       title: 'Restore file',
       message: (
@@ -198,10 +199,11 @@ function SnapshotBrowser({ snapshot, onClose }: { snapshot: BackupInfo; onClose:
               <p className="truncate font-mono text-sm text-ink-100">{selected}</p>
               <DiffView current={compare.current} snapshot={compare.snapshot} />
               {can('backups.restore') && (
-                <Button variant="primary" disabled={restoring} onClick={restoreFile}>
+                <Button variant="primary" disabled={restoring || restoreBlocked} onClick={restoreFile}>
                   <Icon name="restart" className="h-4 w-4" /> {restoring ? 'Restoring…' : 'Restore this file'}
                 </Button>
               )}
+              {can('backups.restore') && restoreBlocked && <p className="text-sm text-ink-400">Stop Core Keeper before restoring files.</p>}
             </>
           )}
         </div>
@@ -224,7 +226,7 @@ function SnapshotRow({ menu, children }: { menu: () => MenuItems; children: Reac
 }
 
 export function BackupsTab() {
-  const { serverId, can, running } = useServerDetail();
+  const { serverId, server, can, running } = useServerDetail();
   const toast = useToast();
   const confirm = useConfirm();
   const [backups, setBackups] = useState<BackupInfo[] | null>(null);
@@ -233,6 +235,7 @@ export function BackupsTab() {
   const [retentionCount, setRetentionCount] = useState(5);
   const [scheduleEnabled, setScheduleEnabled] = useState(true);
   const [label, setLabel] = useState('');
+  const [format, setFormat] = useState<'zip' | 'deduplicated'>('zip');
   const [error, setError] = useState('');
   const [creating, setCreating] = useState(false);
   const [busyFile, setBusyFile] = useState<string | null>(null);
@@ -243,6 +246,11 @@ export function BackupsTab() {
   const canCreate = can('backups.create');
   const canRestore = can('backups.restore');
   const canBrowse = can('files.read');
+  const coreKeeper = server?.steam_preset === 'core_keeper';
+  const stopped = !!server && !running && ['stopped', 'crashed', 'install_failed'].includes(server.status);
+  const coreKeeperReady = stopped && server?.status !== 'install_failed';
+  const requiresStop = (coreKeeper && !coreKeeperReady) || (format === 'deduplicated' && !stopped);
+  const restoreBlocked = coreKeeper ? !coreKeeperReady : running;
 
   const load = useCallback(async () => {
     setError('');
@@ -283,9 +291,9 @@ export function BackupsTab() {
     canBrowse && { label: 'Browse files', icon: 'search', onSelect: () => setBrowsing(b) },
     canBrowse && { label: 'Download', icon: 'download', onSelect: () => window.open(snapshotUrl(b), '_blank') },
     canRestore && {
-      label: running ? 'Restore all (stop the server first)' : 'Restore all…',
+      label: restoreBlocked ? 'Restore all (stop the server first)' : 'Restore all…',
       icon: 'restart',
-      disabled: running || busyFile === b.fileName,
+      disabled: restoreBlocked || busyFile === b.fileName,
       onSelect: () => restoreAll(b),
     },
     canCreate && !!offsite.state?.destinations.length && { label: 'Copy to off-site storage', icon: 'upload', onSelect: () => copyOffsite(b) },
@@ -300,13 +308,19 @@ export function BackupsTab() {
   ];
 
   async function createSnapshot() {
+    if (requiresStop) return;
     setCreating(true);
     setError('');
     try {
-      await api.post(`/servers/${serverId}/backups`, label.trim() ? { label: label.trim() } : {});
-      setLabel('');
-      toast.success('Snapshot created');
-      await load();
+      if (format === 'deduplicated') {
+        await api.post(`/servers/${serverId}/reliability/deduplicated`);
+        toast.success('Deduplicated backup created');
+      } else {
+        await api.post(`/servers/${serverId}/backups`, label.trim() ? { label: label.trim() } : {});
+        setLabel('');
+        toast.success('Full instance ZIP created');
+        await load();
+      }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to create snapshot');
     } finally {
@@ -315,6 +329,7 @@ export function BackupsTab() {
   }
 
   async function restoreAll(b: BackupInfo) {
+    if (restoreBlocked) return;
     const ok = await confirm({
       title: 'Restore entire snapshot',
       message: `Replace every file in this instance with the snapshot from ${new Date(b.createdAt).toLocaleString()}? Anything changed since then is lost — take a fresh snapshot first if unsure. The server must be stopped.`,
@@ -389,23 +404,41 @@ export function BackupsTab() {
 
   return (
     <div className="stagger space-y-5">
-      <ErrorText>{error}</ErrorText>
-      <BackupStorageCard onChanged={load} />
-
-      <Card className="p-5">
-        <CardTitle>Snapshots</CardTitle>
-        {canCreate && (
-          <div className="mb-5 flex flex-wrap items-end gap-2">
-            <div className="min-w-[220px] flex-1">
-              <Field label="Label (optional)">
-                <Input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="e.g. before-1.21-update" maxLength={40} />
-              </Field>
+      {canCreate && (
+        <Card className="space-y-4 p-4 sm:p-5">
+          <fieldset disabled={creating} className="min-w-0 space-y-3">
+            <legend className="text-base font-medium text-ink-100">Create an instance backup</legend>
+            <p className="text-sm text-ink-400">Back up this instance’s directory, including worlds, configuration files, and mods.</p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {([
+                ['zip', 'Full instance ZIP', 'Download, browse, restore, or copy to configured off-site storage'],
+                ['deduplicated', 'Deduplicated backup', 'Reuse unchanged files to save space. Manage these backups in Reliability.'],
+              ] as const).map(([value, title, detail]) => (
+                <label key={value} className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 ${format === value ? 'border-accent-400 bg-surface-850' : 'border-surface-700'}`}>
+                  <input className="mt-1" name="instance-backup-format" type="radio" checked={format === value} onChange={() => setFormat(value)} />
+                  <span className="min-w-0"><span className="block text-sm font-medium text-ink-100">{title}</span><span className="block text-xs text-ink-400">{detail}</span></span>
+                </label>
+              ))}
             </div>
-            <Button variant="primary" onClick={createSnapshot} disabled={creating}>
-              {creating ? <Spinner /> : <Icon name="plus" className="h-4 w-4" />} {creating ? 'Creating…' : 'Create snapshot'}
+          </fieldset>
+          {requiresStop && <Notice tone="info">Stop the instance and wait for it to finish saving before creating this backup.</Notice>}
+          <div className="flex flex-wrap items-end gap-3">
+            {format === 'zip' && <div className="w-full min-w-0 sm:w-64">
+              <Field label="Label (optional)">
+                <Input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="e.g. before-update" maxLength={40} disabled={creating} />
+              </Field>
+            </div>}
+            <Button variant="primary" onClick={createSnapshot} disabled={creating || !server || requiresStop}>
+              {creating ? <Spinner /> : <Icon name="backup" className="h-4 w-4" />} {creating ? 'Creating backup…' : format === 'zip' ? 'Create ZIP backup' : 'Create deduplicated backup'}
             </Button>
+            {format === 'deduplicated' && canBrowse && <Link className="self-center text-sm text-accent-400 underline" to="../reliability">Open Reliability</Link>}
           </div>
-        )}
+        </Card>
+      )}
+      <ErrorText>{error}</ErrorText>
+
+      <Card className="p-4 sm:p-5">
+        <CardTitle>Instance ZIP backups</CardTitle>
         {backups === null ? (
           <Spinner />
         ) : backups.length === 0 ? (
@@ -420,7 +453,7 @@ export function BackupsTab() {
                     <Icon name="backup" className="h-[18px] w-[18px]" />
                   </span>
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <p className="text-sm font-medium text-ink-100">{new Date(b.createdAt).toLocaleString()}</p>
                       {tag && <Badge tone={tag === 'auto' ? 'blue' : 'neutral'}>{tag === 'auto' ? 'Scheduled' : tag}</Badge>}
                     </div>
@@ -429,14 +462,14 @@ export function BackupsTab() {
                     </p>
                     <OffsiteChips state={offsite.state} fileName={b.fileName} />
                   </div>
-                  <div className="flex flex-wrap gap-1.5">
+                  <div className="flex w-full flex-wrap gap-1.5 sm:w-auto">
                     {canBrowse && (
                       <Button onClick={() => setBrowsing(b)} title="Browse files, compare and restore individual files">
                         <Icon name="search" className="h-4 w-4" /> Files
                       </Button>
                     )}
                     {canRestore && (
-                      <Button disabled={busyFile === b.fileName || running} onClick={() => restoreAll(b)} title={running ? 'Stop the server to restore a whole snapshot' : undefined}>
+                      <Button disabled={busyFile === b.fileName || restoreBlocked} onClick={() => restoreAll(b)} title={restoreBlocked ? 'Stop the server to restore a whole snapshot' : undefined}>
                         <Icon name="restart" className="h-4 w-4" /> Restore all
                       </Button>
                     )}
@@ -469,10 +502,11 @@ export function BackupsTab() {
             })}
           </div>
         )}
-        {canRestore && running && <p className="mt-3 text-xs text-ink-500">Stop the server to restore a whole snapshot. Single files can be restored any time.</p>}
+        {canRestore && restoreBlocked && <p className="mt-3 text-xs text-ink-500">{coreKeeper ? 'Stop Core Keeper before restoring a backup or individual files.' : 'Stop the server to restore a whole snapshot. Single files can be restored any time.'}</p>}
       </Card>
 
       <OffsiteRestoreCard serverId={serverId} state={offsite.state} canRestore={canRestore} onFetched={() => load()} />
+      <BackupStorageCard onChanged={load} />
 
       <Card className="p-5">
         <CardTitle>Snapshot schedule</CardTitle>
@@ -527,7 +561,7 @@ export function BackupsTab() {
         )}
       </Card>
 
-      {browsing && <SnapshotBrowser snapshot={browsing} onClose={() => setBrowsing(null)} />}
+      {browsing && <SnapshotBrowser snapshot={browsing} restoreBlocked={coreKeeper && restoreBlocked} onClose={() => setBrowsing(null)} />}
     </div>
   );
 }

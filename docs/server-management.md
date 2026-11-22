@@ -153,3 +153,28 @@ Outpost leaves the game running if it does not exit before the stop timeout.
 **Force Stop** can interrupt a save. Instance ZIP backups and environment exports
 require Core Keeper to be stopped. Instance backups store the game files, saves,
 and native configuration. Environment exports also include panel settings.
+
+Use the instance’s **Mods** page to upload ZIPs from mod.io, Steam Workshop, or the
+mod author. Each mod needs a `ModManifest.json` in its own folder. Install any
+dependencies the author lists and use builds for the server’s operating system.
+Outpost can enable, disable, or uninstall individual mods while the server is
+stopped. To update a mod, select **Replace installed versions on upload** before
+choosing its new ZIP. Outpost creates a full instance backup before replacing
+files. Restart Core Keeper to apply changes.
+
+Use **Download enabled mods** to give players the same versions. Players extract
+the ZIP into their client’s `CoreKeeper_Data/StreamingAssets/Mods` folder. See
+the [dedicated server modding guide](https://github.com/CoreKeeperMods/Core-Keeper-Docs/blob/main/playing-with-mods/installing-mods/on-dedicated-servers.md)
+for player setup and packages that need manual installation.
+
+## Choosing a backup
+
+In **Configuration → Backups & data**, choose **Whole environment** for panel
+accounts, settings, and all instance files. Clear **Include existing snapshots
+and world restore points** to omit stored backup history from the archive. Use
+**Single instance** to open a specific instance’s **Backups** page.
+
+Choose **Full instance ZIP** for a downloadable archive with file browsing and
+off-site copy options, or **Deduplicated backup** to reuse unchanged files.
+Deduplicated backups require a stopped instance and can be verified or restored
+in **Reliability**.

@@ -1,5 +1,7 @@
 import fs from 'node:fs';
 import { isBeamMP, beammpModFolder } from './beammpService.js';
+import { isCoreKeeper } from './coreKeeper.js';
+import { CORE_KEEPER_MODS, coreKeeperModArtifact, installCoreKeeperMods, listCoreKeeperMods, setCoreKeeperModEnabled } from './coreKeeperMods.js';
 import { isModded } from './moddedService.js';
 import path from 'node:path';
 import AdmZip from 'adm-zip';
@@ -24,7 +26,7 @@ import { isProxyLoader, PLUGIN_CAPABLE_LOADERS } from '../types/index.js';
  *   bepinex  — Valheim BepInEx plugins in BepInEx/plugins
  *   pak      — Palworld .pak mods in Pal/Content/Paks/~mods
  */
-export type AddonKind = 'bukkit' | 'datapack' | 'bedrock' | 'bepinex' | 'pak' | 'mod' | 'gmod' | 'beammp';
+export type AddonKind = 'bukkit' | 'datapack' | 'bedrock' | 'bepinex' | 'pak' | 'mod' | 'gmod' | 'beammp' | 'core_keeper';
 export type AddonCatalog = 'plugin' | 'datapack' | 'bedrock' | `mod:${'fabric' | 'quilt' | 'forge' | 'neoforge'}` | `proxy:${'velocity' | 'bungee'}`;
 
 export interface AddonProfile {
@@ -77,6 +79,14 @@ function bepinexInstalled(server: ServerRecord): boolean {
 }
 
 export function getAddonSupport(server: ServerRecord): AddonSupport {
+  if (isCoreKeeper(server)) return {
+    supported: true,
+    profile: {
+      kind: 'core_keeper', label: 'Mods', singular: 'mod', folder: CORE_KEEPER_MODS,
+      extensions: ['.zip'], catalog: null, warning: null,
+      notes: ['Upload mod ZIPs and any dependencies listed by the author. Use packages that support your server’s platform and game version.'],
+    },
+  };
   if (isBeamMP(server)) return {
     supported: true,
     profile: {
@@ -275,6 +285,8 @@ export function requireAddonProfile(server: ServerRecord): AddonProfile {
 
 function addonDir(server: ServerRecord, profile: AddonProfile): string {
   switch (profile.kind) {
+    case 'core_keeper':
+      return inInstance(server, CORE_KEEPER_MODS);
     case 'beammp':
       return inInstance(server, beammpModFolder(server));
     case 'bukkit':
@@ -522,6 +534,7 @@ function installBedrockArchive(server: ServerRecord, buffer: Buffer, depth = 0):
 
 export function listPlugins(server: ServerRecord): InstalledPlugin[] {
   const profile = requireAddonProfile(server);
+  if (profile.kind === 'core_keeper') return listCoreKeeperMods(server);
   if (profile.kind === 'gmod') return listGmodAddons(server);
   return profile.kind === 'bedrock' ? listBedrockPacks(server) : listFileAddons(server, profile);
 }
@@ -529,6 +542,7 @@ export function listPlugins(server: ServerRecord): InstalledPlugin[] {
 /** The exact artifact represented by an installed row, including native pack/add-on identifiers. */
 export function addonArtifactFile(server: ServerRecord, fileName: string): string {
   const profile=requireAddonProfile(server);
+  if (profile.kind === 'core_keeper') return coreKeeperModArtifact(server, fileName);
   if(profile.kind==='bedrock')return resolveBedrockPack(server,fileName).folder;
   if(profile.kind==='gmod')return gmodAddonFile(server,fileName);
   return resolveAddonPath(server,profile,fileName);
@@ -536,6 +550,7 @@ export function addonArtifactFile(server: ServerRecord, fileName: string): strin
 
 export function setPluginEnabled(server: ServerRecord, fileName: string, enable: boolean): void {
   const profile = requireAddonProfile(server);
+  if (profile.kind === 'core_keeper') return setCoreKeeperModEnabled(server, fileName, enable);
   if (profile.kind === 'bedrock') {
     const { type, manifest } = resolveBedrockPack(server, fileName);
     setPackActive(server, type, manifest, enable);
@@ -561,7 +576,7 @@ export function deletePlugin(server: ServerRecord, fileName: string): void {
     return;
   }
   if (profile.kind === 'gmod') return deleteGmodAddon(server, fileName);
-  fs.rmSync(resolveAddonPath(server, profile, fileName), { recursive: true, force: true });
+  fs.rmSync(addonArtifactFile(server, fileName), { recursive: true, force: true });
 }
 
 /** Installs an uploaded file according to the instance's add-on profile. Returns what was installed. */
@@ -574,6 +589,7 @@ export function installUploadedAddon(server: ServerRecord, originalName: string,
   }
 
   if (profile.kind === 'gmod') return installGmodUpload(server, originalName, buffer);
+  if (profile.kind === 'core_keeper') return installCoreKeeperMods(server, [{ originalname: originalName, buffer }]);
   if (profile.kind === 'bedrock') {
     const installed = installBedrockArchive(server, buffer);
     if (!installed.length) throw new HttpError(400, `${originalName}: no Bedrock pack (manifest.json) found inside`);

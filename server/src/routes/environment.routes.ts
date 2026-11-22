@@ -8,6 +8,7 @@ import { asyncHandler, HttpError } from '../utils/asyncHandler.js';
 import { requireAuth, requireRole } from '../auth/middleware.js';
 import {
   assertNoServersRunning,
+  environmentExportPreview,
   exportEnvironment,
   importEnvironment,
   resetEnvironment,
@@ -30,10 +31,14 @@ const upload = multer({
   limits: { fileSize: 20 * 1024 * 1024 * 1024 }, // 20 GB
 });
 
+environmentRouter.get('/export/preview', (req, res) => {
+  res.json(environmentExportPreview(req.query.history !== 'exclude'));
+});
+
 environmentRouter.get(
   '/export',
   asyncHandler(async (req, res) => {
-    const { filePath, fileName } = await exportEnvironment();
+    const { filePath, fileName } = await exportEnvironment(req.query.history !== 'exclude');
     logAudit(req.auth!.sub, req.auth!.username, 'environment.export');
     res.download(filePath, fileName, (err) => {
       fs.rm(filePath, { force: true }, () => {});

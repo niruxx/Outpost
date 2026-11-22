@@ -1,6 +1,9 @@
 import { scanIncomingUploads } from './antivirus.routes.js';
 import { scanUploadBuffers } from '../services/antivirusService.js';
 import { isRunning } from '../services/processManager.js';
+import { isCoreKeeper } from '../services/coreKeeper.js';
+import { exportCoreKeeperMods, installCoreKeeperMods } from '../services/coreKeeperMods.js';
+import { createBackup } from '../services/backupService.js';
 import { listModVersions } from '../services/pluginRegistryService.js';
 import { resolveModPlan } from '../services/modDependencyService.js';
 import { Router, type Request, type Response } from 'express';
@@ -69,6 +72,12 @@ pluginsRouter.get(
 );
 
 pluginsRouter.get('/installed/:id',asyncHandler(async(req,res)=>res.json(await addonInventory.addonDetails(requireServer(req.params.serverId),req.params.id))));
+pluginsRouter.get('/core-keeper-pack', asyncHandler(async (req, res) => {
+  requirePermission(req, 'files.read');
+  const server = requireServer(req.params.serverId);
+  if (!isCoreKeeper(server)) throw new HttpError(404, 'This instance does not use Core Keeper mods.');
+  res.attachment('core-keeper-mods.zip').send(exportCoreKeeperMods(server));
+}));
 pluginsRouter.post('/installed/:id/plan',asyncHandler(async(req,res)=>res.json(await addonInventory.planAddonAction(requireServer(req.params.serverId),req.auth!.sub,req.params.id,req.body??{}))));
 pluginsRouter.post('/installed/actions/:id/apply',asyncHandler(async(req,res)=>{const result=await addonInventory.applyAddonAction(req.params.serverId,req.auth!.sub,req.params.id,req.body?.acknowledged===true);logAudit(req.auth!.sub,req.auth!.username,'addon.action',req.params.serverId,req.params.id);res.json(result);}));
 pluginsRouter.post('/installed/:id/keep',mutating(async(req,res)=>{await addonInventory.pinAddon(requireServer(req.params.serverId),req.params.id);logAudit(req.auth!.sub,req.auth!.username,'addon.keep',req.params.serverId,req.params.id);res.json({ok:true});}));
@@ -203,11 +212,22 @@ pluginsRouter.post(
     const server = requireServer(req.params.serverId);
     const files = (req.files as Express.Multer.File[] | undefined) ?? [];
     if (!files.length) throw new HttpError(400, 'No files uploaded');
+    const coreKeeper = isCoreKeeper(server);
+    const replace = coreKeeper && req.body?.replace === 'true';
+    if (replace) {
+      await createBackup(server.id, 'before-core-keeper-mod-update');
+      addonInventory.authorizeAddonMutation(req.auth!.sub, server.id);
+      addonInventory.assertAddonStopped(server.id);
+    }
     const installed: string[] = [];
-    for (const file of files) {
-      const added=installUploadedAddon(server, file.originalname, file.buffer);
-      for(const name of added)await addonInventory.recordUploadedAddon(server,name);
-      installed.push(...added);
+    if (coreKeeper) {
+      installed.push(...installCoreKeeperMods(server, files, replace));
+    } else {
+      for (const file of files) {
+        const added = installUploadedAddon(server, file.originalname, file.buffer);
+        for (const name of added) await addonInventory.recordUploadedAddon(server, name);
+        installed.push(...added);
+      }
     }
     appendLine(server.id, `[Outpost] Installed ${installed.join(', ')} — restart the server for changes to apply`);
     logAudit(req.auth!.sub, req.auth!.username, 'plugin.upload', server.id, installed.join(', '));
