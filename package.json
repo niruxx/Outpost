@@ -30,7 +30,7 @@
     "capabilities:publish": "npm run build && node server/test/publish-game-capabilities.mjs --browser --publish"
   },
   "devDependencies": {
-    "concurrently": "^9.1.0"
+    "concurrently": "^9.2.5"
   },
   "allowScripts": {
     "node-pty": true
